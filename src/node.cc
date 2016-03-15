@@ -3568,12 +3568,9 @@ static void StartDebug(Environment* env, bool wait) {
 
   env->debugger_agent()->set_dispatch_handler(
         DispatchMessagesDebugAgentCallback);
-#if defined(NODE_ENGINE_CHAKRACORE)
-  // ChakraShim does not support debugger_agent
-  debugger_running = v8::Debug::EnableAgent();
-#else
+
   debugger_running = env->debugger_agent()->Start(debug_port, wait);
-#endif
+
   if (debugger_running == false) {
     fprintf(stderr, "Starting debugger on port %d failed\n", debug_port);
     fflush(stderr);

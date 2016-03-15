@@ -30,7 +30,9 @@ CpuProfiler dummyCpuProfiler;
 Isolate* Isolate::New(const CreateParams& params) {
   Isolate* iso = jsrt::IsolateShim::New();
   if (params.array_buffer_allocator) {
-    V8::SetArrayBufferAllocator(params.array_buffer_allocator);
+    CHAKRA_VERIFY(!jsrt::IsolateShim::FromIsolate(iso)->g_arrayBufferAllocator);
+    jsrt::IsolateShim::FromIsolate(iso)->g_arrayBufferAllocator =
+        params.array_buffer_allocator;
   }
   return iso;
 }
@@ -186,13 +188,13 @@ void Isolate::GetHeapStatistics(HeapStatistics *heap_statistics) {
 }
 
 size_t Isolate::NumberOfHeapSpaces() {
-  //Chakra doesn't expose HEAP space stats
+  // Chakra doesn't expose HEAP space stats
   return 0;
 }
 
 bool Isolate::GetHeapSpaceStatistics(HeapSpaceStatistics* space_statistics,
                                      size_t index) {
-  //Chakra doesn't expose HEAP space stats
+  // Chakra doesn't expose HEAP space stats
   return true;
 }
 

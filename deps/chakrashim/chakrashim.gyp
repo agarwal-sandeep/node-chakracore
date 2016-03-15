@@ -2,6 +2,7 @@
   'variables': {
     'library_files': [
       'lib/chakra_shim.js',
+      'lib/chakra_debug.js',
     ],
   },
 
@@ -16,7 +17,8 @@
 
       'include_dirs': [
         'include',
-        '<(SHARED_INTERMEDIATE_DIR)'
+        '<(SHARED_INTERMEDIATE_DIR)',
+        './../uv/include'
       ],
       'defines': [
         'BUILDING_CHAKRASHIM=1',

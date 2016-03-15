@@ -44,7 +44,7 @@ enum CachedSymbolPropertyIdRef {
 
 class IsolateShim {
  public:
-
+  v8::ArrayBuffer::Allocator* g_arrayBufferAllocator;
   bool IsolateShim::NewContext(JsContextRef * context, bool exposeGC,
                                JsValueRef globalObjectTemplateInstance);
   bool GetMemoryUsage(size_t * memoryUsage);
@@ -97,6 +97,9 @@ class IsolateShim {
 
   void SetData(unsigned int slot, void* data);
   void* GetData(unsigned int slot);
+
+  ContextShim* debugContext;
+
  private:
   // Construction/Destruction should go thru New/Dispose
   explicit IsolateShim(JsRuntimeHandle runtime);
@@ -126,6 +129,7 @@ class IsolateShim {
   static IsolateShim * s_isolateList;
 
   static __declspec(thread) IsolateShim * s_currentIsolate;
+  static __declspec(thread) IsolateShim * s_previousIsolate;
 };
 
 }  // namespace jsrt

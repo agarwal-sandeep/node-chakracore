@@ -29,7 +29,6 @@ namespace v8 {
 bool g_disposed = false;
 bool g_exposeGC = false;
 bool g_useStrict = false;
-ArrayBuffer::Allocator* g_arrayBufferAllocator = nullptr;
 
 const char *V8::GetVersion() {
   static char versionStr[32] = {};
@@ -71,6 +70,9 @@ void Isolate::SetFatalErrorHandler(FatalErrorCallback that) {
 
 void V8::SetFlagsFromString(const char* str, int length) {
   // CHAKRA-TODO
+  if (_stricmp(str, "--expose_debug_as=v8debug") == 0) {
+    v8::Debug::ExposeDebug();
+  }
 }
 
 static bool equals(const char* str, const char* pat) {
@@ -101,7 +103,8 @@ void V8::SetFlagsFromCommandLine(int *argc, char **argv, bool remove_flags) {
                (startsWith(
                  arg, "--debug")  // Ignore some flags to reduce unit test noise
                 || startsWith(arg, "--harmony")
-                || startsWith(arg, "--stack-size="))) {
+                || startsWith(arg, "--stack-size=")
+                || startsWith(arg, "--nolazy"))) {
       argv[i] = nullptr;
     } else if (equals("--help", arg)) {
         char* helpText =
@@ -126,7 +129,7 @@ void V8::SetFlagsFromCommandLine(int *argc, char **argv, bool remove_flags) {
 
 bool V8::Initialize() {
   if (g_disposed) {
-    return false; // Can no longer Initialize if Disposed
+    return false;  // Can no longer Initialize if Disposed
   }
 #ifndef NODE_ENGINE_CHAKRACORE
   if (g_EnableDebug && JsStartDebugging() != JsNoError) {
@@ -141,8 +144,8 @@ void V8::SetEntropySource(EntropySource entropy_source) {
 }
 
 void V8::SetArrayBufferAllocator(ArrayBuffer::Allocator* allocator) {
-  CHAKRA_VERIFY(!g_arrayBufferAllocator);
-  g_arrayBufferAllocator = allocator;
+  // CHAKRA_VERIFY(!g_arrayBufferAllocator);
+  // g_arrayBufferAllocator = allocator;
 }
 
 bool V8::IsDead() {
