@@ -4,8 +4,8 @@
 //-------------------------------------------------------------------------------------------------------
 
 #include "RuntimeLibraryPch.h"
-#include "Types\PathTypeHandler.h"
-#include "Types\SpreadArgument.h"
+#include "Types/PathTypeHandler.h"
+#include "Types/SpreadArgument.h"
 
 namespace Js
 {
@@ -653,7 +653,7 @@ namespace Js
 #if ENABLE_DEBUG_CONFIG_OPTIONS
         if (Js::Configuration::Global.flags.TestTrace.IsEnabled(Js::CopyOnAccessArrayPhase))
         {
-            Output::Print(L"Convert copy-on-access array: index(%d) length(%d)\n", this->GetHead(), seg->length);
+            Output::Print(_u("Convert copy-on-access array: index(%d) length(%d)\n"), this->GetHead(), seg->length);
             Output::Flush();
         }
 #endif
@@ -947,7 +947,7 @@ namespace Js
             {
                 //
                 // First element is not int/double
-                // create a array of length 1.
+                // create an array of length 1.
                 // Set first element as the passed Var
                 //
 
@@ -1487,7 +1487,7 @@ namespace Js
                 Assert(caller->GetFunctionBody());
                 if(PHASE_TRACE(Js::NativeArrayConversionPhase, caller->GetFunctionBody()))
                 {
-                    Output::Print(L"Conversion: Int array to Float array    ArrayCreationFunctionNumber:%2d    CallSiteNumber:%2d \n", arrayInfo->functionNumber, arrayInfo->callSiteNumber);
+                    Output::Print(_u("Conversion: Int array to Float array    ArrayCreationFunctionNumber:%2d    CallSiteNumber:%2d \n"), arrayInfo->functionNumber, arrayInfo->callSiteNumber);
                     Output::Flush();
                 }
             }
@@ -1495,14 +1495,14 @@ namespace Js
             {
                 if(PHASE_TRACE1(Js::NativeArrayConversionPhase))
                 {
-                    Output::Print(L"Conversion: Int array to Float array across ScriptContexts");
+                    Output::Print(_u("Conversion: Int array to Float array across ScriptContexts"));
                     Output::Flush();
                 }
             }
 #else
             if(PHASE_TRACE1(Js::NativeArrayConversionPhase))
             {
-                Output::Print(L"Conversion: Int array to Float array");
+                Output::Print(_u("Conversion: Int array to Float array"));
                 Output::Flush();
             }
 #endif
@@ -1919,7 +1919,7 @@ namespace Js
                 Assert(caller->GetFunctionBody());
                 if(PHASE_TRACE(Js::NativeArrayConversionPhase, caller->GetFunctionBody()))
                 {
-                    Output::Print(L"Conversion: Int array to Var array    ArrayCreationFunctionNumber:%2d    CallSiteNumber:%2d \n", arrayInfo->functionNumber, arrayInfo->callSiteNumber);
+                    Output::Print(_u("Conversion: Int array to Var array    ArrayCreationFunctionNumber:%2d    CallSiteNumber:%2d \n"), arrayInfo->functionNumber, arrayInfo->callSiteNumber);
                     Output::Flush();
                 }
             }
@@ -1927,14 +1927,14 @@ namespace Js
             {
                 if(PHASE_TRACE1(Js::NativeArrayConversionPhase))
                 {
-                    Output::Print(L"Conversion: Int array to Var array across ScriptContexts");
+                    Output::Print(_u("Conversion: Int array to Var array across ScriptContexts"));
                     Output::Flush();
                 }
             }
 #else
             if(PHASE_TRACE1(Js::NativeArrayConversionPhase))
             {
-                Output::Print(L"Conversion: Int array to Var array");
+                Output::Print(_u("Conversion: Int array to Var array"));
                 Output::Flush();
             }
 #endif
@@ -2116,7 +2116,7 @@ namespace Js
                 Assert(caller->GetFunctionBody());
                 if(PHASE_TRACE(Js::NativeArrayConversionPhase, caller->GetFunctionBody()))
                 {
-                    Output::Print(L"Conversion: Float array to Var array    ArrayCreationFunctionNumber:%2d    CallSiteNumber:%2d \n", arrayInfo->functionNumber, arrayInfo->callSiteNumber);
+                    Output::Print(_u("Conversion: Float array to Var array    ArrayCreationFunctionNumber:%2d    CallSiteNumber:%2d \n"), arrayInfo->functionNumber, arrayInfo->callSiteNumber);
                     Output::Flush();
                 }
             }
@@ -2124,19 +2124,19 @@ namespace Js
             {
                 if(PHASE_TRACE1(Js::NativeArrayConversionPhase))
                 {
-                    Output::Print(L"Conversion: Float array to Var array across ScriptContexts");
+                    Output::Print(_u("Conversion: Float array to Var array across ScriptContexts"));
                     Output::Flush();
                 }
             }
 #else
             if(PHASE_TRACE1(Js::NativeArrayConversionPhase))
             {
-                Output::Print(L"Conversion: Float array to Var array");
+                Output::Print(_u("Conversion: Float array to Var array"));
                 Output::Flush();
             }
 #endif
 
-            if(fArray->GetScriptContext()->IsInNonDebugMode())
+            if(fArray->GetScriptContext()->IsScriptContextInNonDebugMode())
             {
                 Assert(!arrayInfo->IsNativeIntArray());
             }
@@ -2966,7 +2966,7 @@ namespace Js
                     {
                         // This is a special case for spreadable objects. We do not pre-calculate the length
                         // in EntryConcat like we do with Arrays because a getProperty on an object Length
-                        // is observable. The result is we have to check for overflows seperately for
+                        // is observable. The result is we have to check for overflows separately for
                         // spreadable objects and promote to a bigger index type when we find them.
                         ConcatArgs<BigIndex>(pDestArray, remoteTypeIds, args, scriptContext, idxArg, idxDest, /*firstPromotedItemIsSpreadable*/true, length);
                         return;
@@ -3184,7 +3184,7 @@ namespace Js
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.concat");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.concat"));
         }
 
         //
@@ -3374,7 +3374,7 @@ namespace Js
             RecyclableObject* pObj = nullptr;
             if (FALSE == JavascriptConversion::ToObject(aItem, scriptContext, &pObj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.concat");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.concat"));
             }
             if (pDestArray)
             {
@@ -3515,7 +3515,7 @@ namespace Js
         return fromIndex;
     }
 
-    // includesAlgorithm specifies to follow ES7 Array.prototoype.includes semantics instead of Array.prototype.indexOf
+    // includesAlgorithm specifies to follow ES7 Array.prototype.includes semantics instead of Array.prototype.indexOf
     // Differences
     //    1. Returns boolean true or false value instead of the search hit index
     //    2. Follows SameValueZero algorithm instead of StrictEquals
@@ -3542,7 +3542,7 @@ namespace Js
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.indexOf");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.indexOf"));
             }
         }
 
@@ -3583,12 +3583,12 @@ namespace Js
             {
                 if (includesAlgorithm)
                 {
-                    //Array.prorotype.includes
+                    //Array.prototype.includes
                     return (index == -1)? falseValue : trueValue;
                 }
                 else
                 {
-                    //Array.prorotype.indexOf
+                    //Array.prototype.indexOf
                     return JavascriptNumber::ToVar(index, scriptContext);
                 }
             }
@@ -3876,7 +3876,7 @@ namespace Js
 
         bool isSearchTaggedInt = TaggedInt::Is(search);
         // We need to cast head segment to SparseArraySegment<Var> to have access to GetElement (onSparseArraySegment<T>). Because there are separate overloads of this
-        // virtual method on JavascriptNativeIntArray and JavascripNativeFloatArray, we know this version of this method will only be called for true JavascriptArray, and not for
+        // virtual method on JavascriptNativeIntArray and JavascriptNativeFloatArray, we know this version of this method will only be called for true JavascriptArray, and not for
         // either of the derived native arrays, so the elements of each segment used here must be Vars. Hence, the cast is safe.
         SparseArraySegment<Var>* head = static_cast<SparseArraySegment<Var>*>(GetHead());
         uint32 toIndexTrimmed = toIndex <= head->length ? toIndex : head->length;
@@ -3892,12 +3892,12 @@ namespace Js
             }
             else if (includesAlgorithm && JavascriptConversion::SameValueZero(element, search))
             {
-                //Array.prototoype.includes
+                //Array.prototype.includes
                 return i;
             }
             else if (JavascriptOperators::StrictEqual(element, search, scriptContext))
             {
-                //Array.prototoype.indexOf
+                //Array.prototype.indexOf
                 return i;
             }
         }
@@ -3944,7 +3944,7 @@ namespace Js
         }
 
         // We need to cast head segment to SparseArraySegment<int32> to have access to GetElement (onSparseArraySegment<T>). Because there are separate overloads of this
-        // virtual method on JavascriptNativeIntArray and JavascripNativeFloatArray, we know this version of this method will only be called for  JavascriptNativeIntArray, and not for
+        // virtual method on JavascriptNativeIntArray and JavascriptNativeFloatArray, we know this version of this method will only be called for true JavascriptNativeIntArray, and not for
         // the other two, so the elements of each segment used here must be int32's. Hence, the cast is safe.
 
         SparseArraySegment<int32> * head = static_cast<SparseArraySegment<int32>*>(GetHead());
@@ -4031,7 +4031,7 @@ namespace Js
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.join");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.join"));
         }
 
         JavascriptString* separator;
@@ -4351,7 +4351,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.lastIndexOf");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.lastIndexOf"));
             }
             Var lenValue = JavascriptOperators::OP_GetLength(obj, scriptContext);
             length = JavascriptConversion::ToLength(lenValue, scriptContext);
@@ -4502,7 +4502,7 @@ Case0:
     *   -   Returns int32 value from the array.
     *   -   Returns missing item when the element is not available in the array object.
     *   -   It doesn't walk up the prototype chain.
-    *   -   Length is decremented only if it pops a int32 element, in all other cases - we bail out from the jitted code.
+    *   -   Length is decremented only if it pops an int32 element, in all other cases - we bail out from the jitted code.
     *   -   This api cannot cause any implicit call and hence do not need implicit call bailout test around this api
     */
     int32 JavascriptNativeIntArray::Pop(ScriptContext * scriptContext, Var object)
@@ -4603,7 +4603,7 @@ Case0:
         RecyclableObject* dynamicObject = nullptr;
         if (FALSE == JavascriptConversion::ToObject(object, scriptContext, &dynamicObject))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.pop");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.pop"));
         }
         BigIndex length;
         if (scriptContext->GetConfig()->IsES6ToLengthEnabled())
@@ -4616,7 +4616,7 @@ Case0:
         }
 
 
-        ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.pop");
+        ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.pop"));
         if (length == 0u)
         {
             // Set length = 0
@@ -4662,7 +4662,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.pop");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.pop"));
         }
 
         if (JavascriptArray::Is(args[0]))
@@ -4763,7 +4763,7 @@ Case0:
             RecyclableObject* obj = nullptr;
             if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.push");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.push"));
             }
 
             Var length = JavascriptOperators::OP_GetLength(obj, scriptContext);
@@ -4773,7 +4773,7 @@ Case0:
                 return length;
             }
 
-            ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.push");
+            ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.push"));
             BigIndex n;
             if (scriptContext->GetConfig()->IsES6ToLengthEnabled())
             {
@@ -4865,7 +4865,7 @@ Case0:
     {
         JavascriptArray * arr = JavascriptArray::FromAnyArray(args[0]);
         uint n = arr->length;
-        ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.push");
+        ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.push"));
 
         // Fast Path for one push for small indexes
         if (argCount == 2 && n < JavascriptArray::MaxArrayLength)
@@ -4895,7 +4895,7 @@ Case0:
     {
         JavascriptArray * arr = JavascriptArray::FromAnyArray(args[0]);
         uint n = arr->length;
-        ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.push");
+        ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.push"));
 
         // First handle "small" indices.
         uint index;
@@ -4944,7 +4944,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.push");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.push"));
         }
 
         if (JavascriptArray::Is(args[0]))
@@ -4970,7 +4970,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.reverse");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.reverse"));
         }
 
         BigIndex length = 0u;
@@ -4989,7 +4989,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.reverse");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.reverse"));
             }
         }
 
@@ -5027,16 +5027,16 @@ Case0:
         T middle = length / 2;
         Var lowerValue = nullptr, upperValue = nullptr;
         T lowerExists, upperExists;
-        const wchar_t* methodName;
+        const char16* methodName;
         bool isTypedArrayEntryPoint = typedArrayBase != nullptr;
 
         if (isTypedArrayEntryPoint)
         {
-            methodName = L"[TypedArray].prototype.reverse";
+            methodName = _u("[TypedArray].prototype.reverse");
         }
         else
         {
-            methodName = L"Array.prototype.reverse";
+            methodName = _u("Array.prototype.reverse");
         }
 
         // If we came from Array.prototype.map and source object is not a JavascriptArray, source could be a TypedArray
@@ -5454,10 +5454,10 @@ Case0:
             RecyclableObject* dynamicObject = nullptr;
             if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &dynamicObject))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.shift");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.shift"));
             }
 
-            ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.shift");
+            ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.shift"));
 
             BigIndex length = 0u;
             if (scriptContext->GetConfig()->IsES6ToLengthEnabled())
@@ -5668,7 +5668,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.slice");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.slice"));
             }
         }
 
@@ -5748,7 +5748,7 @@ Case0:
 
         if (TypedArrayBase::IsDetachedTypedArray(obj))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_DetachedTypedArray, L"Array.prototype.slice");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_DetachedTypedArray, _u("Array.prototype.slice"));
         }
 
         // If we came from Array.prototype.slice and source object is not a JavascriptArray, source could be a TypedArray
@@ -5793,7 +5793,7 @@ Case0:
             else
             {
                 // We only need to throw a TypeError when the constructor property is not an actual constructor if %TypedArray%.prototype.slice was called
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_InvalidTypedArray_Constructor, L"[TypedArray].prototype.slice");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_InvalidTypedArray_Constructor, _u("[TypedArray].prototype.slice"));
             }
         }
 
@@ -6295,7 +6295,7 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.prototype.sort");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.prototype.sort"));
 
         Assert(!(callInfo.Flags & CallFlags_New));
 
@@ -6317,7 +6317,7 @@ Case0:
                 bool useDefaultComparer = typeId == TypeIds_Undefined;
                 if (!useDefaultComparer)
                 {
-                    JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedInternalObject, L"Array.prototype.sort");
+                    JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedInternalObject, _u("Array.prototype.sort"));
                 }
             }
         }
@@ -6378,14 +6378,14 @@ Case0:
             RecyclableObject* pObj = nullptr;
             if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &pObj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.sort");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.sort"));
             }
             uint32 len = JavascriptConversion::ToUInt32(JavascriptOperators::OP_GetLength(pObj, scriptContext), scriptContext);
             JavascriptArray* sortArray = scriptContext->GetLibrary()->CreateArray(len);
             sortArray->EnsureHead<Var>();
-            ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.sort");
+            ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.sort"));
 
-            BEGIN_TEMP_ALLOCATOR(tempAlloc, scriptContext, L"Runtime")
+            BEGIN_TEMP_ALLOCATOR(tempAlloc, scriptContext, _u("Runtime"))
             {
                 JsUtil::List<uint32, ArenaAllocator>* indexList = JsUtil::List<uint32, ArenaAllocator>::New(tempAlloc);
 
@@ -6463,7 +6463,7 @@ Case0:
         {
             if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &pObj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.splice");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.splice"));
             }
 
             if (scriptContext->GetConfig()->IsES6ToLengthEnabled())
@@ -7129,7 +7129,7 @@ Case0:
             }
         }
 
-        ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.splice");
+        ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.splice"));
 
         // If the return object is not an array, we'll need to set the 'length' property
         if (pnewArr == nullptr)
@@ -7202,7 +7202,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NeedObject, L"Array.prototype.toLocaleString");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NeedObject, _u("Array.prototype.toLocaleString"));
         }
 
         if (JavascriptArray::IsDirectAccessArray(args[0]))
@@ -7215,7 +7215,7 @@ Case0:
             RecyclableObject* obj = nullptr;
             if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.toLocaleString");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.toLocaleString"));
             }
             return ToLocaleString(obj, scriptContext);
         }
@@ -7229,7 +7229,7 @@ Case0:
     {
         typedef IndexTrace<T> index_trace;
 
-        ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.unshift");
+        ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.unshift"));
         if (start < end)
         {
             T newEnd = (end - start - 1);// newEnd - 1
@@ -7449,7 +7449,7 @@ Case0:
             RecyclableObject* dynamicObject = nullptr;
             if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &dynamicObject))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.unshift");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.unshift"));
             }
 
             BigIndex length;
@@ -7492,7 +7492,7 @@ Case0:
                 }
             }
 
-            ThrowTypeErrorOnFailureHelper h(scriptContext, L"Array.prototype.unshift");
+            ThrowTypeErrorOnFailureHelper h(scriptContext, _u("Array.prototype.unshift"));
 
             //ES6 - update 'length' even if unshiftElements == 0;
             BigIndex newLen = length + unshiftElements;
@@ -7522,7 +7522,7 @@ Case0:
         RecyclableObject* obj = nullptr;
         if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &obj))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.toString");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.toString"));
         }
 
         // In ES5 we could be calling a user defined join, even on array. We must [[Get]] join at runtime.
@@ -7560,12 +7560,12 @@ Case0:
     }
 
 #if DEBUG
-    BOOL JavascriptArray::GetIndex(const wchar_t* propName, ulong *pIndex)
+    BOOL JavascriptArray::GetIndex(const char16* propName, ulong *pIndex)
     {
         ulong lu, luDig;
 
         long cch = (long)wcslen(propName);
-        wchar_t* pch = const_cast<wchar_t *>(propName);
+        char16* pch = const_cast<char16 *>(propName);
 
         lu = *pch - '0';
         if (lu > 9)
@@ -7607,7 +7607,7 @@ Case0:
     {
         LCID lcid = GetUserDefaultLCID();
         int count = 0;
-        wchar_t szSeparator[6];
+        char16 szSeparator[6];
 
         // According to the document for GetLocaleInfo this is a sufficient buffer size.
         count = GetLocaleInfoW(lcid, LOCALE_SLIST, szSeparator, 5);
@@ -7727,7 +7727,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.find");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.find"));
         }
 
         int64 length;
@@ -7744,7 +7744,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.find");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.find"));
             }
             // In ES6-mode, we always load the length property from the object instead of using the internal slot.
             // Even for arrays, this is now observable via proxies.
@@ -7765,11 +7765,11 @@ Case0:
             // typedArrayBase is only non-null if and only if we came here via the TypedArray entrypoint
             if (typedArrayBase != nullptr)
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, findIndex ? L"[TypedArray].prototype.findIndex" : L"[TypedArray].prototype.find");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, findIndex ? _u("[TypedArray].prototype.findIndex") : _u("[TypedArray].prototype.find"));
             }
             else
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, findIndex ? L"Array.prototype.findIndex" : L"Array.prototype.find");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, findIndex ? _u("Array.prototype.findIndex") : _u("Array.prototype.find"));
             }
         }
 
@@ -7876,7 +7876,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.findIndex");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.findIndex"));
         }
 
         int64 length;
@@ -7893,7 +7893,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.findIndex");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.findIndex"));
             }
             // In ES6-mode, we always load the length property from the object instead of using the internal slot.
             // Even for arrays, this is now observable via proxies.
@@ -7921,13 +7921,13 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.entries");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.entries"));
         }
 
         RecyclableObject* thisObj = nullptr;
         if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &thisObj))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.entries");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.entries"));
         }
 
 #if ENABLE_COPYONACCESS_ARRAY
@@ -7951,13 +7951,13 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.keys");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.keys"));
         }
 
         RecyclableObject* thisObj = nullptr;
         if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &thisObj))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.keys");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.keys"));
         }
 
 #if ENABLE_COPYONACCESS_ARRAY
@@ -7981,13 +7981,13 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.values");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.values"));
         }
 
         RecyclableObject* thisObj = nullptr;
         if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &thisObj))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.values");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.values"));
         }
 
         return scriptContext->GetLibrary()->CreateArrayIterator(thisObj, JavascriptArrayIteratorKind::Value);
@@ -7999,7 +7999,7 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.prototype.every");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.prototype.every"));
 
         Assert(!(callInfo.Flags & CallFlags_New));
 
@@ -8007,7 +8007,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.every");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.every"));
         }
 
         BigIndex length;
@@ -8023,7 +8023,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.every");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.every"));
             }
         }
 
@@ -8062,11 +8062,11 @@ Case0:
             // typedArrayBase is only non-null if and only if we came here via the TypedArray entrypoint
             if (typedArrayBase != nullptr)
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"[TypedArray].prototype.every");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("[TypedArray].prototype.every"));
             }
             else
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"Array.prototype.every");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("Array.prototype.every"));
             }
         }
 
@@ -8172,7 +8172,7 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.prototype.some");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.prototype.some"));
 
         CHAKRATEL_LANGSTATS_INC_BUILTINCOUNT(ArraySomeCount);
 
@@ -8180,7 +8180,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.some");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.some"));
         }
 
         BigIndex length;
@@ -8196,7 +8196,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.some");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.some"));
             }
         }
 
@@ -8236,11 +8236,11 @@ Case0:
             // We are in the TypedArray version of this API if and only if typedArrayBase != nullptr
             if (typedArrayBase != nullptr)
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"[TypedArray].prototype.some");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("[TypedArray].prototype.some"));
             }
             else
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"Array.prototype.some");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("Array.prototype.some"));
             }
         }
 
@@ -8345,7 +8345,7 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.prototype.forEach");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.prototype.forEach"));
 
         CHAKRATEL_LANGSTATS_INC_BUILTINCOUNT(ArrayForEachCount)
 
@@ -8353,7 +8353,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.forEach");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.forEach"));
         }
 
         BigIndex length;
@@ -8374,7 +8374,7 @@ Case0:
         {
             if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &dynamicObject))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.forEach");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.forEach"));
             }
 
             if (JavascriptArray::Is(dynamicObject) && scriptContext == JavascriptArray::FromVar(dynamicObject)->GetScriptContext())
@@ -8404,7 +8404,7 @@ Case0:
 
         if (args.Info.Count < 2 || !JavascriptConversion::IsCallable(args[1]))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"Array.prototype.forEach");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("Array.prototype.forEach"));
         }
         callBackFn = RecyclableObject::FromVar(args[1]);
 
@@ -8482,7 +8482,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.copyWithin");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.copyWithin"));
             }
 
             // In ES6-mode, we always load the length property from the object instead of using the internal slot.
@@ -8648,7 +8648,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.fill");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.fill"));
             }
 
             // In ES6-mode, we always load the length property from the object instead of using the internal slot.
@@ -8764,7 +8764,7 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.prototype.map");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.prototype.map"));
 
         CHAKRATEL_LANGSTATS_INC_BUILTINCOUNT(ArrayMapCount);
 
@@ -8772,7 +8772,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.map");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.map"));
         }
 
         BigIndex length;
@@ -8788,7 +8788,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.map");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.map"));
             }
         }
 
@@ -8823,11 +8823,11 @@ Case0:
         {
             if (isTypedArrayEntryPoint)
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"[TypedArray].prototype.map");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("[TypedArray].prototype.map"));
             }
             else
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"Array.prototype.map");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("Array.prototype.map"));
             }
         }
 
@@ -8865,7 +8865,7 @@ Case0:
             else if (isTypedArrayEntryPoint)
             {
                 // We only need to throw a TypeError when the constructor property is not an actual constructor if %TypedArray%.prototype.map was called
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_NotAConstructor, L"[TypedArray].prototype.map");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_NotAConstructor, _u("[TypedArray].prototype.map"));
             }
         }
         // skip the typed array and "pure" array case, we still need to handle special arrays like es5array, remote array, and proxy of array.
@@ -9013,14 +9013,14 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.prototype.filter");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.prototype.filter"));
 
         CHAKRATEL_LANGSTATS_INC_BUILTINCOUNT(ArrayFilterCount);
 
         Assert(!(callInfo.Flags & CallFlags_New));
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.filter");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.filter"));
         }
 
         RecyclableObject* newObj = nullptr;
@@ -9040,7 +9040,7 @@ Case0:
         {
             if (FALSE == JavascriptConversion::ToObject(args[0], scriptContext, &dynamicObject))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.filter");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.filter"));
             }
         }
 
@@ -9065,7 +9065,7 @@ Case0:
 
         if (args.Info.Count < 2 || !JavascriptConversion::IsCallable(args[1]))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"Array.prototype.filter");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("Array.prototype.filter"));
         }
         callBackFn = RecyclableObject::FromVar(args[1]);
 
@@ -9177,7 +9177,7 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.prototype.reduce");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.prototype.reduce"));
 
         CHAKRATEL_LANGSTATS_INC_BUILTINCOUNT(ArrayReduceCount);
 
@@ -9185,7 +9185,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.reduce");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.reduce"));
         }
 
         BigIndex length;
@@ -9203,7 +9203,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.reduce");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.reduce"));
             }
 
             if (scriptContext->GetConfig()->IsES6ToLengthEnabled())
@@ -9231,11 +9231,11 @@ Case0:
         {
             if (typedArrayBase != nullptr)
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"[TypedArray].prototype.reduce");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("[TypedArray].prototype.reduce"));
             }
             else
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"Array.prototype.reduce");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("Array.prototype.reduce"));
             }
         }
 
@@ -9383,7 +9383,7 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.prototype.reduceRight");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.prototype.reduceRight"));
 
         CHAKRATEL_LANGSTATS_INC_BUILTINCOUNT(ArrayReduceRightCount);
 
@@ -9391,7 +9391,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.reduceRight");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.reduceRight"));
         }
 
         BigIndex length;
@@ -9407,7 +9407,7 @@ Case0:
         {
             if (!JavascriptConversion::ToObject(args[0], scriptContext, &obj))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.prototype.reduceRight");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.prototype.reduceRight"));
             }
         }
 
@@ -9444,11 +9444,11 @@ Case0:
         {
             if (typedArrayBase != nullptr)
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"[TypedArray].prototype.reduceRight");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("[TypedArray].prototype.reduceRight"));
             }
             else
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"Array.prototype.reduceRight");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("Array.prototype.reduceRight"));
             }
         }
 
@@ -9595,7 +9595,7 @@ Case0:
 
         ARGUMENTS(args, callInfo);
         ScriptContext* scriptContext = function->GetScriptContext();
-        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, L"Array.from");
+        AUTO_TAG_NATIVE_LIBRARY_ENTRY(function, callInfo, _u("Array.from"));
 
         Assert(!(callInfo.Flags & CallFlags_New));
 
@@ -9611,7 +9611,7 @@ Case0:
 
         if (args.Info.Count < 2 || !JavascriptConversion::ToObject(args[1], scriptContext, &items))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedObject, L"Array.from");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedObject, _u("Array.from"));
         }
 
         JavascriptArray* itemsArr = nullptr;
@@ -9632,7 +9632,7 @@ Case0:
         {
             if (!JavascriptFunction::Is(args[2]))
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, L"Array.from");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_FunctionArgument_NeedFunction, _u("Array.from"));
             }
 
             mapFn = JavascriptFunction::FromVar(args[2]);
@@ -9723,7 +9723,7 @@ Case0:
                 // Abstract operation ArrayCreate throws RangeError if length argument is > 2^32 -1
                 if (len > MaxArrayLength)
                 {
-                    JavascriptError::ThrowRangeError(scriptContext, JSERR_ArrayLengthAssignIncorrect, L"Array.from");
+                    JavascriptError::ThrowRangeError(scriptContext, JSERR_ArrayLengthAssignIncorrect, _u("Array.from"));
                 }
 
                 // Static cast len should be valid (len < 2^32) or we would throw above
@@ -9784,7 +9784,7 @@ Case0:
 
         if (args.Info.Count == 0)
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, L"Array.of");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NullOrUndefined, _u("Array.of"));
         }
 
         return JavascriptArray::OfHelper(false, args, scriptContext);
@@ -9833,7 +9833,7 @@ Case0:
             // We only throw when the constructor property is not a constructor function in the TypedArray version
             if (isTypedArrayEntryPoint)
             {
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NeedFunction, L"[TypedArray].of");
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_This_NeedFunction, _u("[TypedArray].of"));
             }
 
             newArr = scriptContext->GetLibrary()->CreateArray(len);
@@ -9973,7 +9973,7 @@ Case0:
         if (Configuration::Global.flags.ForceES5Array)
         {
             // There's a bad interaction with the jitted code for native array creation here.
-            // forcees5array doesn't interact well with native arrays
+            // ForceES5Array doesn't interact well with native arrays
             if (PHASE_OFF1(NativeArrayPhase))
             {
                 GetTypeHandler()->ConvertToTypeWithItemAttributes(this);
@@ -11450,7 +11450,7 @@ Case0:
 
         if (!JavascriptOperators::IsConstructor(constructor))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_NotAConstructor, L"constructor[Symbol.species]");
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_NotAConstructor, _u("constructor[Symbol.species]"));
         }
 
         Js::Var constructorArgs[] = { constructor, JavascriptNumber::ToVar(length, scriptContext) };
@@ -12070,32 +12070,44 @@ Case0:
 
     BOOL JavascriptArray::GetDiagValueString(StringBuilder<ArenaAllocator>* stringBuilder, ScriptContext* requestContext)
     {
-        stringBuilder->Append(L'[');
+        stringBuilder->Append(_u('['));
 
         if (this->length < 10)
         {
-            BEGIN_JS_RUNTIME_CALL(requestContext);
+            auto funcPtr = [&]()
             {
                 ENTER_PINNED_SCOPE(JavascriptString, valueStr);
                 valueStr = JavascriptArray::JoinHelper(this, GetLibrary()->GetCommaDisplayString(), requestContext);
                 stringBuilder->Append(valueStr->GetString(), valueStr->GetLength());
                 LEAVE_PINNED_SCOPE();
+            };
+
+            if (!requestContext->GetThreadContext()->IsScriptActive())
+            {
+                BEGIN_JS_RUNTIME_CALL(requestContext);
+                {
+                    funcPtr();
+                }
+                END_JS_RUNTIME_CALL(requestContext);
             }
-            END_JS_RUNTIME_CALL(requestContext);
+            else
+            {
+                funcPtr();
+            }
         }
         else
         {
-            stringBuilder->AppendCppLiteral(L"...");
+            stringBuilder->AppendCppLiteral(_u("..."));
         }
 
-        stringBuilder->Append(L']');
+        stringBuilder->Append(_u(']'));
 
         return TRUE;
     }
 
     BOOL JavascriptArray::GetDiagTypeString(StringBuilder<ArenaAllocator>* stringBuilder, ScriptContext* requestContext)
     {
-        stringBuilder->AppendCppLiteral(L"Object, (Array)");
+        stringBuilder->AppendCppLiteral(_u("Object, (Array)"));
         return TRUE;
     }
 

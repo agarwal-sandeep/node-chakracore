@@ -185,6 +185,35 @@
         ///     A hosting API was called with object created on different javascript runtime.
         /// </summary>
         JsErrorWrongRuntime,
+
+        /// <summary>
+        ///     Category of errors that are related to failures during diagnostic operations.
+        /// </summary>
+        JsErrorCategoryDiagError = 0x50000,
+        /// <summary>
+        ///     The object for which the debugging API was called was not found
+        /// </summary>
+        JsErrorDiagAlreadyInDebugMode,
+        /// <summary>
+        ///     The debugging API can only be called when VM is in debug mode
+        /// </summary>
+        JsErrorDiagNotDebugging,
+        /// <summary>
+        ///     The debugging API can only be called when VM is at a break
+        /// </summary>
+        JsErrorDiagNotAtBreak,
+        /// <summary>
+        ///     Debugging API was called with an invalid handle.
+        /// </summary>
+        JsErrorDiagInvalidHandle,
+        /// <summary>
+        ///     The object for which the debugging API was called was not found
+        /// </summary>
+        JsErrorDiagObjectNotFound,
+        /// <summary>
+        ///     VM was unable to perfom the request action
+        /// </summary>
+        JsErrorDiagUnableToPerformAction,
     } JsErrorCode;
 
     /// <summary>
@@ -377,6 +406,20 @@
         /// </summary>
         JsMemoryFailure = 2
     } JsMemoryEventType;
+
+    /// <summary>
+    ///     Attribute mask for JsParseScriptWithFlags
+    /// </summary>
+    typedef enum _JsParseScriptAttributes {
+        /// <summary>
+        ///     Default attribute
+        /// </summary>
+        JsParseScriptAttributeNone = 0x0,
+        /// <summary>
+        ///     Specified script is internal and non-user code. Hidden from debugger
+        /// </summary>
+        JsParseScriptAttributeLibraryCode = 0x1
+    } JsParseScriptAttributes;
 
     /// <summary>
     ///     User implemented callback routine for memory allocation events
@@ -813,6 +856,30 @@
             _Out_ JsValueRef *result);
 
     /// <summary>
+    ///     Parses a script and returns a function representing the script.
+    /// </summary>
+    /// <remarks>
+    ///     Requires an active script context.
+    /// </remarks>
+    /// <param name="script">The script to parse.</param>
+    /// <param name="sourceContext">
+    ///     A cookie identifying the script that can be used by debuggable script contexts.
+    /// </param>
+    /// <param name="sourceUrl">The location the script came from.</param>
+    /// <param name="parseAttributes">Attribute mask for parsing the script</param>
+    /// <param name="result">A function representing the script code.</param>
+    /// <returns>
+    ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
+    /// </returns>
+    STDAPI_(JsErrorCode)
+        JsParseScriptWithFlags(
+            _In_z_ const wchar_t *script,
+            _In_ JsSourceContext sourceContext,
+            _In_z_ const wchar_t *sourceUrl,
+            _In_ JsParseScriptAttributes parseAttributes,
+            _Out_ JsValueRef *result);
+
+    /// <summary>
     ///     Executes a script.
     /// </summary>
     /// <remarks>
@@ -829,6 +896,28 @@
     /// </returns>
     STDAPI_(JsErrorCode)
         JsRunScript(
+            _In_z_ const wchar_t *script,
+            _In_ JsSourceContext sourceContext,
+            _In_z_ const wchar_t *sourceUrl,
+            _Out_ JsValueRef *result);
+
+    /// <summary>
+    ///     Executes a module.
+    /// </summary>
+    /// <remarks>
+    ///     Requires an active script context.
+    /// </remarks>
+    /// <param name="script">The module script to parse and execute.</param>
+    /// <param name="sourceContext">
+    ///     A cookie identifying the script that can be used by debuggable script contexts.
+    /// </param>
+    /// <param name="sourceUrl">The location the module script came from.</param>
+    /// <param name="result">The result of executing the module script, if any. This parameter can be null.</param>
+    /// <returns>
+    ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
+    /// </returns>
+    STDAPI_(JsErrorCode)
+        JsExperimentalApiRunModule(
             _In_z_ const wchar_t *script,
             _In_ JsSourceContext sourceContext,
             _In_z_ const wchar_t *sourceUrl,
@@ -1784,7 +1873,7 @@
     /// </remarks>
     /// <param name="object">The object to operate on.</param>
     /// <param name="index">The index to test.</param>
-    /// <param name="result">Whether the object has an value at the specified index.</param>
+    /// <param name="result">Whether the object has a value at the specified index.</param>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
@@ -2192,6 +2281,7 @@
     ///     Invokes a function.
     /// </summary>
     /// <remarks>
+    ///     Requires thisArg as first argument of arguments. 
     ///     Requires an active script context.
     /// </remarks>
     /// <param name="function">The function to invoke.</param>

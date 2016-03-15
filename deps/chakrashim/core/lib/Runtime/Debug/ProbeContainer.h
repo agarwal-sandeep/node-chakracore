@@ -11,6 +11,7 @@ namespace Js
 
     class DebugManager;
     struct Probe;
+    struct DebuggerPropertyDisplayInfo;
     typedef JsUtil::List<Probe*, ArenaAllocator> ProbeList;
     class DiagStackFrame;
     typedef JsUtil::Stack<DiagStackFrame*> DiagStack;
@@ -42,7 +43,7 @@ namespace Js
 
         Var jsExceptionObject;
 
-        // Used for synchronizing with ProbeMananger
+        // Used for synchronizing with ProbeManager
         ulong debugSessionNumber;
 
         uint32  tmpRegCount; // Mentions the temp register count for the current statement (this will be used to determine if SetNextStatement can be applied)
@@ -54,7 +55,7 @@ namespace Js
         // Used when the throw is internal and engine does not want to be broken at exception.
         bool isThrowInternal;
 
-        // This variabled will be set true when we don't want to check for debug script engine being initialized.
+        // This variable will be set true when we don't want to check for debug script engine being initialized.
         bool forceBypassDebugEngine;
 
         bool isPrimaryBrokenToDebuggerContext;
@@ -102,6 +103,18 @@ namespace Js
         void AddProbe(Probe* pProbe);
         void RemoveProbe(Probe* pProbe);
 
+        template<class TMapFunction>
+        void MapProbes(TMapFunction map)
+        {
+            this->diagProbeList->Map(map);
+        }
+
+        template<class TMapFunction>
+        void MapProbesUntil(TMapFunction map)
+        {
+            this->diagProbeList->MapUntil(map);
+        }
+
         void RemoveAllProbes();
 
         bool CanDispatchHalt(InterpreterHaltState* pHaltState);
@@ -137,6 +150,7 @@ namespace Js
 
         void AsyncActivate(HaltCallback* haltCallback);
         void AsyncDeactivate();
+        bool IsAsyncActivate() const;
 
         void PrepDiagForEnterScript();
 
@@ -150,6 +164,7 @@ namespace Js
 
         void SetThrowIsInternal(bool set) { isThrowInternal = set; }
 
+        bool IsExceptionReportingEnabled();
         bool IsFirstChanceExceptionEnabled();
         bool IsNonUserCodeSupportEnabled();
         bool IsLibraryStackFrameSupportEnabled();

@@ -17,8 +17,8 @@ enum ErrorReason
     LargeHeapBlock_Metadata_Corrupt = 9,
     Fatal_Version_Inconsistency = 10,
     MarkStack_OUTOFMEMORY = 11,
-    Fatal_FailedToBox_OUTOFMEMORY = 12,
-    EnterScript_FromDOM_NoScriptScope = 13
+    EnterScript_FromDOM_NoScriptScope = 12,
+    Fatal_FailedToBox_OUTOFMEMORY = 13
 };
 
 extern "C" void ReportFatalException(
@@ -76,7 +76,11 @@ __inline LONG FatalExceptionFilter(
     }
     else
     {
-        Assert(IsDebuggerPresent());
+        // However, if debugger was not attached for some reason, terminate the process.
+        if (!IsDebuggerPresent())
+        {
+            TerminateProcess(GetCurrentProcess(), (UINT)DBG_TERMINATE_PROCESS);
+        }
         DebugBreak();
     }
 

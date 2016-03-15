@@ -13,7 +13,7 @@ public:
     static JsrtContextCore *New(JsrtRuntime * runtime);
     virtual void Dispose(bool isShutdown) override;
 
-    void OnScriptLoad(Js::JavascriptFunction * scriptFunction, Js::Utf8SourceInfo* utf8SourceInfo);
+    void OnScriptLoad(Js::JavascriptFunction * scriptFunction, Js::Utf8SourceInfo* utf8SourceInfo, CompileScriptException* compileException);
 private:
     DEFINE_VTABLE_CTOR(JsrtContextCore, JsrtContext);
     JsrtContextCore(JsrtRuntime * runtime);
@@ -138,7 +138,7 @@ public:
 
     HRESULT SetDispatchInvoke(Js::JavascriptMethod dispatchInvoke) override
     {
-        AssertMsg(false, "no hostdispatch in jsrt");
+        // AssertMsg(false, "no hostdispatch in jsrt");
         return E_NOTIMPL;
     }
 
@@ -161,6 +161,19 @@ public:
         AssertMsg(false, "jsrt should have set the promise callback");
         return GetScriptContext()->GetLibrary()->GetThrowerFunction();
     }
+
+    HRESULT FetchImportedModule(Js::ModuleRecordBase* referencingModule, LPCOLESTR specifier, Js::ModuleRecordBase** dependentModuleRecord) override
+    {
+        AssertMsg(false, "not implemented");
+        return S_FALSE;
+    }
+
+    HRESULT NotifyHostAboutModuleReady(Js::ModuleRecordBase* referencingModule, Js::Var exceptionVar) override
+    {
+        AssertMsg(false, "not implemented");
+        return S_FALSE;
+    }
+
 
 #if DBG_DUMP || defined(PROFILE_EXEC) || defined(PROFILE_MEM)
     void EnsureParentInfo(Js::ScriptContext* scriptContext = NULL) override

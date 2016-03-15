@@ -27,6 +27,7 @@ namespace Js
     class DebugContext;
     struct HaltCallback;
     struct DebuggerOptionsCallback;
+    class ModuleRecordBase;
 }
 
 // Created for every source buffer passed by host.
@@ -68,6 +69,19 @@ enum ExternalJitData
     ExternalJitData_CustomExternalObjectOperations
 };
 
+enum LoadScriptFlag
+{
+    LoadScriptFlag_None         = 0x0,
+    LoadScriptFlag_Expression   = 0x1,                  // the script returns a value.
+    LoadScriptFlag_disableDeferredParse = 0x2,          // do not defer-parse the code.
+    LoadScriptFlag_isByteCodeBufferForLibrary = 0x4,    // for bytecode buffer
+    LoadScriptFlag_disableAsmJs = 0x8,                  // disable parse as asmjs. The code is not conform to asmjs requirement.
+    LoadScriptFlag_Module = 0x10,                       // input script is module code.
+    LoadScriptFlag_isFunction = 0x20,                   // input script is in a function scope, not global code.
+    LoadScriptFlag_Utf8Source = 0x40,                   // input buffer is utf8 encoded.
+    LoadScriptFlag_LibraryCode = 0x80                   // for debugger, indicating 'not my code'
+};
+
 class HostScriptContext
 {
 public:
@@ -97,6 +111,9 @@ public:
         __out Js::ArrayBuffer **ppArrayBuffer) = 0;
     virtual Js::JavascriptError* CreateWinRTError(IErrorInfo* perrinfo, Js::RestrictedErrorStrings * proerrstr) = 0;
     virtual Js::JavascriptFunction* InitializeHostPromiseContinuationFunction() = 0;
+
+    virtual HRESULT FetchImportedModule(Js::ModuleRecordBase* referencingModule, LPCOLESTR specifier, Js::ModuleRecordBase** dependentModuleRecord) = 0;
+    virtual HRESULT NotifyHostAboutModuleReady(Js::ModuleRecordBase* referencingModule, Js::Var exceptionVar) = 0;
 
     Js::ScriptContext* GetScriptContext() { return scriptContext; }
 
@@ -189,7 +206,6 @@ namespace Js
 
         bool SupportsCollectGarbage() const { return true; }
         bool IsTypedArrayEnabled() const { return true; }
-        bool BindDeferredPidRefs() const { return IsLetAndConstEnabled(); }
 
         void ForceNoNative() { this->NoNative = true; }
         void ForceNative() { this->NoNative = false; }
@@ -198,7 +214,6 @@ namespace Js
         void SetCanOptimizeGlobalLookupFlag(BOOL f){ this->fCanOptimizeGlobalLookup = f;}
         BOOL CanOptimizeGlobalLookup() const { return this->fCanOptimizeGlobalLookup;}
         bool IsOptimizedForManyInstances() const { return isOptimizedForManyInstances; }
-        bool IsBlockScopeEnabled() const { return true; }
         void CopyFrom(ScriptConfiguration& other)
         {
             this->NoNative = other.NoNative;
@@ -294,7 +309,7 @@ namespace Js
     {
         PropertyString* strLen2[80];
 
-        __inline static uint PStrMapIndex(wchar_t ch)
+        __inline static uint PStrMapIndex(char16 ch)
         {
             Assert(ch >= '0' && ch <= 'z');
             return ch - '0';
@@ -337,6 +352,7 @@ namespace Js
     {
         friend class LowererMD;
         friend class RemoteScriptContext;
+        friend class SourceTextModuleRecord; // for module bytecode gen.
     public:
         static DWORD GetThreadContextOffset() { return offsetof(ScriptContext, threadContext); }
         static DWORD GetOptimizationOverridesOffset() { return offsetof(ScriptContext, optimizationOverrides); }
@@ -358,7 +374,7 @@ namespace Js
         Js::JavascriptMethod DeferredParsingThunk;
         Js::JavascriptMethod DeferredDeserializationThunk;
         Js::JavascriptMethod DispatchDefaultInvoke;
-        Js::JavascriptMethod DispatchProfileInoke;
+        Js::JavascriptMethod DispatchProfileInvoke;
 
         typedef HRESULT (*GetDocumentContextFunction)(
             ScriptContext *pContext,
@@ -396,10 +412,9 @@ namespace Js
         void SetIsDiagnosticsScriptContext(bool set) { this->isDiagnosticsScriptContext = set; }
         bool IsDiagnosticsScriptContext() const { return this->isDiagnosticsScriptContext; }
 
-        bool IsInNonDebugMode() const;
-        bool IsInSourceRundownMode() const;
-        bool IsInDebugMode() const;
-        bool IsInDebugOrSourceRundownMode() const;
+        bool IsScriptContextInNonDebugMode() const;
+        bool IsScriptContextInDebugMode() const;
+        bool IsScriptContextInSourceRundownOrDebugMode() const;
         bool IsRunningScript() const { return this->threadContext->GetScriptEntryExit() != nullptr; }
 
         typedef JsUtil::List<RecyclerWeakReference<Utf8SourceInfo>*, Recycler, false, Js::WeakRefFreeListedRemovePolicy> CalleeSourceList;
@@ -447,7 +462,7 @@ namespace Js
     private:
         PropertyStringMap* propertyStrings[80];
 
-        JavascriptFunction* GenerateRootFunction(ParseNodePtr parseTree, uint sourceIndex, Parser* parser, ulong grfscr, CompileScriptException * pse, const wchar_t *rootDisplayName);
+        JavascriptFunction* GenerateRootFunction(ParseNodePtr parseTree, uint sourceIndex, Parser* parser, ulong grfscr, CompileScriptException * pse, const char16 *rootDisplayName);
 
         typedef void (*EventHandler)(ScriptContext *);
         ScriptContext ** entryInScriptContextWithInlineCachesRegistry;
@@ -565,7 +580,7 @@ public:
         uint byteCodeDataSize;
         uint byteCodeAuxiliaryDataSize;
         uint byteCodeAuxiliaryContextDataSize;
-        uint byteCodeHistogram[OpCode::ByteCodeLast];
+        uint byteCodeHistogram[static_cast<uint>(OpCode::ByteCodeLast)];
         uint32 forinCache;
         uint32 forinNoCache;
 #endif
@@ -699,8 +714,9 @@ private:
 
         // DisableJIT-TODO: Switch this to Dynamic thunk ifdef instead
 #if ENABLE_NATIVE_CODEGEN
+#if DYNAMIC_INTERPRETER_THUNK
         InterpreterThunkEmitter* interpreterThunkEmitter;
-
+#endif
         BackgroundParser *backgroundParser;
 #ifdef ASMJS_PLAT
         InterpreterThunkEmitter* asmJsInterpreterThunkEmitter;
@@ -810,7 +826,7 @@ private:
 #ifdef RUNTIME_DATA_COLLECTION
         time_t createTime;
 #endif
-        wchar_t const * url;
+        char16 const * url;
 
         void PrintStats();
         BOOL LeaveScriptStartCore(void * frameAddress, bool leaveForHost);
@@ -849,7 +865,7 @@ private:
 #ifdef ENABLE_DOM_FAST_PATH
         DOMFastPathIRHelperMap* EnsureDOMFastPathIRHelperMap();
 #endif
-        wchar_t const * GetUrl() const { return url; }
+        char16 const * GetUrl() const { return url; }
         void SetUrl(BSTR bstr);
 #ifdef RUNTIME_DATA_COLLECTION
         time_t GetCreateTime() const { return createTime; }
@@ -972,8 +988,8 @@ private:
         SourceContextInfo * GetSourceContextInfo(DWORD_PTR hostSourceContext, IActiveScriptDataCache* profileDataCache);
         SourceContextInfo * GetSourceContextInfo(uint hash);
         SourceContextInfo * CreateSourceContextInfo(uint hash, DWORD_PTR hostSourceContext);
-        SourceContextInfo * CreateSourceContextInfo(DWORD_PTR hostSourceContext, wchar_t const * url, size_t len,
-            IActiveScriptDataCache* profileDataCache, wchar_t const * sourceMapUrl = nullptr, size_t sourceMapUrlLen = 0);
+        SourceContextInfo * CreateSourceContextInfo(DWORD_PTR hostSourceContext, char16 const * url, size_t len,
+            IActiveScriptDataCache* profileDataCache, char16 const * sourceMapUrl = nullptr, size_t sourceMapUrlLen = 0);
 
 #if defined(LEAK_REPORT) || defined(CHECK_MEMORY_LEAK)
         void ClearSourceContextInfoMaps()
@@ -1043,7 +1059,7 @@ private:
         void InitPropertyStringMap(int i);
         PropertyString* AddPropertyString2(const Js::PropertyRecord* propertyRecord);
         PropertyString* CachePropertyString2(const Js::PropertyRecord* propertyRecord);
-        PropertyString* GetPropertyString2(wchar_t ch1, wchar_t ch2);
+        PropertyString* GetPropertyString2(char16 ch1, char16 ch2);
         void FindPropertyRecord(__in LPCWSTR pszPropertyName, __in int propertyNameLength, PropertyRecord const** propertyRecord);
         JsUtil::List<const RecyclerWeakReference<Js::PropertyRecord const>*>* FindPropertyIdNoCase(__in LPCWSTR pszPropertyName, __in int propertyNameLength);
 
@@ -1051,12 +1067,12 @@ private:
         PropertyRecord const * GetPropertyName(PropertyId propertyId);
         PropertyRecord const * GetPropertyNameLocked(PropertyId propertyId);
         void GetOrAddPropertyRecord(JsUtil::CharacterBuffer<WCHAR> const& propName, PropertyRecord const** propertyRecord);
-        template <size_t N> void GetOrAddPropertyRecord(const wchar_t(&propertyName)[N], PropertyRecord const** propertyRecord)
+        template <size_t N> void GetOrAddPropertyRecord(const char16(&propertyName)[N], PropertyRecord const** propertyRecord)
         {
             GetOrAddPropertyRecord(propertyName, N - 1, propertyRecord);
         }
         PropertyId GetOrAddPropertyIdTracked(JsUtil::CharacterBuffer<WCHAR> const& propName);
-        template <size_t N> PropertyId GetOrAddPropertyIdTracked(const wchar_t(&propertyName)[N])
+        template <size_t N> PropertyId GetOrAddPropertyIdTracked(const char16(&propertyName)[N])
         {
             return GetOrAddPropertyIdTracked(propertyName, N - 1);
         }
@@ -1065,7 +1081,7 @@ private:
         BOOL IsNumericPropertyId(PropertyId propertyId, uint32* value);
 
         void RegisterWeakReferenceDictionary(JsUtil::IWeakReferenceDictionary* weakReferenceDictionary);
-        void ResetWeakReferenceDicitionaryList() { weakReferenceDictionaryList.Reset(); }
+        void ResetWeakReferenceDictionaryList() { weakReferenceDictionaryList.Reset(); }
 
         BOOL ReserveStaticTypeIds(__in int first, __in int last);
         TypeId ReserveTypeIds(int count);
@@ -1074,8 +1090,10 @@ private:
         WellKnownHostType GetWellKnownHostType(Js::TypeId typeId) { return threadContext->GetWellKnownHostType(typeId); }
         void SetWellKnownHostTypeId(WellKnownHostType wellKnownType, Js::TypeId typeId) { threadContext->SetWellKnownHostTypeId(wellKnownType, typeId); }
 
-        JavascriptFunction* LoadScript(const wchar_t* script, SRCINFO const * pSrcInfo, CompileScriptException * pse, bool isExpression, bool disableDeferredParse, bool isByteCodeBufferForLibrary, Utf8SourceInfo** ppSourceInfo, const wchar_t *rootDisplayName, bool disableAsmJs = false);
-        JavascriptFunction* LoadScript(LPCUTF8 script, size_t cb, SRCINFO const * pSrcInfo, CompileScriptException * pse, bool isExpression, bool disableDeferredParse, bool isByteCodeBufferForLibrary, Utf8SourceInfo** ppSourceInfo, const wchar_t *rootDisplayName, bool disableAsmJs = false);
+        ParseNodePtr ParseScript(Parser* parser, const byte* script, size_t cb, SRCINFO const * pSrcInfo, 
+            CompileScriptException * pse, Utf8SourceInfo** ppSourceInfo, const char16 *rootDisplayName, LoadScriptFlag loadScriptFlag, uint* sourceIndex);
+        JavascriptFunction* LoadScript(const byte* script, size_t cb, SRCINFO const * pSrcInfo, 
+            CompileScriptException * pse, Utf8SourceInfo** ppSourceInfo, const char16 *rootDisplayName, LoadScriptFlag loadScriptFlag);
 
         ArenaAllocator* GeneralAllocator() { return &generalAllocator; }
 
@@ -1155,11 +1173,8 @@ private:
 
         void CheckEvalRestriction();
 
-        RecyclableObject* GetMissingPropertyResult(Js::RecyclableObject *instance, Js::PropertyId id);
-        RecyclableObject* GetMissingItemResult(Js::RecyclableObject *instance, uint32 index);
-        RecyclableObject* GetMissingParameterValue(Js::JavascriptFunction *function, uint32 paramIndex);
-        RecyclableObject *GetNullPropertyResult(Js::RecyclableObject *instance, Js::PropertyId id);
-        RecyclableObject *GetNullItemResult(Js::RecyclableObject *instance, uint32 index);
+        RecyclableObject* GetMissingPropertyResult();
+        RecyclableObject* GetMissingItemResult();
 
         bool HasRecordedException() const { return threadContext->GetRecordedException() != nullptr; }
         Js::JavascriptExceptionObject * GetAndClearRecordedException(bool *considerPassingToDebugger = nullptr);
@@ -1358,7 +1373,7 @@ private:
         // To be called directly only when the thread context is shutting down
         void ShutdownClearSourceLists();
 
-        HRESULT RegisterLibraryFunction(const wchar_t *pwszObjectName, const wchar_t *pwszFunctionName, Js::PropertyId functionPropertyId, JavascriptMethod entryPoint);
+        HRESULT RegisterLibraryFunction(const char16 *pwszObjectName, const char16 *pwszFunctionName, Js::PropertyId functionPropertyId, JavascriptMethod entryPoint);
 
         HRESULT RegisterBuiltinFunctions(RegisterExternalLibraryType RegisterExternalLibrary);
         void RegisterDebugThunk(bool calledDuringAttach = true);
@@ -1437,7 +1452,7 @@ private:
         BuiltinFunctionIdDictionary *m_pBuiltinFunctionIdMap;
         Js::PropertyId GetFunctionNumber(JavascriptMethod entryPoint);
 
-        static const wchar_t* CopyString(const wchar_t* str, size_t charCount, ArenaAllocator* alloc);
+        static const char16* CopyString(const char16* str, size_t charCount, ArenaAllocator* alloc);
         static charcount_t AppendWithEscapeCharacters(Js::StringBuilder<ArenaAllocator>* stringBuilder, const WCHAR* sourceString, charcount_t sourceStringLen, WCHAR escapeChar, WCHAR charToEscape);
 
     public:
@@ -1482,7 +1497,7 @@ private:
         void SaveStartupProfileAndRelease(bool isSaveOnClose = false);
 
         static HRESULT FunctionExitSenderThunk(PROFILER_TOKEN functionId, PROFILER_TOKEN scriptId, ScriptContext *pScriptContext);
-        static HRESULT FunctionExitByNameSenderThunk(const wchar_t *pwszFunctionName, ScriptContext *pScriptContext);
+        static HRESULT FunctionExitByNameSenderThunk(const char16 *pwszFunctionName, ScriptContext *pScriptContext);
 
 #if ENABLE_PROFILE_INFO
         void AddDynamicProfileInfo(FunctionBody * functionBody, WriteBarrierPtr<DynamicProfileInfo>* dynamicProfileInfo);
@@ -1563,7 +1578,7 @@ private:
 #ifdef ENABLE_DEBUG_CONFIG_OPTIONS
             if (CONFIG_FLAG(DumpEvalStringOnRemoval))
             {
-                Output::Print(L"EvalMap: Removing Dynamic Function String from dynamic function cache: %s\n", key.str.GetBuffer()); Output::Flush();
+                Output::Print(_u("EvalMap: Removing Dynamic Function String from dynamic function cache: %s\n"), key.str.GetBuffer()); Output::Flush();
             }
 #endif
         });

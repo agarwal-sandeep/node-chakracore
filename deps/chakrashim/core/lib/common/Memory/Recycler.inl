@@ -55,8 +55,13 @@ Recycler::AllocWithAttributesInlined(size_t size)
     Assert(size != 0);
     AssertMsg(collectionState != Collection_PreCollection, "we cannot have allocation in precollection callback");
 
+#if ENABLE_CONCURRENT_GC
     // We shouldn't be allocating memory when we are running GC in thread, including finalizers
     Assert(this->IsConcurrentState() || !this->CollectionInProgress() || this->collectionState == CollectionStatePostCollectionCallback);
+#else
+    // We shouldn't be allocating memory when we are running GC in thread, including finalizers
+    Assert(!this->CollectionInProgress() || this->collectionState == CollectionStatePostCollectionCallback);
+#endif
 
     // There are some cases where we allow allocation during heap enum that doesn't affect the enumeration
     // Those should be really rare and not rely upon.
@@ -152,7 +157,7 @@ Recycler::AllocWithAttributesInlined(size_t size)
     }
 
 #ifdef RECYCLER_WRITE_BARRIER
-    SwbVerboseTrace(this->GetRecyclerFlagsTable(), L"Allocated SWB memory: 0x%p\n", memBlock);
+    SwbVerboseTrace(this->GetRecyclerFlagsTable(), _u("Allocated SWB memory: 0x%p\n"), memBlock);
 
 #pragma prefast(suppress:6313, "attributes is a template parameter and can be 0")
     if (attributes & (NewTrackBit))
@@ -165,7 +170,7 @@ Recycler::AllocWithAttributesInlined(size_t size)
     }
 #endif
 
-#ifdef PARTIAL_GC_ENABLED
+#if ENABLE_PARTIAL_GC
 #pragma prefast(suppress:6313, "attributes is a template parameter and can be 0")
     if (attributes & ClientTrackedBit)
     {
@@ -178,7 +183,11 @@ Recycler::AllocWithAttributesInlined(size_t size)
         }
         else
         {
+#if ENABLE_CONCURRENT_GC
             Assert(this->hasBackgroundFinishPartial || this->clientTrackedObjectList.Empty());
+#else
+            Assert(this->clientTrackedObjectList.Empty());
+#endif
         }
     }
 #endif
@@ -297,11 +306,11 @@ Recycler::RealAlloc(HeapInfo* heap, size_t size)
 
     if (nothrow)
     {
-        FAULTINJECT_MEMORY_NOTHROW(L"Recycler", size);
+        FAULTINJECT_MEMORY_NOTHROW(_u("Recycler"), size);
     }
     else
     {
-        FAULTINJECT_MEMORY_THROW(L"Recycler", size);
+        FAULTINJECT_MEMORY_THROW(_u("Recycler"), size);
     }
 
     if (HeapInfo::IsSmallObject(size))

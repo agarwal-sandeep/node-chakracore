@@ -3,16 +3,16 @@
 // Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
 //-------------------------------------------------------------------------------------------------------
 #include "JsrtPch.h"
-#include "jsrtInternal.h"
+#include "JsrtInternal.h"
 #include "JsrtExternalObject.h"
 #include "JsrtExternalArrayBuffer.h"
 
 #include "JsrtSourceHolder.h"
-#include "ByteCode\ByteCodeSerializer.h"
-#include "common\ByteSwap.h"
-#include "Library\dataview.h"
-#include "Library\JavascriptSymbol.h"
-#include "Base\ThreadContextTLSEntry.h"
+#include "ByteCode/ByteCodeSerializer.h"
+#include "Common/ByteSwap.h"
+#include "Library/DataView.h"
+#include "Library/JavascriptSymbol.h"
+#include "Base/ThreadContextTlsEntry.h"
 
 // Parser Includes
 #include "cmperr.h"     // For ERRnoMemory
@@ -272,9 +272,16 @@ STDAPI_(JsErrorCode) JsDisposeRuntime(_In_ JsRuntimeHandle runtimeHandle)
             }
         }
 
+        if (runtime->GetDebugObject() != nullptr)
+        {
+            runtime->GetDebugObject()->ClearDebuggerObjects();
+        }
+
         // Close any open Contexts.
         // We need to do this before recycler shutdown, because ScriptEngine->Close won't work then.
         runtime->CloseContexts();
+
+        runtime->ClearDebugObject();
 
 #if defined(CHECK_MEMORY_LEAK) || defined(LEAK_REPORT)
         bool doFinalGC = false;
@@ -470,6 +477,23 @@ STDAPI_(JsErrorCode) JsCreateContext(_In_ JsRuntimeHandle runtimeHandle, _Out_ J
 
         JsrtContext * context = JsrtContext::New(runtime);
 
+        JsrtDebug* debugObject = runtime->GetDebugObject();
+
+        if (debugObject != nullptr)
+        {
+            Js::ScriptContext* scriptContext = context->GetScriptContext();
+            scriptContext->InitializeDebugging();
+
+            Js::DebugContext* debugContext = scriptContext->GetDebugContext();
+            debugContext->SetHostDebugContext(debugObject);
+
+            Js::ProbeContainer* probeContainer = debugContext->GetProbeContainer();
+            probeContainer->InitializeInlineBreakEngine(debugObject);
+            probeContainer->InitializeDebuggerScriptOptionCallback(debugObject);
+
+            threadContext->GetDebugManager()->SetLocalsDisplayFlags(Js::DebugManager::LocalsDisplayFlags::LocalsDisplayFlags_NoGroupMethods);
+        }
+
         *newContext = (JsContextRef)context;
         return JsNoError;
     });
@@ -567,38 +591,7 @@ void HandleScriptCompileError(Js::ScriptContext * scriptContext, CompileScriptEx
         Js::Throw::OutOfMemory();
     }
 
-    Js::JavascriptError * error = Js::JavascriptError::MapParseError(scriptContext, hr);
-    const Js::PropertyRecord *record;
-
-    Js::Var value = Js::JavascriptString::NewCopySz(se->ei.bstrDescription, scriptContext);
-    Js::JavascriptOperators::OP_SetProperty(error, Js::PropertyIds::message, value, scriptContext);
-
-
-    if (se->hasLineNumberInfo)
-    {
-        value = Js::JavascriptNumber::New(se->line, scriptContext);
-        scriptContext->GetOrAddPropertyRecord(L"line", &record);
-        Js::JavascriptOperators::OP_SetProperty(error, record->GetPropertyId(), value, scriptContext);
-    }
-
-    if (se->hasLineNumberInfo)
-    {
-        value = Js::JavascriptNumber::New(se->ichMin - se->ichMinLine, scriptContext);
-        scriptContext->GetOrAddPropertyRecord(L"column", &record);
-        Js::JavascriptOperators::OP_SetProperty(error, record->GetPropertyId(), value, scriptContext);
-    }
-
-    if (se->hasLineNumberInfo)
-    {
-        value = Js::JavascriptNumber::New(se->ichLim - se->ichMin, scriptContext);
-        Js::JavascriptOperators::OP_SetProperty(error, Js::PropertyIds::length, value, scriptContext);
-    }
-
-    if (se->bstrLine != nullptr)
-    {
-        value = Js::JavascriptString::NewCopySz(se->bstrLine, scriptContext);
-        Js::JavascriptOperators::OP_SetProperty(error, Js::PropertyIds::source, value, scriptContext);
-    }
+    Js::JavascriptError* error = Js::JavascriptError::CreateFromCompileScriptException(scriptContext, se);
 
     Js::JavascriptExceptionObject * exceptionObject = RecyclerNew(scriptContext->GetRecycler(),
         Js::JavascriptExceptionObject, error, scriptContext, nullptr);
@@ -2407,7 +2400,7 @@ STDAPI_(JsErrorCode) JsSetPromiseContinuationCallback(_In_ JsPromiseContinuation
     /*allowInObjectBeforeCollectCallback*/true);
 }
 
-JsErrorCode RunScriptCore(const wchar_t *script, JsSourceContext sourceContext, const wchar_t *sourceUrl, bool parseOnly, JsValueRef *result)
+JsErrorCode RunScriptCore(const wchar_t *script, JsSourceContext sourceContext, const wchar_t *sourceUrl, bool parseOnly, JsParseScriptAttributes parseAttributes, bool isSourceModule, JsValueRef *result)
 {
     Js::JavascriptFunction *scriptFunction;
     CompileScriptException se;
@@ -2437,11 +2430,25 @@ JsErrorCode RunScriptCore(const wchar_t *script, JsSourceContext sourceContext, 
             /* grfsi               */ 0
         };
 
-        Js::Utf8SourceInfo* utf8SourceInfo;
-        scriptFunction = scriptContext->LoadScript(script, &si, &se, result != nullptr, false /*disableDeferredParse*/, false /*isByteCodeBufferForLibrary*/, &utf8SourceInfo, Js::Constants::GlobalCode);
+        Js::Utf8SourceInfo* utf8SourceInfo = nullptr;
+        LoadScriptFlag loadScriptFlag = LoadScriptFlag_None;
+        if (result != nullptr)
+        {
+            loadScriptFlag = (LoadScriptFlag)(loadScriptFlag | LoadScriptFlag_Expression);
+        }
+        bool isLibraryCode = (parseAttributes & JsParseScriptAttributeLibraryCode) == JsParseScriptAttributeLibraryCode;
+        if (isLibraryCode)
+        {
+            loadScriptFlag = (LoadScriptFlag)(loadScriptFlag | LoadScriptFlag_LibraryCode);
+        }
+        if (isSourceModule)
+        {
+            loadScriptFlag = (LoadScriptFlag)(loadScriptFlag | LoadScriptFlag_Module);
+        }
+        scriptFunction = scriptContext->LoadScript((const byte*)script, wcslen(script)* sizeof(wchar_t), &si, &se, &utf8SourceInfo, Js::Constants::GlobalCode, loadScriptFlag);
 
         JsrtContext * context = JsrtContext::GetCurrent();
-        context->OnScriptLoad(scriptFunction, utf8SourceInfo);
+        context->OnScriptLoad(scriptFunction, utf8SourceInfo, &se);
 
         return JsNoError;
     });
@@ -2488,12 +2495,27 @@ JsErrorCode RunScriptCore(const wchar_t *script, JsSourceContext sourceContext, 
 
 STDAPI_(JsErrorCode) JsParseScript(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
 {
-    return RunScriptCore(script, sourceContext, sourceUrl, true, result);
+    return RunScriptCore(script, sourceContext, sourceUrl, true, JsParseScriptAttributeNone, false, result);
+}
+
+STDAPI_(JsErrorCode) JsParseScriptWithFlags(
+    _In_z_ const wchar_t *script,
+    _In_ JsSourceContext sourceContext,
+    _In_z_ const wchar_t *sourceUrl,
+    _In_ JsParseScriptAttributes parseAttributes,
+    _Out_ JsValueRef *result)
+{
+    return RunScriptCore(script, sourceContext, sourceUrl, true, parseAttributes, false, result);
 }
 
 STDAPI_(JsErrorCode) JsRunScript(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
 {
-    return RunScriptCore(script, sourceContext, sourceUrl, false, result);
+    return RunScriptCore(script, sourceContext, sourceUrl, false, JsParseScriptAttributeNone, false, result);
+}
+
+STDAPI_(JsErrorCode) JsExperimentalApiRunModule(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
+{
+    return RunScriptCore(script, sourceContext, sourceUrl, false, JsParseScriptAttributeNone, true, result);
 }
 
 JsErrorCode JsSerializeScriptCore(const wchar_t *script, BYTE *functionTable, int functionTableSize, unsigned char *buffer, unsigned long *bufferSize)
@@ -2511,7 +2533,7 @@ JsErrorCode JsSerializeScriptCore(const wchar_t *script, BYTE *functionTable, in
             ZeroMemory(buffer, *bufferSize);
         }
 
-        if (scriptContext->IsInDebugMode())
+        if (scriptContext->IsScriptContextInDebugMode())
         {
             return JsErrorCannotSerializeDebugScript;
         }
@@ -2535,8 +2557,17 @@ JsErrorCode JsSerializeScriptCore(const wchar_t *script, BYTE *functionTable, in
         isSerializeByteCodeForLibrary = JsrtContext::GetCurrent()->GetRuntime()->IsSerializeByteCodeForLibrary();
 #endif
 
-        Js::Utf8SourceInfo* sourceInfo;
-        function = scriptContext->LoadScript(script, &si, &se, !isSerializeByteCodeForLibrary, true, isSerializeByteCodeForLibrary, &sourceInfo, Js::Constants::GlobalCode);
+        Js::Utf8SourceInfo* sourceInfo = nullptr;
+        LoadScriptFlag loadScriptFlag = LoadScriptFlag_disableDeferredParse;
+        if (isSerializeByteCodeForLibrary)
+        {
+            loadScriptFlag = (LoadScriptFlag)(loadScriptFlag | LoadScriptFlag_isByteCodeBufferForLibrary);
+        }
+        else
+        {
+            loadScriptFlag = (LoadScriptFlag)(loadScriptFlag | LoadScriptFlag_Expression);
+        }
+        function = scriptContext->LoadScript((const byte*)script, wcslen(script)* sizeof(wchar_t), &si, &se, &sourceInfo, Js::Constants::GlobalCode, loadScriptFlag);
         return JsNoError;
     });
 
@@ -2560,7 +2591,7 @@ JsErrorCode JsSerializeScriptCore(const wchar_t *script, BYTE *functionTable, in
         const Js::Utf8SourceInfo *sourceInfo = functionBody->GetUtf8SourceInfo();
         size_t cSourceCodeLength = sourceInfo->GetCbLength(L"JsSerializeScript");
 
-        // trucation of code length can lead to accessing random memory. Reject the call.
+        // truncation of code length can lead to accessing random memory. Reject the call.
         if (cSourceCodeLength > DWORD_MAX)
         {
             return JsErrorOutOfMemory;
@@ -2677,7 +2708,7 @@ JsErrorCode RunSerializedScriptCore(const wchar_t *script, JsSerializedScriptLoa
         function = scriptContext->GetLibrary()->CreateScriptFunction(functionBody);
 
         JsrtContext * context = JsrtContext::GetCurrent();
-        context->OnScriptLoad(function, functionBody->GetUtf8SourceInfo());
+        context->OnScriptLoad(function, functionBody->GetUtf8SourceInfo(), nullptr);
 
         return JsNoError;
     });

@@ -16,6 +16,7 @@ namespace Memory
     Output::Flush(); \
 }
 
+
 namespace CustomHeap
 {
 
@@ -34,15 +35,11 @@ enum BucketId
 
 BucketId GetBucketForSize(size_t bytes);
 
-struct PageAllocatorAllocation
+struct Page
 {
-    bool isDecommitted;
-    bool isReadWrite;
-};
-
-struct Page: public PageAllocatorAllocation
-{
-    void* segment;
+    bool         inFullList;
+    bool         isDecommitted;
+    void*        segment;
     BVUnit       freeBitVector;
     char*        address;
     BucketId     currentBucket;
@@ -62,15 +59,14 @@ struct Page: public PageAllocatorAllocation
         return freeBitVector.FirstStringOfOnes(targetBucket + 1) != BVInvalidIndex;
     }
 
-    Page(__in char* address, void* segment, BucketId bucket):
-      address(address),
-      segment(segment),
-      currentBucket(bucket),
-      freeBitVector(0xFFFFFFFF)
+    Page(__in char* address, void* segment, BucketId bucket) :
+        address(address),
+        segment(segment),
+        currentBucket(bucket),
+        freeBitVector(0xFFFFFFFF),
+        isDecommitted(false),
+        inFullList(false)
     {
-        // Initialize PageAllocatorAllocation fields
-        this->isDecommitted = false;
-        this->isReadWrite = true;
     }
 
     // Each bit in the bit vector corresponds to 128 bytes of memory
@@ -84,9 +80,10 @@ struct Allocation
     union
     {
         Page*  page;
-        struct: PageAllocatorAllocation
+        struct
         {
             void* segment;
+            bool isDecommitted;
         } largeObjectAllocation;
     };
 
@@ -132,63 +129,101 @@ struct Allocation
 
 };
 
-/*
- * Simple free-listing based heap allocator
- *
- * Each allocation is tracked using a "HeapAllocation" record
- * Once we alloc, we start assigning chunks sliced from the end of a HeapAllocation
- * If we don't have enough to slice off, we push a new heap allocation record to the record stack, and try and assign from that
- */
-class Heap
+// Wrapper for the two HeapPageAllocator with and without the prereserved segment.
+// Supports multiple thread access. Require explicit locking (via CodePageAllocator::AutoLock)
+class CodePageAllocators
 {
 public:
-    Heap(AllocationPolicyManager * policyManager, ArenaAllocator * alloc, bool allocXdata);
-
-    Allocation* Alloc(size_t bytes, ushort pdataCount, ushort xdataSize, bool canAllocInPreReservedHeapPageSegment, bool isAnyJittedCode, _Inout_ bool* isAllJITCodeInPreReservedRegion);
-    bool Free(__in Allocation* allocation);
-    bool Decommit(__in Allocation* allocation);
-    void FreeAll();
-    bool IsInRange(__in void* address);
-
-    template<typename T>
-    HeapPageAllocator<T>* GetPageAllocator(Page * page)
+    class AutoLock : public AutoCriticalSection
     {
-        AssertMsg(page, "Why is page null?");
-        return GetPageAllocator<T>(page->segment);
+    public:
+        AutoLock(CodePageAllocators * codePageAllocators) : AutoCriticalSection(&codePageAllocators->cs) {};
+    };
+
+    CodePageAllocators(AllocationPolicyManager * policyManager, bool allocXdata, PreReservedVirtualAllocWrapper * virtualAllocator) :
+        pageAllocator(policyManager, allocXdata, true /*excludeGuardPages*/, nullptr),
+        preReservedHeapPageAllocator(policyManager, allocXdata, true /*excludeGuardPages*/, virtualAllocator),
+        cs(4000),
+        secondaryAllocStateChangedCount(0)
+    {
+#if DBG
+        this->preReservedHeapPageAllocator.ClearConcurrentThreadId();
+        this->pageAllocator.ClearConcurrentThreadId();
+#endif
     }
 
-    template<typename T>
-    HeapPageAllocator<T>* GetPageAllocator(void * segmentParam)
+    bool AllocXdata()
     {
-        SegmentBase<T> * segment = (SegmentBase<T>*)segmentParam;
-        AssertMsg(segment, "Why is segment null?");
-        AssertMsg(segment->GetAllocator(), "Segment doesn't have an allocator?");
-
-        Assert((HeapPageAllocator<VirtualAllocWrapper>*)(segment->GetAllocator()) == &this->pageAllocator ||
-            (HeapPageAllocator<PreReservedVirtualAllocWrapper>*)(segment->GetAllocator()) == &this->preReservedHeapPageAllocator);
-
-        return (HeapPageAllocator<T> *)(segment->GetAllocator());
+        // Simple immutable data access, no need for lock
+        return preReservedHeapPageAllocator.AllocXdata();
     }
 
     bool IsPreReservedSegment(void * segment)
     {
+        // Simple immutable data access, no need for lock
         Assert(segment);
         return (((Segment*)(segment))->IsInPreReservedHeapPageAllocator());
     }
 
-    HeapPageAllocator<PreReservedVirtualAllocWrapper> * GetPreReservedHeapPageAllocator()
+    bool IsInNonPreReservedPageAllocator(__in void *address)
     {
-        return &preReservedHeapPageAllocator;
+        Assert(this->cs.IsLocked());
+        return this->pageAllocator.IsAddressFromAllocator(address);
     }
 
-    HeapPageAllocator<VirtualAllocWrapper>* GetHeapPageAllocator()
+    char * Alloc(size_t * pages, void ** segment, bool canAllocInPreReservedHeapPageSegment, bool isAnyJittedCode, bool * isAllJITCodeInPreReservedRegion)
     {
-        Assert(!pageAllocator.GetVirtualAllocator()->IsPreReservedRegionPresent());
-        return &pageAllocator;
+        Assert(this->cs.IsLocked());
+        char* address = nullptr;
+        if (canAllocInPreReservedHeapPageSegment)
+        {
+            address = this->preReservedHeapPageAllocator.Alloc(pages, (SegmentBase<PreReservedVirtualAllocWrapper>**)(segment));
+        }
+
+        if (address == nullptr)
+        {
+            if (isAnyJittedCode)
+            {
+                *isAllJITCodeInPreReservedRegion = false;
+            }
+            address = this->pageAllocator.Alloc(pages, (Segment**)segment);
+        }
+        return address;
+    }
+
+    char * AllocPages(size_t pages, void ** pageSegment, bool canAllocInPreReservedHeapPageSegment, bool isAnyJittedCode, bool * isAllJITCodeInPreReservedRegion)
+    {
+        Assert(this->cs.IsLocked());
+        char * address = nullptr;
+        if (canAllocInPreReservedHeapPageSegment)
+        {
+            address = this->preReservedHeapPageAllocator.AllocPages(1, (PageSegmentBase<PreReservedVirtualAllocWrapper>**)pageSegment);
+
+            if (address == nullptr)
+            {
+                VerboseHeapTrace(_u("PRE-RESERVE: PreReserved Segment CANNOT be allocated \n"));
+            }
+        }
+
+        if (address == nullptr)    // if no space in Pre-reserved Page Segment, then allocate in regular ones.
+        {
+            if (isAnyJittedCode)
+            {
+                *isAllJITCodeInPreReservedRegion = false;
+            }
+            address = this->pageAllocator.AllocPages(1, (PageSegmentBase<VirtualAllocWrapper>**)pageSegment);
+        }
+        else
+        {
+            VerboseHeapTrace(_u("PRE-RESERVE: Allocing new page in PreReserved Segment \n"));
+        }
+
+        return address;
     }
 
     void ReleasePages(void* pageAddress, uint pageCount, __in void* segment)
     {
+        Assert(this->cs.IsLocked());
         Assert(segment);
         if (IsPreReservedSegment(segment))
         {
@@ -200,47 +235,63 @@ public:
         }
     }
 
-    BOOL ProtectPages(__in char* address, size_t pageCount, __in void* segment, DWORD dwVirtualProtectFlags, DWORD* dwOldVirtualProtectFlags, DWORD desiredOldProtectFlag)
+    BOOL ProtectPages(__in char* address, size_t pageCount, __in void* segment, DWORD dwVirtualProtectFlags, DWORD desiredOldProtectFlag)
     {
+        // This is merely a wrapper for VirtualProtect, no need to synchornize, and doesn't touch any data.
+        // No need to assert locked.
         Assert(segment);
         if (IsPreReservedSegment(segment))
         {
-            return this->GetPageAllocator<PreReservedVirtualAllocWrapper>(segment)->ProtectPages(address, pageCount, segment, dwVirtualProtectFlags, dwOldVirtualProtectFlags, desiredOldProtectFlag);
+            return this->GetPageAllocator<PreReservedVirtualAllocWrapper>(segment)->ProtectPages(address, pageCount, segment, dwVirtualProtectFlags, desiredOldProtectFlag);
         }
         else
         {
-            return this->GetPageAllocator<VirtualAllocWrapper>(segment)->ProtectPages(address, pageCount, segment, dwVirtualProtectFlags, dwOldVirtualProtectFlags, desiredOldProtectFlag);
+            return this->GetPageAllocator<VirtualAllocWrapper>(segment)->ProtectPages(address, pageCount, segment, dwVirtualProtectFlags, desiredOldProtectFlag);
         }
     }
 
-    void TrackDecommitedPages(void * address, uint pageCount, __in void* segment)
+    void TrackDecommittedPages(void * address, uint pageCount, __in void* segment)
     {
+        Assert(this->cs.IsLocked());
         Assert(segment);
         if (IsPreReservedSegment(segment))
         {
-            this->GetPageAllocator<PreReservedVirtualAllocWrapper>(segment)->TrackDecommitedPages(address, pageCount, segment);
+            this->GetPageAllocator<PreReservedVirtualAllocWrapper>(segment)->TrackDecommittedPages(address, pageCount, segment);
         }
         else
         {
-            this->GetPageAllocator<VirtualAllocWrapper>(segment)->TrackDecommitedPages(address, pageCount, segment);
+            this->GetPageAllocator<VirtualAllocWrapper>(segment)->TrackDecommittedPages(address, pageCount, segment);
         }
     }
 
     void ReleaseSecondary(const SecondaryAllocation& allocation, void* segment)
     {
+        Assert(this->cs.IsLocked());
         Assert(segment);
         if (IsPreReservedSegment(segment))
         {
-            this->GetPageAllocator<PreReservedVirtualAllocWrapper>(segment)->ReleaseSecondary(allocation, segment);
+            secondaryAllocStateChangedCount += (uint)this->GetPageAllocator<PreReservedVirtualAllocWrapper>(segment)->ReleaseSecondary(allocation, segment);
         }
         else
         {
-            this->GetPageAllocator<VirtualAllocWrapper>(segment)->ReleaseSecondary(allocation, segment);
+            secondaryAllocStateChangedCount += (uint)this->GetPageAllocator<VirtualAllocWrapper>(segment)->ReleaseSecondary(allocation, segment);
         }
+    }
+
+    bool HasSecondaryAllocStateChanged(uint * lastSecondaryAllocStateChangedCount)
+    {
+        if (secondaryAllocStateChangedCount != *lastSecondaryAllocStateChangedCount)
+        {
+            *lastSecondaryAllocStateChangedCount = secondaryAllocStateChangedCount;
+            return true;
+        }
+        return false;
     }
 
     void DecommitPages(__in char* address, size_t pageCount, void* segment)
     {
+        // This is merely a wrapper for VirtualFree, no need to synchornize, and doesn't touch any data.
+        // No need to assert locked.
         Assert(segment);
         if (IsPreReservedSegment(segment))
         {
@@ -254,6 +305,7 @@ public:
 
     bool AllocSecondary(void* segment, ULONG_PTR functionStart, size_t functionSize_t, ushort pdataCount, ushort xdataSize, SecondaryAllocation* allocation)
     {
+        Assert(this->cs.IsLocked());
         Assert(functionSize_t <= MAXUINT32);
         DWORD functionSize = static_cast<DWORD>(functionSize_t);
         Assert(segment);
@@ -269,6 +321,7 @@ public:
 
     void Release(void * address, size_t pageCount, void * segment)
     {
+        Assert(this->cs.IsLocked());
         Assert(segment);
         if (IsPreReservedSegment(segment))
         {
@@ -280,44 +333,93 @@ public:
         }
     }
 
-    void ReleaseDecommited(void * address, size_t pageCount, __in void *  segment)
+    void ReleaseDecommitted(void * address, size_t pageCount, __in void *  segment)
     {
+        Assert(this->cs.IsLocked());
         Assert(segment);
         if (IsPreReservedSegment(segment))
         {
-            this->GetPageAllocator<PreReservedVirtualAllocWrapper>(segment)->ReleaseDecommited(address, pageCount, segment);
+            this->GetPageAllocator<PreReservedVirtualAllocWrapper>(segment)->ReleaseDecommitted(address, pageCount, segment);
         }
         else
         {
-            this->GetPageAllocator<VirtualAllocWrapper>(segment)->ReleaseDecommited(address, pageCount, segment);
+            this->GetPageAllocator<VirtualAllocWrapper>(segment)->ReleaseDecommitted(address, pageCount, segment);
         }
     }
+private:
 
-    char * EnsurePreReservedPageAllocation(PreReservedVirtualAllocWrapper * preReservedVirtualAllocator);
+    template<typename T>
+    HeapPageAllocator<T>* GetPageAllocator(Page * page)
+    {
+        AssertMsg(page, "Why is page null?");
+        return GetPageAllocator<T>(page->segment);
+    }
+
+    template<typename T>
+    HeapPageAllocator<T>* GetPageAllocator(void * segmentParam);
+
+    template <>
+    HeapPageAllocator<VirtualAllocWrapper>* GetPageAllocator(void * segmentParam)
+    {
+        SegmentBase<VirtualAllocWrapper> * segment = (SegmentBase<VirtualAllocWrapper>*)segmentParam;
+        AssertMsg(segment, "Why is segment null?");
+        Assert((HeapPageAllocator<VirtualAllocWrapper>*)(segment->GetAllocator()) == &this->pageAllocator);
+        return (HeapPageAllocator<VirtualAllocWrapper> *)(segment->GetAllocator());
+    }
+
+
+    template<>
+    HeapPageAllocator<PreReservedVirtualAllocWrapper>* GetPageAllocator(void * segmentParam)
+    {
+        SegmentBase<PreReservedVirtualAllocWrapper> * segment = (SegmentBase<PreReservedVirtualAllocWrapper>*)segmentParam;
+        AssertMsg(segment, "Why is segment null?");
+        Assert((HeapPageAllocator<PreReservedVirtualAllocWrapper>*)(segment->GetAllocator()) == &this->preReservedHeapPageAllocator);
+        return (HeapPageAllocator<PreReservedVirtualAllocWrapper> *)(segment->GetAllocator());
+    }
+
+    HeapPageAllocator<VirtualAllocWrapper>               pageAllocator;
+    HeapPageAllocator<PreReservedVirtualAllocWrapper>    preReservedHeapPageAllocator;
+    CriticalSection cs;
+
+    // Track the number of time a segment's secondary allocate change from full to available to allocate.
+    // So that we know whether CustomHeap to know when to update their "full page"
+    // It is ok to overflow this variable.  All we care is if the state has changed.
+    // If in the unlikely scenario that we do overflow, then we delay the full pages in CustomHeap from
+    // being made available.
+    uint secondaryAllocStateChangedCount;
+};
+
+/*
+ * Simple free-listing based heap allocator
+ *
+ * Each allocation is tracked using a "HeapAllocation" record
+ * Once we alloc, we start assigning chunks sliced from the end of a HeapAllocation
+ * If we don't have enough to slice off, we push a new heap allocation record to the record stack, and try and assign from that
+ *
+ * Single thread only. Require external locking.  (Currently, EmitBufferManager manage the locking)
+ */
+class Heap
+{
+public:
+    Heap(ArenaAllocator * alloc, CodePageAllocators * codePageAllocators);
+
+    Allocation* Alloc(size_t bytes, ushort pdataCount, ushort xdataSize, bool canAllocInPreReservedHeapPageSegment, bool isAnyJittedCode, _Inout_ bool* isAllJITCodeInPreReservedRegion);
+    void Free(__in Allocation* allocation);
+    void DecommitAll();
+    void FreeAll();
+    bool IsInHeap(__in void* address);
+   
     // A page should be in full list if:
     // 1. It does not have any space
     // 2. Parent segment cannot allocate any more XDATA
     bool ShouldBeInFullList(Page* page)
     {
-        return page->HasNoSpace() || (allocXdata && !((Segment*)(page->segment))->CanAllocSecondary());
+        return page->HasNoSpace() || (codePageAllocators->AllocXdata() && !((Segment*)(page->segment))->CanAllocSecondary());
     }
 
-    BOOL ProtectAllocation(__in Allocation* allocation, DWORD dwVirtualProtectFlags, __out DWORD* dwOldVirtualProtectFlags, DWORD desiredOldProtectFlag);
-    BOOL ProtectAllocationPage(__in Allocation* allocation, __in char* addressInPage, DWORD dwVirtualProtectFlags, __out DWORD* dwOldVirtualProtectFlags, DWORD desiredOldProtectFlag);
-
-    DWORD EnsureAllocationProtection(Allocation* allocation, bool readWrite)
-    {
-        if (readWrite)
-        {
-            // this only call from InterpreterThunkEmitter
-            return EnsureAllocationReadWrite<true, PAGE_READWRITE>(allocation);
-        }
-        else
-        {
-            return EnsureAllocationReadWrite<false, PAGE_READWRITE>(allocation);
-        }
-
-    }
+    BOOL ProtectAllocation(__in Allocation* allocation, DWORD dwVirtualProtectFlags, DWORD desiredOldProtectFlag, __in_opt char* addressInPage = nullptr);
+    BOOL ProtectAllocationWithExecuteReadWrite(Allocation *allocation, char* addressInPage = nullptr);
+    BOOL ProtectAllocationWithExecuteReadOnly(Allocation *allocation, char* addressInPage = nullptr);
 
     ~Heap();
 
@@ -358,99 +460,44 @@ private:
      * Large object methods
      */
     Allocation* AllocLargeObject(size_t bytes, ushort pdataCount, ushort xdataSize, bool canAllocInPreReservedHeapPageSegment, bool isAnyJittedCode, _Inout_ bool* isAllJITCodeInPreReservedRegion);
+    
+    void FreeLargeObject(Allocation* header);
 
-    template<bool freeAll>
-    bool FreeLargeObject(Allocation* header);
+    void FreeLargeObjects();
 
-    void FreeLargeObjects()
-    {
-        FreeLargeObject<true>(nullptr);
-    }
-
-    DWORD EnsurePageWriteable(Page* page)
-    {
-        return EnsurePageReadWrite<true, PAGE_READWRITE>(page);
-    }
+    //Called during Free
+    DWORD EnsurePageWriteable(Page* page);
 
     // this get called when freeing the whole page
-    DWORD EnsureAllocationWriteable(Allocation* allocation)
-    {
-        return EnsureAllocationReadWrite<true, PAGE_READWRITE>(allocation);
-    }
+    DWORD EnsureAllocationWriteable(Allocation* allocation);
 
     // this get called when only freeing a part in the page
-    DWORD EnsureAllocationExecuteWriteable(Allocation* allocation)
-    {
-        return EnsureAllocationReadWrite<true, PAGE_EXECUTE_READWRITE>(allocation);
-    }
+    DWORD EnsureAllocationExecuteWriteable(Allocation* allocation);
 
-    template<bool readWrite, DWORD readWriteFlags>
+    template<DWORD readWriteFlags>
     DWORD EnsurePageReadWrite(Page* page)
     {
-        if (readWrite)
-        {
-            if (!page->isReadWrite && !page->isDecommitted)
-            {
-                DWORD dwOldProtectFlags = 0;
-                BOOL result = this->ProtectPages(page->address, 1, page->segment, readWriteFlags, &dwOldProtectFlags, PAGE_EXECUTE);
-                page->isReadWrite = true;
-                Assert(result && (dwOldProtectFlags & readWriteFlags) == 0);
-                return dwOldProtectFlags;
-            }
-        }
-        else
-        {
-            if (page->isReadWrite && !page->isDecommitted)
-            {
-                DWORD dwOldProtectFlags = 0;
-                BOOL result = this->ProtectPages(page->address, 1, page->segment, PAGE_EXECUTE, &dwOldProtectFlags, readWriteFlags);
-                page->isReadWrite = false;
-                Assert(result && (dwOldProtectFlags & PAGE_EXECUTE) == 0);
-                return dwOldProtectFlags;
-            }
-        }
+        Assert(!page->isDecommitted);
 
-        return 0;
+        BOOL result = this->codePageAllocators->ProtectPages(page->address, 1, page->segment, readWriteFlags, PAGE_EXECUTE);
+        Assert(result && (PAGE_EXECUTE & readWriteFlags) == 0);
+        return PAGE_EXECUTE;
     }
 
-    template<bool readWrite, DWORD readWriteFlags>
+    template<DWORD readWriteFlags>
     DWORD EnsureAllocationReadWrite(Allocation* allocation)
     {
         if (allocation->IsLargeAllocation())
         {
-            if (readWrite)
-            {
-                if (!allocation->largeObjectAllocation.isReadWrite)
-                {
-                    DWORD dwOldProtectFlags;
-                    BOOL result = this->ProtectAllocation(allocation, readWriteFlags, &dwOldProtectFlags, PAGE_EXECUTE);
-                    Assert(result && (dwOldProtectFlags & readWriteFlags) == 0);
-                    return dwOldProtectFlags;
-                }
-            }
-            else
-            {
-                if (allocation->largeObjectAllocation.isReadWrite)
-                {
-                    DWORD dwOldProtectFlags;
-                    this->ProtectAllocation(allocation, PAGE_EXECUTE, &dwOldProtectFlags, readWriteFlags);
-                    Assert((dwOldProtectFlags & PAGE_EXECUTE) == 0);
-                    return dwOldProtectFlags;
-                }
-            }
-
+            BOOL result = this->ProtectAllocation(allocation, readWriteFlags, PAGE_EXECUTE);
+            Assert(result && (PAGE_EXECUTE & readWriteFlags) == 0);
+            return PAGE_EXECUTE;
         }
         else
         {
-            return EnsurePageReadWrite<readWrite, readWriteFlags>(allocation->page);
+            return EnsurePageReadWrite<readWriteFlags>(allocation->page);
         }
-
-        // 0 is safe to return as its not a memory protection constant
-        // so it indicates that nothing was changed
-        return 0;
     }
-
-    BOOL ProtectAllocationInternal(__in Allocation* allocation, __in_opt char* addressInPage, DWORD dwVirtualProtectFlags, __out DWORD* dwOldVirtualProtectFlags, DWORD desiredOldProtectFlag);
 
     /**
      * Freeing Methods
@@ -471,30 +518,18 @@ private:
      * Page methods
      */
     Page*       AddPageToBucket(Page* page, BucketId bucket, bool wasFull = false);
-    Allocation* AllocInPage(Page* page, size_t bytes, ushort pdataCount, ushort xdataSize);
+    bool        AllocInPage(Page* page, size_t bytes, ushort pdataCount, ushort xdataSize, Allocation ** allocation);
     Page*       AllocNewPage(BucketId bucket, bool canAllocInPreReservedHeapPageSegment, bool isAnyJittedCode, _Inout_ bool* isAllJITCodeInPreReservedRegion);
     Page*       FindPageToSplit(BucketId targetBucket, bool findPreReservedHeapPages = false);
-
-    template<class Fn>
-    void TransferPages(Fn predicate, DListBase<Page>* fromList, DListBase<Page>* toList)
-    {
-        Assert(fromList != toList);
-
-        for(int bucket = 0; bucket < BucketId::NumBuckets; bucket++)
-        {
-            FOREACH_DLISTBASE_ENTRY_EDITING(Page, page, &(fromList[bucket]), bucketIter)
-            {
-                if(predicate(&page))
-                {
-                    bucketIter.MoveCurrentTo(&(toList[bucket]));
-                }
-            }
-            NEXT_DLISTBASE_ENTRY_EDITING;
-        }
-    }
+    bool        UpdateFullPages();
+    Page *      GetExistingPage(BucketId bucket, bool canAllocInPreReservedHeapPageSegment);
 
     BVIndex     GetIndexInPage(__in Page* page, __in char* address);
-    void        RemovePageFromFullList(Page* page);
+
+
+    bool IsInHeap(DListBase<Page> const buckets[NumBuckets], __in void *address);
+    bool IsInHeap(DListBase<Page> const& buckets, __in void *address);
+    bool IsInHeap(DListBase<Allocation> const& allocations, __in void *address);
 
     /**
      * Stats
@@ -509,9 +544,8 @@ private:
     /**
      * Allocator stuff
      */
-    HeapPageAllocator<VirtualAllocWrapper>               pageAllocator;
-    HeapPageAllocator<PreReservedVirtualAllocWrapper>    preReservedHeapPageAllocator;
-    ArenaAllocator*                                   auxilliaryAllocator;
+    CodePageAllocators *                              codePageAllocators;
+    ArenaAllocator*                                   auxiliaryAllocator;
 
     /*
      * Various tracking lists
@@ -523,9 +557,7 @@ private:
     DListBase<Page>        decommittedPages;
     DListBase<Allocation>  decommittedLargeObjects;
 
-    // Critical section synchronize in the BGJIT thread and IsInRange in the main thread
-    CriticalSection        cs;
-    bool                   allocXdata;
+    uint lastSecondaryAllocStateChangedCount;
 #if DBG
     bool inDtor;
 #endif

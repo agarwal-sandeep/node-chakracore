@@ -34,13 +34,13 @@ typedef void* FunctionTableHandle;
     { \
         if (!verbose || this->pageAllocatorFlagTable.Verbose) \
         {   \
-            Output::Print(L"%p : %p> PageAllocator(%p): ", GetCurrentThreadContextId(), ::GetCurrentThreadId(), this); \
+            Output::Print(_u("%p : %p> PageAllocator(%p): "), GetCurrentThreadContextId(), ::GetCurrentThreadId(), this); \
             if (debugName != nullptr) \
             { \
-                Output::Print(L"[%s] ", this->debugName); \
+                Output::Print(_u("[%s] "), this->debugName); \
             } \
             Output::Print(format, __VA_ARGS__);         \
-            Output::Print(L"\n"); \
+            Output::Print(_u("\n")); \
             if (stats && this->pageAllocatorFlagTable.Stats.IsEnabled(Js::PageAllocatorPhase)) \
             { \
                 this->DumpStats();         \
@@ -176,7 +176,7 @@ protected:
 /*
  * Page Segments allows a client to deal with virtual memory on a page level
  * unlike Segment, which gives you access on a segment basis. Pages managed
- * by the page segment are initially in a “free list”, and have the no access
+ * by the page segment are initially in a "free list", and have the no access
  * bit set on them. When a client wants pages, we get them from the free list
  * and commit them into memory. When the client no longer needs those pages,
  * we simply decommit them- this means that the pages are still reserved for
@@ -188,7 +188,7 @@ template<typename TVirtualAlloc>
 class PageSegmentBase : public SegmentBase<TVirtualAlloc>
 {
 public:
-    PageSegmentBase(PageAllocatorBase<TVirtualAlloc> * allocator, bool external);
+    PageSegmentBase(PageAllocatorBase<TVirtualAlloc> * allocator, bool committed, bool allocated);
     // Maximum possible size of a PageSegment; may be smaller.
     static const uint MaxDataPageCount = 256;     // 1 MB
     static const uint MaxGuardPageCount = 16;
@@ -368,33 +368,6 @@ public:
 
     static size_t GetAndResetMaxUsedBytes();
 
-    virtual BOOL ProtectPages(__in char* address, size_t pageCount, __in void* segment, DWORD dwVirtualProtectFlags, DWORD* dwOldVirtualProtectFlags, DWORD desiredOldProtectFlag)
-    {
-        Assert(false);
-        return false;
-    }
-
-    virtual bool AllocSecondary(void* segment, ULONG_PTR functionStart, DWORD functionSize, ushort pdataCount, ushort xdataSize, SecondaryAllocation* allocation)
-    {
-        Assert(false);
-        return false;
-    }
-
-    virtual void ReleaseSecondary(const SecondaryAllocation& allocation, void* segment)
-    {
-        Assert(false);
-    }
-
-    virtual void DecommitPages(__in char* address, int pageCount)
-    {
-        Assert(false);
-    }
-
-    virtual void TrackDecommitedPages(void * address, uint pageCount, __in void* segment)
-    {
-        Assert(false);
-    }
-
     struct BackgroundPageQueue
     {
         BackgroundPageQueue();
@@ -437,12 +410,7 @@ public:
 
     //VirtualAllocator APIs
     TVirtualAlloc * GetVirtualAllocator() { return virtualAllocator; }
-    void SetVirtualAllocator(TVirtualAlloc * virtualAllocator)
-    {
-        Assert(virtualAllocator != nullptr);
-        PVOID oldVirtualAllocator = InterlockedCompareExchangePointer((PVOID*) &(this->virtualAllocator), virtualAllocator, NULL);
-        AssertMsg(oldVirtualAllocator == nullptr || oldVirtualAllocator == (PVOID)virtualAllocator, "Trying to set a new value for VirtualAllocWrapper ? - INVALID");
-    }
+
     bool IsPreReservedPageAllocator() { return virtualAllocator != nullptr; }
 
 
@@ -508,7 +476,7 @@ public:
 #endif
 
 #if DBG_DUMP
-    wchar_t const * debugName;
+    char16 const * debugName;
 #endif
 protected:
     SegmentBase<TVirtualAlloc> * AllocSegment(size_t pageCount);
@@ -523,9 +491,11 @@ protected:
 
     template <bool notPageAligned>
     char * TryAllocFreePages(uint pageCount, PageSegmentBase<TVirtualAlloc> ** pageSegment, PageHeapMode pageHeapFlags);
+    char * TryAllocFromZeroPagesList(uint pageCount, PageSegmentBase<TVirtualAlloc> ** pageSegment, SLIST_HEADER& zeroPagesList, bool isPendingZeroList);
+    char * TryAllocFromZeroPages(uint pageCount, PageSegmentBase<TVirtualAlloc> ** pageSegment, PageHeapMode pageHeapFlags);
 
     template <bool notPageAligned>
-    char * TryAllocDecommitedPages(uint pageCount, PageSegmentBase<TVirtualAlloc> ** pageSegment, PageHeapMode pageHeapFlags);
+    char * TryAllocDecommittedPages(uint pageCount, PageSegmentBase<TVirtualAlloc> ** pageSegment, PageHeapMode pageHeapFlags);
 
     DListBase<PageSegmentBase<TVirtualAlloc>> * GetSegmentList(PageSegmentBase<TVirtualAlloc> * segment);
     void TransferSegment(PageSegmentBase<TVirtualAlloc> * segment, DListBase<PageSegmentBase<TVirtualAlloc>> * fromSegmentList);
@@ -548,7 +518,8 @@ protected:
     virtual void DumpStats() const;
 #endif
     virtual PageSegmentBase<TVirtualAlloc> * AddPageSegment(DListBase<PageSegmentBase<TVirtualAlloc>>& segmentList);
-    static PageSegmentBase<TVirtualAlloc> * AllocPageSegment(DListBase<PageSegmentBase<TVirtualAlloc>>& segmentList, PageAllocatorBase<TVirtualAlloc> * pageAllocator, bool external);
+    static PageSegmentBase<TVirtualAlloc> * AllocPageSegment(DListBase<PageSegmentBase<TVirtualAlloc>>& segmentList, 
+        PageAllocatorBase<TVirtualAlloc> * pageAllocator, bool committed, bool allocated);
 
     // Zero Pages
     void AddPageToZeroQueue(__in void * address, uint pageCount, __in PageSegmentBase<TVirtualAlloc> * pageSegment);
@@ -625,7 +596,7 @@ protected:
     friend class IdleDecommit;
 
 protected:
-    virtual bool CreateSecondaryAllocator(SegmentBase<TVirtualAlloc>* segment, SecondaryAllocator** allocator)
+    virtual bool CreateSecondaryAllocator(SegmentBase<TVirtualAlloc>* segment, bool committed, SecondaryAllocator** allocator)
     {
         *allocator = nullptr;
         return true;
@@ -720,7 +691,7 @@ protected:
     void LogAllocSegment(uint segmentCount, size_t pageCount);
     void LogFreeSegment(SegmentBase<TVirtualAlloc> * segment);
     void LogFreeDecommittedSegment(SegmentBase<TVirtualAlloc> * segment);
-    void LogFreePartiallyDecommitedPageSegment(PageSegmentBase<TVirtualAlloc> * pageSegment);
+    void LogFreePartiallyDecommittedPageSegment(PageSegmentBase<TVirtualAlloc> * pageSegment);
 
     void LogAllocPages(size_t pageCount);
     void LogFreePages(size_t pageCount);
@@ -746,27 +717,24 @@ template<typename TVirtualAlloc>
 class HeapPageAllocator : public PageAllocatorBase<TVirtualAlloc>
 {
 public:
-    HeapPageAllocator(AllocationPolicyManager * policyManager, bool allocXdata, bool excludeGuardPages);
+    HeapPageAllocator(AllocationPolicyManager * policyManager, bool allocXdata, bool excludeGuardPages, TVirtualAlloc * virtualAllocator);
 
-    BOOL ProtectPages(__in char* address, size_t pageCount, __in void* segment, DWORD dwVirtualProtectFlags, DWORD* dwOldVirtualProtectFlags, DWORD desiredOldProtectFlag);
+    BOOL ProtectPages(__in char* address, size_t pageCount, __in void* segment, DWORD dwVirtualProtectFlags, DWORD desiredOldProtectFlag);
     bool AllocSecondary(void* segment, ULONG_PTR functionStart, DWORD functionSize, ushort pdataCount, ushort xdataSize, SecondaryAllocation* allocation);
-    void ReleaseSecondary(const SecondaryAllocation& allocation, void* segment);
-    void TrackDecommitedPages(void * address, uint pageCount, __in void* segment);
+    bool ReleaseSecondary(const SecondaryAllocation& allocation, void* segment);
+    void TrackDecommittedPages(void * address, uint pageCount, __in void* segment);
     void DecommitPages(__in char* address, size_t pageCount = 1);
 
-    // Release pages that has already been decommited
-    void    ReleaseDecommited(void * address, size_t pageCount, __in void * segment);
-    bool    IsAddressFromAllocator(__in void* address);
-    char *  InitPageSegment();
+    // Release pages that has already been decommitted
+    void ReleaseDecommitted(void * address, size_t pageCount, __in void * segment);
+    bool IsAddressFromAllocator(__in void* address);    
 
-    PageSegmentBase<TVirtualAlloc> * AddPageSegment(DListBase<PageSegmentBase<TVirtualAlloc>>& segmentList);
-
-
+    bool AllocXdata() { return allocXdata; }
 private:
     bool         allocXdata;
-    void         ReleaseDecommitedSegment(__in SegmentBase<TVirtualAlloc>* segment);
+    void         ReleaseDecommittedSegment(__in SegmentBase<TVirtualAlloc>* segment);
 #if PDATA_ENABLED
-    virtual bool CreateSecondaryAllocator(SegmentBase<TVirtualAlloc>* segment, SecondaryAllocator** allocator) override;
+    virtual bool CreateSecondaryAllocator(SegmentBase<TVirtualAlloc>* segment, bool committed, SecondaryAllocator** allocator) override;
 #endif
 
 };

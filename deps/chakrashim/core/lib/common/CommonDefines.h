@@ -12,9 +12,9 @@
 //----------------------------------------------------------------------------------------------------
 #define CHAKRA_CORE_MAJOR_VERSION 1
 #define CHAKRA_CORE_MINOR_VERSION 1
-#define CHAKRA_CORE_VERSION_RELEASE 1
-#define CHAKRA_CORE_VERSION_PRERELEASE 0
-#define CHAKRA_CORE_VERSION_RELEASE_QFE 4
+#define CHAKRA_CORE_VERSION_RELEASE 0
+#define CHAKRA_CORE_VERSION_PRERELEASE 1
+#define CHAKRA_CORE_VERSION_RELEASE_QFE 0
 
 #define CHAKRA_VERSION_RELEASE 0
 #define CHAKRA_VERSION_PRERELEASE 1
@@ -100,8 +100,8 @@
 #define SUPPORT_FIXED_FIELDS_ON_PATH_TYPES          // *** TODO: Won't build if disabled currently
 
 // GC features
-#define CONCURRENT_GC_ENABLED 1                     // *** TODO: Won't build if disabled currently
-#define PARTIAL_GC_ENABLED 1                        // *** TODO: Won't build if disabled currently
+#define ENABLE_CONCURRENT_GC 1
+#define ENABLE_PARTIAL_GC 1  
 #define BUCKETIZE_MEDIUM_ALLOCATIONS 1              // *** TODO: Won't build if disabled currently
 #define SMALLBLOCK_MEDIUM_ALLOC 1                   // *** TODO: Won't build if disabled currently
 #define LARGEHEAPBLOCK_ENCODING 1                   // Large heap block metadata encoding
@@ -154,6 +154,7 @@
 #define ENABLE_DOM_FAST_PATH
 #define ENABLE_JS_ETW                               // ETW support
 #define EDIT_AND_CONTINUE
+#define ENABLE_JIT_CLAMP
 #endif
 
 // Telemetry flags
@@ -444,7 +445,7 @@
 //  - flags values that are dependent on other flags
 //----------------------------------------------------------------------------------------------------
 
-#ifndef CONCURRENT_GC_ENABLED
+#if !ENABLE_CONCURRENT_GC
 #undef IDLE_DECOMMIT_ENABLED   // Currently idle decommit can only be enabled if concurrent gc is enabled
 #endif
 

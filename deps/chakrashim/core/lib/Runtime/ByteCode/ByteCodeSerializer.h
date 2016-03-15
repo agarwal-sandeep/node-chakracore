@@ -7,7 +7,7 @@
 // Turn this on to enable magic constants in byte code (useful for debugging)
 //#define BYTE_CODE_MAGIC_CONSTANTS
 
-#include "ByteCode\ByteCodeSerializeFlags.h"
+#include "ByteCode/ByteCodeSerializeFlags.h"
 
 namespace Js
 {
@@ -34,7 +34,7 @@ namespace Js
         sakIntArray = 5,
         sakFloatArray = 6,
 
-        sakPropertyIdArrayForCachedScope = 7,       // serialization only type, indiciate extra slots
+        sakPropertyIdArrayForCachedScope = 7,       // serialization only type, indicate extra slots
     };
 
 // Tightly pack serialized structures

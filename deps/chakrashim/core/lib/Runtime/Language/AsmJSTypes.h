@@ -63,16 +63,16 @@ namespace Js
     enum AsmJSMathBuiltinFunction
     {
 #define ASMJS_MATH_FUNC_NAMES(name, propertyName) AsmJSMathBuiltin_##name,
-#include "AsmJsBuiltinNames.h"
+#include "AsmJsBuiltInNames.h"
         AsmJSMathBuiltinFunction_COUNT,
 #define ASMJS_MATH_CONST_NAMES(name, propertyName) AsmJSMathBuiltin_##name,
-#include "AsmJsBuiltinNames.h"
+#include "AsmJsBuiltInNames.h"
         AsmJSMathBuiltin_COUNT
     };
     enum AsmJSTypedArrayBuiltinFunction
     {
 #define ASMJS_ARRAY_NAMES(name, propertyName) AsmJSTypedArrayBuiltin_##name,
-#include "AsmJsBuiltinNames.h"
+#include "AsmJsBuiltInNames.h"
         AsmJSTypedArrayBuiltin_COUNT
     };
     // Represents the type of a general asm.js expression.
@@ -125,7 +125,7 @@ namespace Js
         bool isVarAsmJsType() const;
         bool isSubType( AsmJsType type ) const;
         bool isSuperType( AsmJsType type ) const;
-        const wchar_t *toChars() const;
+        const char16 *toChars() const;
         bool isSIMDType() const;
         bool isSIMDInt32x4() const;
         bool isSIMDFloat32x4() const;
@@ -183,7 +183,7 @@ namespace Js
     //   }
     //
     // the AsmJSCoercion of (1) is Signed (since | performs ToInt32) but, when
-    // translated to an VarType, the result is a plain Int since, as shown, it
+    // translated to a VarType, the result is a plain Int since, as shown, it
     // is legal to assign both Signed and Unsigned (or some other Int) values to
     // it. For (2), the AsmJSCoercion is also Signed but, when translated to an
     // RetType, the result is Signed since callers (asm.js and non-asm.js) can
@@ -223,7 +223,7 @@ namespace Js
         bool operator!=( AsmJsVarType rhs ) const;
     };
 
-    // Implements <: (subtype) operator when the RHS is an VarType
+    // Implements <: (subtype) operator when the RHS is a VarType
     static inline bool
         operator<=( AsmJsType lhs, AsmJsVarType rhs )
     {
@@ -957,7 +957,7 @@ namespace Js
         ArgSlot mArgSizesLength;
         uint * mArgSizes;
         ArgSlot mArgByteSize;
-        // offset in Byte from the beggining of the stack aka R0
+        // offset in Byte from the beginning of the stack aka R0
         int mIntByteOffset, mDoubleByteOffset, mFloatByteOffset;
         AsmJsRetType mReturnType;
 
@@ -1090,7 +1090,7 @@ namespace Js
     enum AsmJsSIMDBuiltinFunction
     {
 #define ASMJS_SIMD_NAMES(name, propertyName) AsmJsSIMDBuiltin_##name,
-#include "AsmJsBuiltinNames.h"
+#include "AsmJsBuiltInNames.h"
         AsmJsSIMDBuiltin_COUNT
     };
 

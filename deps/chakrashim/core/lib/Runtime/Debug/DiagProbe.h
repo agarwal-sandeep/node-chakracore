@@ -86,7 +86,7 @@ namespace Js
         STEP_OUT        = 0x04,
         STEP_DOCUMENT   = 0x08,
 
-        // On entry of an jitted function, need to bailout to handle stepping if in STEP_IN mode,
+        // On entry of a jitted function, need to bailout to handle stepping if in STEP_IN mode,
         // or STEP_OVER (e.g. STEP_OVER at the end of this function, and it is called again by a
         // library caller).
         STEP_BAILOUT    = STEP_IN | STEP_OVER,
@@ -94,6 +94,7 @@ namespace Js
 
     struct DebuggerOptionsCallback
     {
+        virtual bool IsExceptionReportingEnabled() { return true; }
         virtual bool IsFirstChanceExceptionEnabled() { return false; }
         virtual bool IsNonUserCodeSupportEnabled() { return false; }
         virtual bool IsLibraryStackFrameSupportEnabled() { return false; }

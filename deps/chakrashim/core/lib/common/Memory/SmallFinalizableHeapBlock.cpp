@@ -126,7 +126,7 @@ SmallFinalizableHeapBlockT<TBlockAttributes>::ProcessMarkedObject(void* objectAd
     }
 }
 
-#if defined(PARTIAL_GC_ENABLED) || defined(CONCURRENT_GC_ENABLED)
+#if ENABLE_PARTIAL_GC || ENABLE_CONCURRENT_GC
 // static
 template <class TBlockAttributes>
 bool
@@ -160,8 +160,8 @@ SmallFinalizableHeapBlockT<TBlockAttributes>::RescanObject(SmallFinalizableHeapB
     }
 
     // Since we mark through unallocated objects, we might have marked an object before it
-    // is allocated as an tracked object.   The object will not be queue up in the
-    // tracked object list, and NewTrackBit will still be on.   Queue it up now.
+    // is allocated as a tracked object. The object will not be queue up in the
+    // tracked object list, and NewTrackBit will still be on. Queue it up now.
 
     // NewTrackBit will also be on for tracked object that we weren't able to queue
     // because of OOM.  In those case, the page is forced to be rescan, and we will
@@ -196,8 +196,9 @@ template <class TBlockAttributes>
 bool
 SmallFinalizableHeapBlockT<TBlockAttributes>::RescanTrackedObject(FinalizableObject * object, uint objectIndex, Recycler * recycler)
 {
-    RecyclerVerboseTrace(recycler->GetRecyclerFlagsTable(), L"Marking 0x%08x during rescan\n", object);
-#ifdef PARTIAL_GC_ENABLED
+    RecyclerVerboseTrace(recycler->GetRecyclerFlagsTable(), _u("Marking 0x%08x during rescan\n"), object);
+#if ENABLE_CONCURRENT_GC
+#if ENABLE_PARTIAL_GC
     if (recycler->inPartialCollectMode)
     {
         Assert(!recycler->DoQueueTrackedObject());
@@ -221,6 +222,10 @@ SmallFinalizableHeapBlockT<TBlockAttributes>::RescanTrackedObject(FinalizableObj
     ObjectInfo(objectIndex) &= ~NewTrackBit;
 
     return true;
+#else
+    // REVIEW: Is this correct? Or should we remove the track bit always?
+    return false;
+#endif
 }
 #endif
 
@@ -393,7 +398,7 @@ SmallFinalizableHeapBlockT<TBlockAttributes>::Init(ushort objectSize, ushort obj
     __super::Init(objectSize, objectCount);
 }
 
-#ifdef PARTIAL_GC_ENABLED
+#if ENABLE_PARTIAL_GC
 template <class TBlockAttributes>
 void
 SmallFinalizableHeapBlockT<TBlockAttributes>::FinishPartialCollect()

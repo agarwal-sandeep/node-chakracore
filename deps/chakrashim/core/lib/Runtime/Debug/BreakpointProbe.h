@@ -12,6 +12,7 @@ namespace Js
         int byteOffset;
         DebugDocument* debugDocument;
         FunctionBody* functionBody;
+        UINT breakPointId;
 
     public:
         BreakpointProbe(DebugDocument* debugDocument, StatementLocation& statement);
@@ -23,6 +24,16 @@ namespace Js
         virtual void CleanupHalt();
 
         bool Matches(FunctionBody* _pBody, int characterPosition);
+        bool Matches(StatementLocation statement);
+        bool Matches(FunctionBody* _pBody, DebugDocument* debugDocument, int byteOffset);
+
+        UINT GetId() const { return this->breakPointId; }
+        void GetStatementLocation(StatementLocation * statement);
+        FunctionBody* GetFunctionBody() const { return this->functionBody; }
+        int GetBytecodeOffset() const { return this->byteOffset; }
+
+        DebugDocument* GetDbugDocument() { return this->debugDocument; }
+        int GetCharacterOffset() { return this->characterOffset; }
     };
 
     typedef JsUtil::List<BreakpointProbe*, ArenaAllocator> BreakpointProbeList;

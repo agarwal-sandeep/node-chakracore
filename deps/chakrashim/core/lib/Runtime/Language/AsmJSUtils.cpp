@@ -68,7 +68,7 @@ namespace Js
     {
         Assert( node->nop == knopFncDecl );
         PnFnc func = node->sxFnc;
-        ParseNode* first = func.pnodeArgs;
+        ParseNode* first = func.pnodeParams;
         // throws OOM on uint16 overflow
         for( ParseNode* pnode = first; pnode; pnode = pnode->sxVar.pnodeNext, UInt16Math::Inc(numformals));
         return first;
@@ -141,7 +141,7 @@ namespace Js
         *outNode = pnode;
     }
 
-    AsmJsCompilationException::AsmJsCompilationException( const wchar_t* _msg, ... )
+    AsmJsCompilationException::AsmJsCompilationException( const char16* _msg, ... )
     {
         va_list arglist;
         va_start( arglist, _msg );
@@ -280,21 +280,21 @@ namespace Js
                 case AsmJsType::Int32x4:
                     if (!JavascriptSIMDInt32x4::Is(*origArgs))
                     {
-                        JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdInt32x4TypeMismatch, L"Int32x4");
+                        JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdInt32x4TypeMismatch, _u("Int32x4"));
                     }
                     simdVal = ((JavascriptSIMDInt32x4*)(*origArgs))->GetValue();
                     break;
                 case AsmJsType::Float32x4:
                     if (!JavascriptSIMDFloat32x4::Is(*origArgs))
                     {
-                        JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdFloat32x4TypeMismatch, L"Float32x4");
+                        JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdFloat32x4TypeMismatch, _u("Float32x4"));
                     }
                     simdVal = ((JavascriptSIMDFloat32x4*)(*origArgs))->GetValue();
                     break;
                 case AsmJsType::Float64x2:
                     if (!JavascriptSIMDFloat64x2::Is(*origArgs))
                     {
-                        JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdFloat64x2TypeMismatch, L"Float64x2");
+                        JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdFloat64x2TypeMismatch, _u("Float64x2"));
                     }
                     simdVal = ((JavascriptSIMDFloat64x2*)(*origArgs))->GetValue();
                     break;
@@ -327,11 +327,11 @@ namespace Js
             break;
         }
         case AsmJsRetType::Double:{
-            returnValue = JavascriptNumber::New(doubleRetVal, func->GetScriptContext());
+            returnValue = JavascriptNumber::NewWithCheck(doubleRetVal, func->GetScriptContext());
             break;
         }
         case AsmJsRetType::Float:{
-            returnValue = JavascriptNumber::New(floatRetVal, func->GetScriptContext());
+            returnValue = JavascriptNumber::NewWithCheck(floatRetVal, func->GetScriptContext());
             break;
         }
         case AsmJsRetType::Float32x4:
@@ -441,21 +441,21 @@ namespace Js
                     case AsmJsType::Int32x4:
                         if (i >= argInCount || !JavascriptSIMDInt32x4::Is(args.Values[i + 1]))
                         {
-                            JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdInt32x4TypeMismatch, L"Int32x4");
+                            JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdInt32x4TypeMismatch, _u("Int32x4"));
                         }
                         simdVal = ((JavascriptSIMDInt32x4*)(args.Values[i + 1]))->GetValue();
                         break;
                     case AsmJsType::Float32x4:
                         if (i >= argInCount || !JavascriptSIMDFloat32x4::Is(args.Values[i + 1]))
                         {
-                            JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdFloat32x4TypeMismatch, L"Float32x4");
+                            JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdFloat32x4TypeMismatch, _u("Float32x4"));
                         }
                         simdVal = ((JavascriptSIMDFloat32x4*)(args.Values[i + 1]))->GetValue();
                         break;
                     case AsmJsType::Float64x2:
                         if (i >= argInCount || !JavascriptSIMDFloat64x2::Is(args.Values[i + 1]))
                         {
-                            JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdFloat64x2TypeMismatch, L"Float64x2");
+                            JavascriptError::ThrowTypeError(scriptContext, JSERR_SimdFloat64x2TypeMismatch, _u("Float64x2"));
                         }
                         simdVal = ((JavascriptSIMDFloat64x2*)(args.Values[i + 1]))->GetValue();
                         break;
@@ -515,7 +515,7 @@ namespace Js
                 call ecx
                 movsd dval, xmm0
             }
-            returnValue = JavascriptNumber::New(dval, func->GetScriptContext());
+            returnValue = JavascriptNumber::NewWithCheck(dval, func->GetScriptContext());
             break;
         }
         case AsmJsRetType::Float:{
@@ -530,7 +530,7 @@ namespace Js
                 call ecx
                 movss fval, xmm0
             }
-            returnValue = JavascriptNumber::New((double)fval, func->GetScriptContext());
+            returnValue = JavascriptNumber::NewWithCheck((double)fval, func->GetScriptContext());
             break;
         }
         case AsmJsRetType::Int32x4:

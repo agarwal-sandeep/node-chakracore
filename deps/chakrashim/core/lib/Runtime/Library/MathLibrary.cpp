@@ -1,10 +1,10 @@
-//-------------------------------------------------------------------------------------------------------
+﻿//-------------------------------------------------------------------------------------------------------
 // Copyright (C) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
 //-------------------------------------------------------------------------------------------------------
 #include "RuntimeLibraryPch.h"
-#include "Language\JavascriptMathOperators.h"
-#include "Math\CrtSSE2Math.h"
+#include "Language/JavascriptMathOperators.h"
+#include "Math/CrtSSE2Math.h"
 
 #if defined(_M_IX86) || defined(_M_X64)
 #pragma intrinsic(_mm_round_sd)
@@ -1020,10 +1020,17 @@ LDone:
             {
                 return scriptContext->GetLibrary()->GetNaN();
             }
-            if(x == 0.0 || !NumberUtilities::IsFinite(x) )
+
+            // for doubles, if x >= 2^52 or <= -2^52, x must be an integer, and adding 0.5 will overflow the
+            // integer to the next one. Therefore, we directly return x.
+            if (x == 0.0 || !NumberUtilities::IsFinite(x) || x >= 4503599627370496.0 || x <= -4503599627370496.0)
             {
                 // 0.0 catches the -0 case...
                 return JavascriptNumber::ToVarNoCheck(x, scriptContext);
+            }
+
+            if (x > 0 && x < 0.5) {
+                return JavascriptNumber::ToVarNoCheck((double)Js::JavascriptNumber::k_Zero, scriptContext);
             }
 
             if(x < 0 && x >= -0.5)
