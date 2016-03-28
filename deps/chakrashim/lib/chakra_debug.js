@@ -23,6 +23,7 @@
   var suspendMessage = null;
   var frames = null;
   var nextScopeHandle = 0;
+  var selectedFrame = 0;
 
   function GetNextScopeHandle() {
     return --nextScopeHandle;
@@ -235,6 +236,44 @@
         }
       };
     })();
+
+    retObj.CreateScopeAndRef = function (scopeType, propertiesArray, index, frameIndex) {
+      var scopeRef = GetNextScopeHandle();
+      var scopeAndRef = {};
+      scopeAndRef.scope = {
+        'type': scopeType,
+        'index': index,
+        'frameIndex': frameIndex,
+        'object': {
+          'ref': scopeRef
+        }
+      };
+      var properties = [];
+      for (var propsLen = 0; propsLen < propertiesArray.length; ++propsLen) {
+        properties.push({
+          'name': propertiesArray[propsLen]['name'],
+          'propertyType': 0,
+          'ref': propertiesArray[propsLen]['handle']
+        });
+      }
+      scopeAndRef.ref = {
+        'handle': scopeRef,
+        'type': 'object',
+        'className': 'Object',
+        'constructorFunction': {
+          'ref': 100000
+        },
+        'protoObject': {
+          'ref': 100000
+        },
+        'prototypeObject': {
+          'ref': 100000
+        },
+        'properties': properties
+      };
+
+      return scopeAndRef;
+    };
 
     return retObj;
   })();
@@ -603,10 +642,22 @@
     'evaluate' : function (debugProtoObj) {
       var response = DebugManager.MakeResponse(debugProtoObj, true);
       var evalResult = undefined;
-      if (isAtBreak && debugProtoObj.arguments.frame != undefined) {
+      if (isAtBreak) {
         // {'command':'evaluate','arguments':{'expression':'x','disable_break':true,'maxStringLength':10000,'frame':0},'type':'request','seq':35}
         // {'seq':37,'request_seq':35,'type':'response','command':'evaluate','success':true,'body':{'handle':13,'type':'number','value':1,'text':'1'},'refs':[],'running':false}
-        evalResult = callHostFunction(chakraDebug.JsDiagEvaluate, debugProtoObj.arguments.expression, debugProtoObj.arguments.frame);
+
+        var tempSelectedFrame = -1;
+        if (debugProtoObj.arguments && (typeof debugProtoObj.arguments.frame == 'number')) {
+          tempSelectedFrame = debugProtoObj.arguments.frame;
+        } else if (debugProtoObj.arguments && debugProtoObj.arguments.global == true) {
+          if (frames != null && frames.length > 0) {
+            tempSelectedFrame = frames.length - 1;
+          } else {
+            var stackTrace = callHostFunction(chakraDebug.JsDiagGetStacktrace);
+            tempSelectedFrame = stackTrace[stackTrace.length - 1].index;
+          }
+        }
+        evalResult = callHostFunction(chakraDebug.JsDiagEvaluate, debugProtoObj.arguments.expression, tempSelectedFrame);
 
         AddChildrens(evalResult);
 
@@ -679,54 +730,21 @@
           var scopes = [];
           var refs = [];
 
-          function AddToScope(scopeType, propertiesArray) {
-            var scopeRef = GetNextScopeHandle();
-            scopes.push({
-              'type' : scopeType,
-              'index' : frames[frameIndex].index,
-              'frameIndex' : debugProtoObj.arguments.frame_index,
-              'object' : {
-                'ref' : scopeRef
-              }
-            });
-            var properties = [];
-            for (var propsLen = 0; propsLen < propertiesArray.length; ++propsLen) {
-              properties.push({
-                'name' : propertiesArray[propsLen]['name'],
-                'propertyType' : 0,
-                'ref' : propertiesArray[propsLen]['handle']
-              });
-            }
-            refs.push({
-              'handle' : scopeRef,
-              'type' : 'object',
-              'className' : 'Object',
-              'constructorFunction' : {
-                'ref' : 100000
-              },
-              'protoObject' : {
-                'ref' : 100000
-              },
-              'prototypeObject' : {
-                'ref' : 100000
-              },
-              'properties' : properties
-            });
-          }
-
           if ('returnValue' in props) {
-            props['locals'].push(props['returnValue']);
+              props['locals'].push(props['returnValue']);
           }
 
           if ('functionCallsReturn' in props) {
-            props['functionCallsReturn'].forEach(function (element, index, array) {
-              props['locals'].push(element);
-            });
+              props['functionCallsReturn'].forEach(function (element, index, array) {
+                  props['locals'].push(element);
+              });
           }
 
           //var scopesMap = { 'locals': 1, 'globals': 0, 'scopes': 3 };
           if (props['locals'] && props['locals'].length > 0) {
-            AddToScope(1, props['locals']);
+            var scopeAndRef = DebugManager.CreateScopeAndRef(1, props['locals'], frames[frameIndex].index, debugProtoObj.arguments.frame_index);
+            scopes.push(scopeAndRef.scope);
+            refs.push(scopeAndRef.ref);
           }
 
           if (props['scopes'] && props['scopes'].length > 0) {
@@ -745,7 +763,9 @@
             }
 
             if (allScopeProperties.length > 0) {
-              AddToScope(3, allScopeProperties);
+              var scopeAndRef = DebugManager.CreateScopeAndRef(3, allScopeProperties, frames[frameIndex].index, debugProtoObj.arguments.frame_index);
+              scopes.push(scopeAndRef.scope);
+              refs.push(scopeAndRef.ref);
             }
           }
 
@@ -761,7 +781,9 @@
             }
 
             if (globalProperties.length > 0) {
-              AddToScope(0, globalProperties);
+              var scopeAndRef = DebugManager.CreateScopeAndRef(0, globalProperties, frames[frameIndex].index, debugProtoObj.arguments.frame_index);
+              scopes.push(scopeAndRef.scope);
+              refs.push(scopeAndRef.ref);
             }
           }
 
@@ -773,6 +795,103 @@
             'totalScopes' : 1,
             'scopes' : scopes
           };
+        }
+      }
+      return response;
+    },
+    'scope': function (debugProtoObj) {
+      // {"seq":9,"type":"request","command":"scope","arguments":{"number":1"frameNumber":1}}
+      var response = DebugManager.MakeResponse(debugProtoObj, false);
+      if (frames != null && frames.length > 0) {
+        var tempSelectedFrame = (debugProtoObj.arguments && debugProtoObj.arguments.frameNumber) ? debugProtoObj.arguments.frameNumber : 0;
+        var frameIndex = -1;
+
+        for (var i = 0; i < frames.length; ++i) {
+          if (frames[i].index == tempSelectedFrame) {
+            frameIndex = i;
+            break;
+          }
+        }
+
+        if (debugProtoObj.arguments && debugProtoObj.arguments.functionHandle) {
+          var childProperties = callHostFunction(chakraDebug.JsDiagGetProperties, debugProtoObj.arguments.functionHandle, 0, 1000);
+        }
+
+        Logger.LogAPI('frameIndex', frameIndex);
+
+        if (frameIndex != -1) {
+          var props = callHostFunction(chakraDebug.JsDiagGetStackProperties, frames[frameIndex].index);
+          var scopes = [];
+          var refs = [];
+
+          if ('returnValue' in props) {
+            props['locals'].push(props['returnValue']);
+          }
+
+          if ('functionCallsReturn' in props) {
+            props['functionCallsReturn'].forEach(function (element, index, array) {
+              props['locals'].push(element);
+            });
+          }
+
+          //var scopesMap = { 'locals': 1, 'globals': 0, 'scopes': 3 };
+          if (props['locals'] && props['locals'].length > 0) {
+            var scopeAndRef = DebugManager.CreateScopeAndRef(1, props['locals'], frames[frameIndex].index, debugProtoObj.arguments.frame_index);
+            scopes.push(scopeAndRef.scope);
+            refs.push(scopeAndRef.ref);
+          }
+
+          if (props['scopes'] && props['scopes'].length > 0) {
+            var allScopeProperties = [];
+            for (var scopesLen = 0; scopesLen < props['scopes'].length; ++scopesLen) {
+              var scopeHandle = props['scopes'][scopesLen].handle;
+
+              var scopeProperties = callHostFunction(chakraDebug.JsDiagGetProperties, scopeHandle, 0, 1000);
+
+              for (var i = 0; i < scopeProperties['properties'].length; ++i) {
+                allScopeProperties.push(scopeProperties['properties'][i]);
+              }
+              for (var i = 0; i < scopeProperties['debuggerOnlyProperties'].length; ++i) {
+                allScopeProperties.push(scopeProperties['debuggerOnlyProperties'][i]);
+              }
+            }
+
+            if (allScopeProperties.length > 0) {
+              var scopeAndRef = DebugManager.CreateScopeAndRef(3, allScopeProperties, frames[frameIndex].index, debugProtoObj.arguments.frame_index);
+              scopes.push(scopeAndRef.scope);
+              refs.push(scopeAndRef.ref);
+            }
+          }
+
+          if (props['globals'] && props['globals'].handle) {
+            var globalsProps = callHostFunction(chakraDebug.JsDiagGetProperties, props['globals'].handle, 0, 5000);
+
+            var globalProperties = [];
+            for (var i = 0; i < globalsProps['properties'].length; ++i) {
+              globalProperties.push(globalsProps['properties'][i]);
+            }
+            for (var i = 0; i < globalsProps['debuggerOnlyProperties'].length; ++i) {
+              globalProperties.push(globalsProps['debuggerOnlyProperties'][i]);
+            }
+
+            if (globalProperties.length > 0) {
+              var scopeAndRef = DebugManager.CreateScopeAndRef(0, globalProperties, frames[frameIndex].index, debugProtoObj.arguments.frame_index);
+              scopes.push(scopeAndRef.scope);
+              refs.push(scopeAndRef.ref);
+            }
+          }
+
+          var scopeIndex = (debugProtoObj.arguments && debugProtoObj.arguments.number) ? debugProtoObj.arguments.number : 0;
+
+          Logger.LogAPI('scopeIndex', scopeIndex);
+          Logger.LogAPI('scopes', scopes);
+
+          if (scopes.length > scopeIndex) {
+            response['success'] = true;
+            response['refs'] = refs;
+            response['body'] = scopes[scopeIndex];
+            response['refs'] = [refs[scopeIndex]];
+          }
         }
       }
       return response;
@@ -852,6 +971,7 @@
     case 'suspend':
     case 'evaluate':
     case 'scopes':
+    case 'scope':
     case 'threads':
     case 'setexceptionbreak':
       returnJSON = DebugProtocolHandler[debugProtoObj.command](debugProtoObj);
@@ -872,7 +992,6 @@
     case 'gc':
     case 'references':
     case 'restartframe':
-    case 'scope':
     case 'setvariablevalue':
     case 'v8flag':
     case 'version':
@@ -960,7 +1079,7 @@
 
   Object.defineProperty(chakraDebug, 'shouldContinue', {
     get : function () {
-      Logger.LogAPI('shouldContinue: ', !isAtBreak);
+      //Logger.LogAPI('shouldContinue: ', !isAtBreak);
       return !isAtBreak;
     }
   });
