@@ -370,7 +370,6 @@ namespace Js
         JavascriptFunction* arrayPrototypeToLocaleStringFunction;
         JavascriptFunction* identityFunction;
         JavascriptFunction* throwerFunction;
-        JavascriptFunction* hostPromiseContinuationFunction;
         JavascriptFunction* promiseResolveFunction;
 
         JavascriptFunction* objectValueOfFunction;
@@ -606,7 +605,6 @@ namespace Js
         JavascriptFunction* GetStringConstructor() const {return stringConstructor; }
         JavascriptFunction* GetArrayBufferConstructor() const {return arrayBufferConstructor; }
         JavascriptFunction* GetErrorConstructor() const { return errorConstructor; }
-        JavascriptFunction* GetTypedArrayConstructor() const { return typedArrayConstructor; }
         JavascriptFunction* GetInt8ArrayConstructor() const {return Int8ArrayConstructor; }
         JavascriptFunction* GetUint8ArrayConstructor() const {return Uint8ArrayConstructor; }
         JavascriptFunction* GetInt16ArrayConstructor() const {return Int16ArrayConstructor; }
@@ -620,7 +618,8 @@ namespace Js
         JavascriptFunction* GetSetConstructor() const {return  setConstructor; }
         JavascriptFunction* GetSymbolConstructor() const {return symbolConstructor; }
         JavascriptFunction* GetEvalFunctionObject() { return evalFunctionObject; }
-        JavascriptFunction* GetArrayPrototypeValuesFunction() { return arrayPrototypeValuesFunction; }
+        JavascriptFunction* GetArrayPrototypeValuesFunction() { return EnsureArrayPrototypeValuesFunction(); }
+        JavascriptFunction* GetArrayIteratorPrototypeBuiltinNextFunction() { return arrayIteratorPrototypeBuiltinNextFunction; }
         DynamicObject* GetMathObject() const {return mathObject; }
         DynamicObject* GetJSONObject() const {return JSONObject; }
         DynamicObject* GetReflectObject() const { return reflectObject; }
@@ -780,7 +779,6 @@ namespace Js
         JavascriptFunction* GetIdentityFunction() const { return identityFunction; }
         JavascriptFunction* GetThrowerFunction() const { return throwerFunction; }
 
-        JavascriptFunction* GetHostPromiseContinuationFunction();
         void SetNativeHostPromiseContinuationFunction(PromiseContinuationCallback function, void *state);
 
         void PinJsrtContextObject(FinalizableObject* jsrtContext);

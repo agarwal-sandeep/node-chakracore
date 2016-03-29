@@ -13,9 +13,7 @@ typedef enum DebuggerObjectType
     DebuggerObjectType_Function,
     DebuggerObjectType_Globals,
     DebuggerObjectType_Property,
-    DebuggerObjectType_Scope,
-    DebuggerObjectType_Script,
-    DebuggerObjectType_StackFrame
+    DebuggerObjectType_Scope
 } DebuggerObjectType;
 
 // Base class representing a debugger object
@@ -67,7 +65,6 @@ public:
     uint GetNextHandle() { return ++handleId; }
 
     bool TryGetDebuggerObjectFromHandle(uint handle, DebuggerObjectBase** debuggerObject);
-    bool TryGetFrameObjectFromFrameIndex(uint frameIndex, DebuggerObjectBase** debuggerObject);
 
     void AddToDataToDebuggerObjectsDictionary(void* data, DebuggerObjectBase* debuggerObject);
     bool TryGetDataFromDataToDebuggerObjectsDictionary(void* data, DebuggerObjectBase** debuggerObject);
@@ -147,40 +144,23 @@ private:
     uint index;
 };
 
-class DebuggerObjectScript : public DebuggerObjectBase
+class DebuggerStackFrame
 {
 public:
-    static DebuggerObjectBase* Make(DebuggerObjectsManager* debuggerObjectsManager, Js::Utf8SourceInfo* utf8SourceInfo);
-
-    Js::DynamicObject* GetJSONObject(Js::ScriptContext* scriptContext);
-
-private:
-    DebuggerObjectScript(DebuggerObjectsManager* debuggerObjectsManager, Js::Utf8SourceInfo* utf8SourceInfo);
-    ~DebuggerObjectScript();
-
-    Js::Utf8SourceInfo* utf8SourceInfo;
-    Js::DynamicObject* sourceObject;
-};
-
-class DebuggerObjectStackFrame : public DebuggerObjectBase
-{
-public:
-    static DebuggerObjectBase* Make(DebuggerObjectsManager* debuggerObjectsManager, Js::DiagStackFrame* stackFrame, uint frameIndex);
-
+    DebuggerStackFrame(DebuggerObjectsManager * debuggerObjectsManager, Js::DiagStackFrame* stackFrame, uint frameIndex);
+    ~DebuggerStackFrame();
     Js::DynamicObject* GetJSONObject(Js::ScriptContext* scriptContext);
     Js::DynamicObject* GetLocalsObject();
     Js::DynamicObject* Evaluate(const char16* pszSrc, bool isLibraryCode);
     uint GetIndex() const { return this->frameIndex; }
 
 private:
-    DebuggerObjectStackFrame(DebuggerObjectsManager* debuggerObjectsManager, Js::DiagStackFrame* stackFrame, uint frameIndex);
-    ~DebuggerObjectStackFrame();
-
     uint frameIndex;
     Js::DiagStackFrame* stackFrame;
     WeakArenaReference<Js::IDiagObjectModelWalkerBase>* pObjectModelWalker;
     Js::DynamicObject* stackTraceObject;
     Js::DynamicObject* propertiesObject;
+    DebuggerObjectsManager * debuggerObjectsManager;
 };
 
 class JsrtDebugStackFrames
@@ -189,13 +169,13 @@ public:
     JsrtDebugStackFrames(JsrtDebug* debugObject);
     ~JsrtDebugStackFrames();
     Js::JavascriptArray* StackFrames(Js::ScriptContext* scriptContext);
-    bool TryGetFrameObjectFromFrameIndex(uint frameIndex, DebuggerObjectBase ** debuggerObject);
+    bool TryGetFrameObjectFromFrameIndex(uint frameIndex, DebuggerStackFrame ** debuggerStackFrame);
 private:
     Js::DynamicObject* GetStackFrame(Js::DiagStackFrame * stackFrame, uint frameIndex);
     Js::JavascriptArray* stackTraceArray;
     JsrtDebug* debugObject;
 
-    typedef JsUtil::BaseDictionary<uint, DebuggerObjectBase*, ArenaAllocator> FramesDictionary;
+    typedef JsUtil::BaseDictionary<uint, DebuggerStackFrame*, ArenaAllocator> FramesDictionary;
     FramesDictionary* framesDictionary;
 
 };

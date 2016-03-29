@@ -1,5 +1,7 @@
+//-------------------------------------------------------------------------------------------------------
 // Copyright (C) Microsoft. All rights reserved.
-
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+//-------------------------------------------------------------------------------------------------------
 /// \mainpage Chakra Hosting Debugging API Reference
 ///
 /// Chakra is Microsoft's JavaScript engine. It is an integral part of Internet Explorer but can
@@ -44,30 +46,66 @@
         /// </summary>
         JsDiagDebugEventDebuggerStatement = 4,
         /// <summary>
-        ///     Indicates break due to async break.
+        ///     Indicates a break due to async break.
         /// </summary>
         JsDiagDebugEventAsyncBreak = 5,
         /// <summary>
-        ///     Indicates break due to a runtime script exception.
+        ///     Indicates a break due to a runtime script exception.
         /// </summary>
         JsDiagDebugEventRuntimeException = 6
     } JsDiagDebugEvent;
 
+    /// <summary>
+    ///     Break on Exception attributes.
+    /// </summary>
+    typedef enum _JsDiagBreakOnExceptionAttributes
+    {
+        /// <summary>
+        ///     Don't break on any exception.
+        /// </summary>
+        JsDiagBreakOnExceptionAttributeNone = 0x0,
+        /// <summary>
+        ///     Break on uncaught exception.
+        /// </summary>
+        JsDiagBreakOnExceptionAttributeUncaught = 0x1,
+        /// <summary>
+        ///     Break on first chance exception.
+        /// </summary>
+        JsDiagBreakOnExceptionAttributeFirstChance = 0x2
+    } JsDiagBreakOnExceptionAttributes;
 
     /// <summary>
-    ///     User implemented callback routine for debug events
+    ///     Stepping types.
+    /// </summary>
+    typedef enum _JsDiagStepType
+    {
+        /// <summary>
+        ///     Perform a step operation to next statement.
+        /// </summary>
+        JsDiagStepTypeStepIn = 0,
+        /// <summary>
+        ///     Perform a step out from the current function.
+        /// </summary>
+        JsDiagStepTypeStepOut = 1,
+        /// <summary>
+        ///     Perform a single step over after a debug break if the next statement is a function call, else behaves as a stepin.
+        /// </summary>
+        JsDiagStepTypeStepOver = 2
+    } JsDiagStepType;
+
+    /// <summary>
+    ///     User implemented callback routine for debug events.
     /// </summary>
     /// <remarks>
-    ///     Use <c>JsDiagStartDebugging</c> to register this callback.
+    ///     Use <c>JsDiagStartDebugging</c> to register the callback.
     /// </remarks>
     /// <param name="debugEvent">The type of JsDiagDebugEvent event.</param>
-    /// <param name="eventData">Additional data related to the debug event</param>
+    /// <param name="eventData">Additional data related to the debug event.</param>
     /// <param name="callbackState">The state passed to <c>JsDiagStartDebugging</c>.</param>
     typedef void (CALLBACK * JsDiagDebugEventCallback)(_In_ JsDiagDebugEvent debugEvent, _In_ JsValueRef eventData, _In_opt_ void* callbackState);
 
-
     /// <summary>
-    ///     Starts debugging in the current runtime
+    ///     Starts debugging in the given runtime.
     /// </summary>
     /// <param name="runtimeHandle">Runtime to put into debug mode.</param>
     /// <param name="debugEventCallback">Registers a callback to be called on every JsDiagDebugEvent.</param>
@@ -75,29 +113,49 @@
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The runtime should be active on the current thread and should not be in debug state
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagStartDebugging(
-        _In_ JsRuntimeHandle runtimeHandle,
-        _In_ JsDiagDebugEventCallback debugEventCallback,
-        _In_opt_ void* callbackState);
-
+            _In_ JsRuntimeHandle runtimeHandle,
+            _In_ JsDiagDebugEventCallback debugEventCallback,
+            _In_opt_ void* callbackState);
 
     /// <summary>
-    ///     Requests the VM to break as soon as possible
+    ///     Stops debugging in the given runtime.
     /// </summary>
-    /// <param name="runtimeHandle">Runtime to request break, should be in debug mode.</param>
+    /// <param name="runtimeHandle">Runtime to stop debugging.</param>
+    /// <param name="callbackState">User provided state that was passed in JsDiagStartDebugging.</param>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The runtime should be active on the current thread and in debug state.
+    /// </remarks>
+    STDAPI_(JsErrorCode)
+        JsDiagStopDebugging(
+            _In_ JsRuntimeHandle runtimeHandle,
+            _Out_ void** callbackState);
+
+    /// <summary>
+    ///     Request the runtime to break on next JavaScript statement.
+    /// </summary>
+    /// <param name="runtimeHandle">Runtime to request break.</param>
+    /// <returns>
+    ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
+    /// </returns>
+    /// <remarks>
+    ///     The runtime should be in debug state. This API can be called from another runtime.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagRequestAsyncBreak(
             _In_ JsRuntimeHandle runtimeHandle);
 
-
     /// <summary>
-    ///     List all active breakpoint in the current runtime
+    ///     List all breakpoints in the current runtime.
     /// </summary>
-    /// <param name="breakPoints">Array of breakpoints</param>
+    /// <param name="breakpoints">Array of breakpoints.</param>
     /// <remarks>
     ///     <para>
     ///     [{
@@ -111,17 +169,20 @@
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagGetBreakpoints(
-            _Out_ JsValueRef *breakPoints);
+            _Out_ JsValueRef *breakpoints);
 
     /// <summary>
-    ///     Sets breakpoint in the specified script at a location
+    ///     Sets breakpoint in the specified script at give location.
     /// </summary>
-    /// <param name="scriptId">Id of script from JsDiagGetScripts or JsDiagGetSource to but breakpoint</param>
-    /// <param name="lineNumber">0 based line number to put breakpoint</param>
-    /// <param name="columnNumber">0 based column number to put breakpoint</param>
-    /// <param name="breakPoint">Breakpoint object with id, line and column if success</param>
+    /// <param name="scriptId">Id of script from JsDiagGetScripts or JsDiagGetSource to put breakpoint.</param>
+    /// <param name="lineNumber">0 based line number to put breakpoint.</param>
+    /// <param name="columnNumber">0 based column number to put breakpoint.</param>
+    /// <param name="breakPoint">Breakpoint object with id, line and column if success.</param>
     /// <remarks>
     ///     <para>
     ///     {
@@ -134,6 +195,9 @@
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagSetBreakpoint(
             _In_ unsigned int scriptId,
@@ -141,129 +205,109 @@
             _In_ unsigned int columnNumber,
             _Out_ JsValueRef *breakPoint);
 
-
     /// <summary>
-    ///     Remove a breakpoint
+    ///     Remove a breakpoint.
     /// </summary>
-    /// <param name="breakpointId">Breakpoint id returned from JsDiagSetBreakpoint</param>
+    /// <param name="breakpointId">Breakpoint id returned from JsDiagSetBreakpoint.</param>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagRemoveBreakpoint(
             _In_ unsigned int breakpointId);
 
-
     /// <summary>
-    ///     Break on Exception types
+    ///     Sets break on exception handling.
     /// </summary>
-    typedef enum _JsDiagBreakOnExceptionType
-    {
-        /// <summary>
-        ///     Don't break on exception
-        /// </summary>
-        JsDiagBreakOnExceptionTypeNone = 0,
-        /// <summary>
-        ///     Only break on uncaught exceptions
-        /// </summary>
-        JsDiagBreakOnExceptionTypeUncaught = 1,
-        /// <summary>
-        ///     Break on all exceptions (first chance exception)
-        /// </summary>
-        JsDiagBreakOnExceptionTypeAll = 2
-    } JsDiagBreakOnExceptionType;
-
-    /// <summary>
-    ///     Sets break on exception handling
-    /// </summary>
-    /// <param name="exceptionType">Type of JsDiagBreakOnExceptionType to set</param>
+    /// <param name="runtimeHandle">Runtime to set break on exception attributes.</param>
+    /// <param name="exceptionAttributes">Mask of JsDiagBreakOnExceptionAttributes to set.</param>
     /// <remarks>
     ///     <para>
-    ///         If this API is not called the default value is set to JsDiagBreakOnExceptionTypeUncaught in the engine
+    ///         If this API is not called the default value is set to JsDiagBreakOnExceptionAttributeUncaught in the runtime.
     ///     </para>
     /// </remarks>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The runtime should be in debug state. This API can be called from another runtime.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagSetBreakOnException(
-            _In_ JsDiagBreakOnExceptionType exceptionType);
-
+            _In_ JsRuntimeHandle runtimeHandle,
+            _In_ JsDiagBreakOnExceptionAttributes exceptionAttributes);
 
     /// <summary>
-    ///     Gets break on exception setting
+    ///     Gets break on exception setting.
     /// </summary>
-    /// <param name="exceptionType">Value of JsDiagBreakOnExceptionType</param>
+    /// <param name="runtimeHandle">Runtime from which to get break on exception attributes, should be in debug mode.</param>
+    /// <param name="exceptionAttributes">Mask of JsDiagBreakOnExceptionAttributes.</param>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The runtime should be in debug state. This API can be called from another runtime.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagGetBreakOnException(
-            _Out_ JsDiagBreakOnExceptionType* exceptionType);
+            _In_ JsRuntimeHandle runtimeHandle,
+            _Out_ JsDiagBreakOnExceptionAttributes* exceptionAttributes);
 
     /// <summary>
-    ///     Stepping types
-    /// </summary>
-    typedef enum _JsDiagResumeType
-    {
-        /// <summary>
-        ///     Perform a step operation to next statement.
-        /// </summary>
-        JsDiagResumeTypeStepIn = 0,
-        /// <summary>
-        ///     Perform a step out from the current function.
-        /// </summary>
-        JsDiagResumeTypeStepOut = 1,
-        /// <summary>
-        ///     Perform a single step over after a debug break if the next statement is a function call, else behaves as a stepin.
-        /// </summary>
-        JsDiagResumeTypeStepOver = 2
-    } JsDiagResumeType;
-
-    /// <summary>
-    ///     Resume execution in the VM after a debug break or exception
+    ///     Sets the step type in the runtime after a debug break.
     /// </summary>
     /// <remarks>
     ///     Requires to be at a debug break.
     /// </remarks>
-    /// <param name="resumeType">Type of JsDiagResumeType</param>
+    /// <param name="resumeType">Type of JsDiagStepType.</param>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
-
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
+    /// </remarks>
     STDAPI_(JsErrorCode)
-        JsDiagResume(
-            _In_ JsDiagResumeType resumeType);
-
+        JsDiagSetStepType(
+            _In_ JsDiagStepType stepType);
 
     /// <summary>
-    ///     Gets list of scripts
+    ///     Gets list of scripts.
     /// </summary>
-    /// <param name="scriptsArray">Array of script objects</param>
+    /// <param name="scriptsArray">Array of script objects.</param>
     /// <remarks>
     ///     <para>
     ///     [{
-    ///         "scriptId" : 1,
+    ///         "scriptId" : 2,
     ///         "fileName" : "c:\\Test\\Test.js",
-    ///         "lineCount" : 12,
-    ///         "sourceLength" : 195,
-    ///         "handle" : 3
+    ///         "lineCount" : 4,
+    ///         "sourceLength" : 111
+    ///       }, {
+    ///         "scriptId" : 3,
+    ///         "parentScriptId" : 2,
+    ///         "scriptType" : "eval code",
+    ///         "lineCount" : 1,
+    ///         "sourceLength" : 12
     ///     }]
     ///     </para>
     /// </remarks>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagGetScripts(
             _Out_ JsValueRef *scriptsArray);
 
-
     /// <summary>
-    ///     Gets source for a specific script identified by scriptId from JsDiagGetScripts
+    ///     Gets source for a specific script identified by scriptId from JsDiagGetScripts.
     /// </summary>
-    /// <param name="scriptId">Id of the script</param>
-    /// <param name="source">Source object</param>
+    /// <param name="scriptId">Id of the script.</param>
+    /// <param name="source">Source object.</param>
     /// <remarks>
     ///     <para>
     ///     {
@@ -278,17 +322,19 @@
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagGetSource(
             _In_ unsigned int scriptId,
             _Out_ JsValueRef *source);
 
-
     /// <summary>
-    ///     Gets the source information for a function object
+    ///     Gets the source information for a function object.
     /// </summary>
-    /// <param name="func">JavaScript function.</param>
-    /// <param name="funcInfo">Function info, scriptId, start line, start column, line number of first statement, column number of first statement</param>
+    /// <param name="function">JavaScript function.</param>
+    /// <param name="functionInfo">Function info, scriptId, start line, start column, line number of first statement, column number of first statement.</param>
     /// <remarks>
     ///     <para>
     ///     {
@@ -296,52 +342,54 @@
     ///         "fileName" : "c:\\Test\\Test.js",
     ///         "line" : 1,
     ///         "column" : 2,
-    ///         "stmtStartLine" : 0,
-    ///         "stmtStartColumn" : 62
+    ///         "firstStatementLine" : 6,
+    ///         "firstStatementColumn" : 0
     ///     }
     ///     </para>
     /// </remarks>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     This API can be called when runtime is at a break or running.
+    /// </remarks>
     STDAPI_(JsErrorCode)
-      JsDiagGetFunctionPosition(
-        _In_ JsValueRef func,
-        _Out_ JsValueRef *funcInfo);
-
+        JsDiagGetFunctionPosition(
+            _In_ JsValueRef function,
+            _Out_ JsValueRef *functionInfo);
 
     /// <summary>
-    ///     Gets the stack trace information
+    ///     Gets the stack trace information.
     /// </summary>
-    /// <param name="stackTrace">Stack trace information</param>
+    /// <param name="stackTrace">Stack trace information.</param>
     /// <remarks>
     ///     <para>
     ///     [{
-    ///        "index" : 0,
-    ///        "scriptId" : 1,
-    ///        "fileName" : "c:\\Test\\Test.js",
-    ///        "line" : 0,
-    ///        "column" : 62,
-    ///        "sourceText" : "var x = 1",
-    ///        "functionHandle" : 2,
-    ///        "scriptHandle" : 3,
-    ///        "handle" : 1
-    ///    }]
+    ///         "index" : 0,
+    ///         "scriptId" : 2,
+    ///         "line" : 3,
+    ///         "column" : 0,
+    ///         "sourceLength" : 9,
+    ///         "sourceText" : "var x = 1",
+    ///         "functionHandle" : 1
+    ///     }]
     ///    </para>
     /// </remarks>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
+    /// </remarks>
     STDAPI_(JsErrorCode)
-        JsDiagGetStacktrace(
+        JsDiagGetStackTrace(
             _Out_ JsValueRef *stackTrace);
 
-
     /// <summary>
-    ///     Gets the list of properties corresponding to the frame
+    ///     Gets the list of properties corresponding to the frame.
     /// </summary>
-    /// <param name="stackFrameIndex">Index of stack frame from JsDiagGetStacktrace</param>
-    /// <param name="properties">Object of properties array (properties, scopes and globals)</param>
+    /// <param name="stackFrameIndex">Index of stack frame from JsDiagGetStackTrace.</param>
+    /// <param name="properties">Object of properties array (properties, scopes and globals).</param>
     /// <remarks>
     ///     <para>
     ///     {
@@ -390,24 +438,27 @@
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagGetStackProperties(
             _In_ unsigned int stackFrameIndex,
             _Out_ JsValueRef *properties);
 
-
     /// <summary>
-    ///     Gets the list of properties corresponding to the scope, global or object
+    ///     Gets the list of childrens of a handle.
     /// </summary>
-    /// <param name="objectHandle">Handle of object</param>
-    /// <param name="fromCount">0-based from count of properties, ideally 0</param>
-    /// <param name="totalCount">Number of properties to return</param>
-    /// <param name="propertiesObject">Array of properties</param>
-    /// <remarks>For scenarios where object have large number of properties totalCount can be used to control how many properties are displayed</remarks>
+    /// <param name="objectHandle">Handle of object.</param>
+    /// <param name="fromCount">0-based from count of properties, ideally 0.</param>
+    /// <param name="totalCount">Number of properties to return.</param>
+    /// <param name="propertiesObject">Array of properties.</param>
+    /// <remarks>Handle should be from objects returned from call to JsDiagGetStackProperties.</remarks>
+    /// <remarks>For scenarios where object have large number of properties totalCount can be used to control how many properties are given.</remarks>
     /// <remarks>
     ///     <para>
     ///     {
-    ///         "propertiesCount": 2,
+    ///         "totalPropertiesOfObject": 10,
     ///         "properties" : [{
     ///                 "name" : "__proto__",
     ///                 "type" : "object",
@@ -431,6 +482,9 @@
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagGetProperties(
             _In_ unsigned int objectHandle,
@@ -438,12 +492,11 @@
             _In_ unsigned int totalCount,
             _Out_ JsValueRef *propertiesObject);
 
-
     /// <summary>
-    ///     Get the object corresponding to handle
+    ///     Get the object corresponding to handle.
     /// </summary>
-    /// <param name="objectHandle">Handle of object</param>
-    /// <param name="handleObject">Object corresponding to the handle</param>
+    /// <param name="objectHandle">Handle of object.</param>
+    /// <param name="handleObject">Object corresponding to the handle.</param>
     /// <remarks>
     ///     <para>
     ///     {
@@ -459,35 +512,40 @@
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagGetObjectFromHandle(
             _In_ unsigned int objectHandle,
             _Out_ JsValueRef *handleObject);
 
-
     /// <summary>
-    ///     Evaluate a script on given frame
+    ///     Evaluate an expression on given frame.
     /// </summary>
-    /// <param name="stackFrameIndex">Index of stack frame on which to evaluate the script</param>
-    /// <param name="evalResult">Result of script</param>
+    /// <param name="stackFrameIndex">Index of stack frame on which to evaluate the expression.</param>
+    /// <param name="evalResult">Result of evaluation.</param>
     /// <remarks>
-    ///    <para>
-    ///    {
-    ///        "name" : "this",
-    ///        "type" : "object",
-    ///        "display" : "{...}",
-    ///        "className" : "Object",
-    ///        "propertyAttributes" : 1,
-    ///        "handle" : 18
-    ///    }
-    ///    </para>
+    ///     <para>
+    ///     {
+    ///         "name" : "this",
+    ///         "type" : "object",
+    ///         "display" : "{...}",
+    ///         "className" : "Object",
+    ///         "propertyAttributes" : 1,
+    ///         "handle" : 18
+    ///     }
+    ///     </para>
     /// </remarks>
     /// <returns>
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
+    /// <remarks>
+    ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
+    /// </remarks>
     STDAPI_(JsErrorCode)
         JsDiagEvaluate(
-            _In_ const wchar_t *script,
+            _In_ const wchar_t *expression,
             _In_ unsigned int stackFrameIndex,
             _Out_ JsValueRef *evalResult);
 

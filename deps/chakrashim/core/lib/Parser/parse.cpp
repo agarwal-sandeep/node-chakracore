@@ -35,9 +35,7 @@ struct DeferredFunctionStub
     uint fncFlags;
     uint nestedCount;
     DeferredFunctionStub *deferredStubs;
-#if DEBUG
     charcount_t ichMin;
-#endif
 };
 
 struct StmtNest
@@ -100,6 +98,7 @@ Parser::Parser(Js::ScriptContext* scriptContext, BOOL strictMode, PageAllocator 
     m_currentNodeNonLambdaDeferredFunc = nullptr;
     m_currentNodeProg = nullptr;
     m_currDeferredStub = nullptr;
+    m_prevSiblingDeferredStub = nullptr;
     m_pstmtCur = nullptr;
     m_currentBlockInfo = nullptr;
     m_currentScope = nullptr;
@@ -302,11 +301,6 @@ HRESULT Parser::ValidateSyntax(LPCUTF8 pszSrc, size_t encodedCharCount, bool isG
         pnodeFnc->ichLim = m_pscan->IchLimTok();
         pnodeFnc->sxFnc.cbLim = m_pscan->IecpLimTok();
         pnodeFnc->sxFnc.pnodeVars = nullptr;
-
-        if (m_asgToConst)
-        {
-            Error(ERRAssignmentToConst, m_asgToConst.GetIchMin(), m_asgToConst.GetIchLim());
-        }
 
         // there should be nothing after successful parsing for a given construct
         if (m_token.tk != tkEOF)
@@ -1754,19 +1748,8 @@ void Parser::BindPidRefsInScopeImpl(IdentPtr pid, Symbol *sym, int blockId, uint
             continue;
         }
         ref->SetSym(sym);
-        if (isConstBinding && ref->IsAssignment() && !ref->IsDynamicBinding())
-        {
-            if (pid->GetTopIchMin() < this->m_asgToConst.GetIchMin())
-            {
-                this->m_asgToConst.Set(pid->GetTopIchMin(), pid->GetTopIchLim());
-            }
-        }
         this->RemovePrevPidRef(pid, lastRef);
 
-        if (ref->IsAssignment())
-        {
-            sym->PromoteAssignmentState();
-        }
         if (ref->IsModuleExport())
         {
             Assert(sym->GetIsGlobal());
@@ -2125,77 +2108,81 @@ void Parser::ParseNamedImportOrExportClause(ModuleImportEntryList* importEntryLi
     Assert(importEntryList == nullptr || exportEntryList == nullptr);
     Assert((isExportClause && exportEntryList != nullptr) || (!isExportClause && importEntryList != nullptr));
 
-    bool finished = false;
-
     m_pscan->Scan();
 
-    while (!finished)
+    while (m_token.tk != tkRCurly && m_token.tk != tkEOF)
     {
-        switch (m_token.tk)
-        {
-        case tkRCurly:
-            finished = true;
-            break;
+        tokens firstToken = m_token.tk;
 
-        case tkComma:
-            // It is only legal for a comma in an import\export list to follow an identifier token.
-            if (m_pscan->m_tkPrevious != tkID)
+        if (!(m_token.IsIdentifier() || m_token.IsReservedWord()))
+        {
+            Error(ERRsyntax);
+        }
+
+        IdentPtr identifierName = m_token.GetIdentifier(m_phtbl);
+        IdentPtr identifierAs = identifierName;
+
+        m_pscan->Scan();
+
+        if (m_token.tk == tkID)
+        {
+            // We have the pattern "IdentifierName as"
+            if (wellKnownPropertyPids.as != m_token.GetIdentifier(m_phtbl))
             {
                 Error(ERRsyntax);
             }
-             
+
             m_pscan->Scan();
-            break;
 
-        case tkID:
+            // If we are parsing an import statement, the token after 'as' must be a BindingIdentifier.
+            if (!isExportClause)
             {
-                // First identifier name is the name of the export\import.
-                IdentPtr identifierName = m_token.GetIdentifier(m_phtbl);
-                IdentPtr identifierAs = identifierName;
-
-                // If the next token is an identifier but not 'as' this is a syntax error.
-                m_pscan->Scan();
-                if (m_token.tk == tkID)
-                {
-                    if (wellKnownPropertyPids.as != m_token.GetIdentifier(m_phtbl))
-                    {
-                        Error(ERRsyntax);
-                    }
-                    
-                    m_pscan->Scan();
-                    ChkCurTokNoScan(tkID, ERRsyntax);
-
-                    // We have the pattern "IdentifierName as IdentifierName"
-                    identifierAs = m_token.GetIdentifier(m_phtbl);
-
-                    // Scan to the next token.
-                    m_pscan->Scan();
-                }
-
-                if (buildAST)
-                {
-                    // The name we will use 'as' this import/export is a binding identifier in import statements.
-                    if (!isExportClause)
-                    {
-                        ParseNodePtr declNode = CreateModuleImportDeclNode(identifierAs);
-
-                        AddModuleImportEntry(importEntryList, identifierName, identifierAs, nullptr, declNode);
-                    }
-                    else
-                    {
-                        MarkIdentifierReferenceIsModuleExport(identifierName);
-
-                        AddModuleExportEntry(exportEntryList, nullptr, identifierName, identifierAs, nullptr);
-                    }
-                }
+                ChkCurTokNoScan(tkID, ERRsyntax);
             }
-            break;
 
-        default:
+            if (!(m_token.IsIdentifier() || m_token.IsReservedWord()))
+            {
+                Error(ERRsyntax);
+            }
+
+            identifierAs = m_token.GetIdentifier(m_phtbl);
+
+            // Scan to the next token.
+            m_pscan->Scan();
+        }
+        else if (!isExportClause && firstToken != tkID)
+        {
+            // If we are parsing an import statement and this ImportSpecifier clause did not have 
+            // 'as ImportedBinding' at the end of it, identifierName must be a BindingIdentifier.
             Error(ERRsyntax);
-            break;
+        }
+        
+        if (m_token.tk == tkComma)
+        {
+            // Consume a trailing comma
+            m_pscan->Scan();
+        }
+
+        if (buildAST)
+        {
+            // The name we will use 'as' this import/export is a binding identifier in import statements.
+            if (!isExportClause)
+            {
+                ParseNodePtr declNode = CreateModuleImportDeclNode(identifierAs);
+
+                AddModuleImportEntry(importEntryList, identifierName, identifierAs, nullptr, declNode);
+            }
+            else
+            {
+                MarkIdentifierReferenceIsModuleExport(identifierName);
+
+                AddModuleExportEntry(exportEntryList, nullptr, identifierName, identifierAs, nullptr);
+            }
         }
     }
+
+    // Final token in a named import or export clause must be a '}'
+    ChkCurTokNoScan(tkRCurly, ERRsyntax);
 }
 
 IdentPtrList* Parser::GetRequestedModulesList()
@@ -3375,7 +3362,7 @@ ParseNodePtr Parser::ParsePostfixOperators(
                     }
                     else
                     {
-                        if (pToken->tk == tkID && pToken->pid == wellKnownPropertyPids.eval) // Detect eval
+                        if (pToken->tk == tkID && pToken->pid == wellKnownPropertyPids.eval && count > 0) // Detect eval
                         {
                             this->MarkEvalCaller();
                         }
@@ -3621,6 +3608,7 @@ ParseNodePtr Parser::ParseArgList( bool *pCallOfConstants, uint16 *pSpreadArgCou
             Error(ERRnoMemory);
         // Allow spread in argument lists.
         pnodeArg = ParseExpr<buildAST>(koplCma, nullptr, TRUE, /* fAllowEllipsis */TRUE);
+        ++count;
 
         if (buildAST)
         {
@@ -3636,7 +3624,6 @@ ParseNodePtr Parser::ParseArgList( bool *pCallOfConstants, uint16 *pSpreadArgCou
                 (*pSpreadArgCount)++;
             }
 
-            ++count;
             AddToNodeListEscapedUse(&pnodeList, &lastNodeRef, pnodeArg);
         }
         if (m_token.tk != tkComma)
@@ -3655,9 +3642,9 @@ ParseNodePtr Parser::ParseArgList( bool *pCallOfConstants, uint16 *pSpreadArgCou
         CHAKRATEL_LANGSTATS_INC_LANGFEATURECOUNT(SpreadFeatureCount, m_scriptContext);
     }
 
+    *pCount = static_cast<uint16>(count);
     if (buildAST)
     {
-        *pCount = (uint16)count;
         AssertMem(lastNodeRef);
         AssertNodeMem(*lastNodeRef);
         pnodeList->ichLim = (*lastNodeRef)->ichLim;
@@ -3856,7 +3843,7 @@ Parser::MemberNameToTypeMap* Parser::CreateMemberNameMap(ArenaAllocator* pAlloca
 template<bool buildAST> void Parser::ParseComputedName(ParseNodePtr* ppnodeName, LPCOLESTR* ppNameHint, LPCOLESTR* ppFullNameHint, ulong *pNameLength, ulong *pShortNameOffset)
 {
     m_pscan->Scan();
-    ParseNodePtr pnodeNameExpr = ParseExpr<buildAST>(koplNo, nullptr, TRUE, FALSE, *ppNameHint, pNameLength, pShortNameOffset);
+    ParseNodePtr pnodeNameExpr = ParseExpr<buildAST>(koplCma, nullptr, TRUE, FALSE, *ppNameHint, pNameLength, pShortNameOffset);
     if (buildAST)
     {
         *ppnodeName = CreateNodeT<knopComputedName>(pnodeNameExpr->ichMin, pnodeNameExpr->ichLim);
@@ -3868,7 +3855,7 @@ template<bool buildAST> void Parser::ParseComputedName(ParseNodePtr* ppnodeName,
         *ppFullNameHint = FormatPropertyString(*ppNameHint, pnodeNameExpr, pNameLength, pShortNameOffset);
     }
 
-    ChkCurTokNoScan(tkRBrack, ERRsyntax);
+    ChkCurTokNoScan(tkRBrack, ERRnoRbrack);
 }
 
 /***************************************************************************
@@ -4180,7 +4167,7 @@ ParseNodePtr Parser::ParseMemberList(LPCOLESTR pNameHint, ulong* pNameHintLength
                 {
                     Error(ERRUnexpectedEllipsis);
                 }
-                pnodeExpr = ParseDestructuredVarDecl<buildAST>(declarationType, declarationType != tkLCurly, nullptr/* *hasSeenRest*/, false /*topLevel*/);
+                pnodeExpr = ParseDestructuredVarDecl<buildAST>(declarationType, declarationType != tkLCurly, nullptr/* *hasSeenRest*/, false /*topLevel*/, false /*allowEmptyExpression*/);
 
                 if (m_token.tk != tkComma && m_token.tk != tkRCurly)
                 {
@@ -4306,7 +4293,7 @@ ParseNodePtr Parser::ParseMemberList(LPCOLESTR pNameHint, ulong* pNameHintLength
                 if (isObjectPattern)
                 {
                     m_pscan->SeekTo(atPid);
-                    pnodeIdent = ParseDestructuredVarDecl<buildAST>(declarationType, declarationType != tkLCurly, nullptr/* *hasSeenRest*/, false /*topLevel*/);
+                    pnodeIdent = ParseDestructuredVarDecl<buildAST>(declarationType, declarationType != tkLCurly, nullptr/* *hasSeenRest*/, false /*topLevel*/, false /*allowEmptyExpression*/);
 
                     if (m_token.tk != tkComma && m_token.tk != tkRCurly)
                     {
@@ -4534,6 +4521,8 @@ ParseNodePtr Parser::ParseFncDecl(ushort flags, LPCOLESTR pNameHint, const bool 
         // Make this the current function and start its sub-function list.
         pnodeFncSave = m_currentNodeFunc;
         m_currentNodeFunc = pnodeFnc;
+
+        Assert(m_currentNodeDeferredFunc == nullptr);
 
         if (!fLambda)
         {
@@ -5090,28 +5079,14 @@ bool Parser::ParseFncDeclHelper(ParseNodePtr pnodeFnc, ParseNodePtr pnodeFncPare
                 Scope* paramScope = pnodeFnc->sxFnc.pnodeScopes->sxBlock.scope;
                 Assert(paramScope != nullptr);
 
-                if (pnodeFnc->sxFnc.CallsEval() || pnodeFnc->sxFnc.ChildCallsEval())
-                {
-                    if (!m_scriptContext->GetConfig()->IsES6DefaultArgsSplitScopeEnabled())
-                    {
-                        Error(ERREvalNotSupportedInParamScope);
-                    }
-                }
-                else
+                if (paramScope->GetCanMergeWithBodyScope())
                 {
                     paramScope->ForEachSymbolUntil([this, paramScope](Symbol* sym) {
                         if (sym->GetPid()->GetTopRef()->sym == nullptr)
                         {
-                            if (m_scriptContext->GetConfig()->IsES6DefaultArgsSplitScopeEnabled())
-                            {
-                                // One of the symbol has non local reference. Mark the param scope as we can't merge it with body scope.
-                                paramScope->SetCannotMergeWithBodyScope();
-                                return true;
-                            }
-                            else
-                            {
-                                Error(ERRFuncRefFormalNotSupportedInParamScope);
-                            }
+                            // One of the symbol has non local reference. Mark the param scope as we can't merge it with body scope.
+                            paramScope->SetCannotMergeWithBodyScope();
+                            return true;
                         }
                         else
                         {
@@ -5149,7 +5124,31 @@ bool Parser::ParseFncDeclHelper(ParseNodePtr pnodeFnc, ParseNodePtr pnodeFncPare
                 }
                 else if (pnodeFncParent && m_currDeferredStub)
                 {
-                    m_currDeferredStub = (m_currDeferredStub + (pnodeFncParent->sxFnc.nestedCount - 1))->deferredStubs;
+                    // the Deferred stub will not match for the function which are defined on lambda formals.
+                    // Since this is not determined upfront that the current function is a part of outer function or part of lambda formal until we have seen the Arrow token.
+                    // Due to that the current function may be fetching stubs from the outer function (outer of the lambda) - rather then the lambda function. The way to fix is to match
+                    // the function start with the stub. Because they should match. We need to have previous sibling concept as the lambda formals can have more than one
+                    // functions and we want to avoid getting wrong stub.
+
+                    if (pnodeFncParent->sxFnc.nestedCount == 1)
+                    {
+                        m_prevSiblingDeferredStub = nullptr;
+                    }
+
+                    if (m_prevSiblingDeferredStub == nullptr)
+                    {
+                        m_prevSiblingDeferredStub = (m_currDeferredStub + (pnodeFncParent->sxFnc.nestedCount - 1));
+                    }
+
+                    if (m_prevSiblingDeferredStub->ichMin == pnodeFnc->ichMin)
+                    {
+                        m_currDeferredStub = m_prevSiblingDeferredStub->deferredStubs;
+                        m_prevSiblingDeferredStub = nullptr;
+                    }
+                    else
+                    {
+                        m_currDeferredStub = nullptr;
+                    }
                 }
 
                 if (m_token.tk != tkLCurly && fLambda)
@@ -6059,6 +6058,7 @@ void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
 
                 if (seenRestParameter)
                 {
+                    this->GetCurrentFunctionNode()->sxFnc.SetHasNonSimpleParameterList();
                     if (flags & fFncOneArg)
                     {
                         // The parameter of a setter cannot be a rest parameter.
@@ -6070,7 +6070,6 @@ void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
                     {
                         // When only validating formals, we won't have a function node.
                         pnodeFnc->sxFnc.pnodeRest = pnodeT;
-                        pnodeFnc->sxFnc.SetHasNonSimpleParameterList();
                         if (!isNonSimpleParameterList)
                         {
                             // This is the first non-simple parameter we've seen. We need to go back
@@ -6106,15 +6105,6 @@ void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
                 if (seenRestParameter && m_token.tk != tkRParen && m_token.tk != tkAsg)
                 {
                     Error(ERRRestLastArg);
-                }
-
-                if (flags & fFncOneArg)
-                {
-                    if (m_token.tk != tkRParen)
-                    {
-                        Error(ERRSetterMustHaveOneParameter);
-                    }
-                    break; //enforce only one arg
                 }
 
                 if (m_token.tk == tkAsg && m_scriptContext->GetConfig()->IsES6DefaultArgsEnabled())
@@ -6178,6 +6168,15 @@ void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
                 Error(ERRFormalSame);
             }
 
+            if (flags & fFncOneArg)
+            {
+                if (m_token.tk != tkRParen)
+                {
+                    Error(ERRSetterMustHaveOneParameter);
+                }
+                break; //enforce only one arg
+            }
+
             if (m_token.tk != tkComma)
             {
                 break;
@@ -6199,6 +6198,12 @@ void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
         if (m_token.tk != tkRParen)
         {
             Error(ERRnoRparen);
+        }
+
+        if ((this->GetCurrentFunctionNode()->sxFnc.CallsEval() || this->GetCurrentFunctionNode()->sxFnc.ChildCallsEval())
+            && !m_scriptContext->GetConfig()->IsES6DefaultArgsSplitScopeEnabled())
+        {
+            Error(ERREvalNotSupportedInParamScope);
         }
     }
     Assert(m_token.tk == tkRParen);
@@ -6764,7 +6769,9 @@ LPCOLESTR Parser::ConstructFinalHintNode(IdentPtr pClassName, IdentPtr pMemberNa
 
     if (pClassName)
     {
-        pFinalName = AppendNameHints(pClassName, pFinalName, &fullNameHintLength, &shortNameOffset);
+        ulong classNameOffset = 0;
+        pFinalName = AppendNameHints(pClassName, pFinalName, &fullNameHintLength, &classNameOffset);
+        shortNameOffset += classNameOffset;
     }
 
     if (pGetSet)
@@ -7408,8 +7415,6 @@ void Parser::TransformAsyncFncDeclAST(ParseNodePtr *pnodeBody, bool fLambda)
 
     pnodeFncGenerator = CreateAsyncSpawnGenerator();
 
-    m_currentNodeDeferredFunc = pnodeFncGenerator;
-    m_inDeferredNestedFunc = true;
     pstmtSave = m_pstmtCur;
     SetCurrentStatement(nullptr);
 
@@ -8035,7 +8040,7 @@ ParseNodePtr Parser::ParseExpr(int oplMin,
                 {
                     Error(JSERR_CantAssignTo);
                 }
-                TrackAssignment<buildAST>(pnodeT, &operandToken, ichMin, m_pscan->IchLimTok());
+
                 if (buildAST)
                 {
                     if (IsStrictMode() && pnodeT->nop == knopName)
@@ -8190,7 +8195,6 @@ ParseNodePtr Parser::ParseExpr(int oplMin,
             {
                 Error(JSERR_CantAssignTo);
             }
-            TrackAssignment<buildAST>(pnode, &term, ichMin, m_pscan->IchLimTok());
             fCanAssign = FALSE;
             if (buildAST)
             {
@@ -8238,7 +8242,7 @@ ParseNodePtr Parser::ParseExpr(int oplMin,
                 // binary operators. We also need to special case the left
                 // operand - it should only be a LeftHandSideExpression.
                 Assert(ParseNode::Grfnop(nop) & fnopAsg || nop == knopFncDecl);
-                TrackAssignment<buildAST>(pnode, &term, ichMin, m_pscan->IchLimTok());
+
                 if (buildAST)
                 {
                     if (IsStrictMode() && pnode->nop == knopName)
@@ -8460,46 +8464,6 @@ ParseNodePtr Parser::ParseExpr(int oplMin,
     return pnode;
 }
 
-template<bool buildAST>
-void Parser::TrackAssignment(ParseNodePtr pnodeT, IdentToken* pToken, charcount_t ichMin, charcount_t ichLim)
-{
-    if (buildAST)
-    {
-        Assert(pnodeT != NULL);
-        if (pnodeT->nop == knopName)
-        {
-            PidRefStack *ref = pnodeT->sxPid.pid->GetTopRef();
-            Assert(ref);
-            ref->TrackAssignment(pnodeT->ichMin, pnodeT->ichLim);
-        }
-    }
-    else
-    {
-        Assert(pToken != NULL);
-        if (pToken->tk == tkID)
-        {
-            PidRefStack *ref = pToken->pid->GetTopRef();
-            Assert(ref);
-            ref->TrackAssignment(ichMin, ichLim);
-        }
-    }
-}
-
-void PidRefStack::TrackAssignment(charcount_t ichMin, charcount_t ichLim)
-{
-    if (this->isAsg)
-    {
-        if (this->GetIchMin() <= ichMin)
-        {
-            return;
-        }
-        Assert(ichMin <= this->GetIchMin() && this->GetIchLim() <= ichLim);
-    }
-
-    this->isAsg = true;
-    this->span.Set(ichMin, ichLim);
-}
-
 void PnPid::SetSymRef(PidRefStack *ref)
 {
     Assert(symRef == nullptr);
@@ -8650,6 +8614,11 @@ ParseNodePtr Parser::ParseVariableDeclaration(
             pNameHint = pid->Psz();
             nameHintLength = pid->Cch();
             nameHintOffset = 0;
+
+            if (pid == wellKnownPropertyPids.let && (declarationType == tkCONST || declarationType == tkLET))
+            {
+                Error(ERRLetIDInLexicalDecl, pnodeThis);
+            }
 
             if (declarationType == tkVAR)
             {
@@ -9388,7 +9357,7 @@ LDefaultTokenFor:
             }
 
             m_pscan->Scan();
-            ParseNodePtr pnodeObj = ParseExpr<buildAST>();
+            ParseNodePtr pnodeObj = ParseExpr<buildAST>(isForOf ? koplCma : koplNo);
             charcount_t ichLim = m_pscan->IchLimTok();
             ChkCurTok(tkRParen, ERRnoRparen);
 
@@ -10118,6 +10087,11 @@ LNeedTerminator:
         break;
     }
 
+    if (m_hasDeferredShorthandInitError)
+    {
+        Error(ERRnoColon);
+    }
+
     if (buildAST)
     {
         // All non expression statements excluded from the "this.x" optimization
@@ -10499,7 +10473,13 @@ void Parser::FinishDeferredFunction(ParseNodePtr pnodeScopeList)
             pnodeFnc->sxFnc.pnodeVars = nullptr;
             m_ppnodeVar = &pnodeFnc->sxFnc.pnodeVars;
 
+            Assert(m_currentNodeNonLambdaFunc == nullptr);
+            m_currentNodeNonLambdaFunc = pnodeFnc;
+
             this->FinishFncNode(pnodeFnc);
+
+            Assert(pnodeFnc == m_currentNodeNonLambdaFunc);
+            m_currentNodeNonLambdaFunc = nullptr;
 
             m_ppnodeExprScope = ppnodeExprScopeSave;
 
@@ -10894,11 +10874,6 @@ ParseNodePtr Parser::Parse(LPCUTF8 pszSrc, size_t offset, size_t length, charcou
 
     m_scriptContext->AddSourceSize(m_length);
 
-    if (m_asgToConst)
-    {
-        Error(ERRAssignmentToConst, m_asgToConst.GetIchMin(), m_asgToConst.GetIchLim());
-    }
-
     if(!m_parseType != ParseType_Deferred)
     {
         JS_ETW(EventWriteJSCRIPT_PARSE_METHOD_STOP(m_sourceContextInfo->dwHostSourceContext, GetScriptContext(), pnodeProg->sxFnc.functionId, *m_pCurrentAstSize, false, Js::Constants::GlobalFunction));
@@ -11158,11 +11133,8 @@ HRESULT Parser::ParseFunctionInBackground(ParseNodePtr pnodeFnc, ParseContext *p
         // Append block as body of pnodeProg
         FinishParseBlock(pnodeBlock);
 
-        if (m_asgToConst)
-        {
-            Error(ERRAssignmentToConst, m_asgToConst.GetIchMin(), m_asgToConst.GetIchLim());
-        }
     }
+
     catch(ParseExceptionObject& e)
     {
         m_err.m_hr = e.GetError();
@@ -12040,7 +12012,7 @@ ParseNodePtr Parser::ParseDestructuredObjectLiteral(tokens declarationType, bool
 }
 
 template <bool buildAST>
-ParseNodePtr Parser::ParseDestructuredVarDecl(tokens declarationType, bool isDecl, bool *hasSeenRest, bool topLevel/* = true*/)
+ParseNodePtr Parser::ParseDestructuredVarDecl(tokens declarationType, bool isDecl, bool *hasSeenRest, bool topLevel/* = true*/, bool allowEmptyExpression/* = true*/)
 {
     ParseNodePtr pnodeElem = nullptr;
     int parenCount = 0;
@@ -12125,7 +12097,7 @@ ParseNodePtr Parser::ParseDestructuredVarDecl(tokens declarationType, bool isDec
             }
         }
     }
-    else if (!(m_token.tk == tkComma || m_token.tk == tkRBrack || m_token.tk == tkRCurly))
+    else if (!((m_token.tk == tkComma || m_token.tk == tkRBrack || m_token.tk == tkRCurly) && allowEmptyExpression))
     {
         if (m_token.IsOperator())
         {
@@ -13232,9 +13204,7 @@ DeferredFunctionStub * BuildDeferredStubTree(ParseNode *pnodeFnc, Recycler *recy
         deferredStubs[i].nestedCount = pnodeChild->sxFnc.nestedCount;
         deferredStubs[i].restorePoint = *pnodeChild->sxFnc.pRestorePoint;
         deferredStubs[i].deferredStubs = BuildDeferredStubTree(pnodeChild, recycler);
-#if DEBUG
         deferredStubs[i].ichMin = pnodeChild->ichMin;
-#endif
         ++i;
         pnodeChild = pnodeChild->sxFnc.pnodeNext;
     }

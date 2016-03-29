@@ -108,6 +108,7 @@ private:
 public:
     Js::RegSlot frameObjRegister; // location, if any, of the heap-allocated local frame
     Js::RegSlot frameSlotsRegister; // location, if any, of the heap-allocated local frame
+    Js::RegSlot paramSlotsRegister; // location, if any, of the heap allocated local frame for param scope
     Js::RegSlot frameDisplayRegister; // location, if any, of the display of nested frames
     Js::RegSlot funcObjRegister;
     Js::RegSlot localClosureReg;
@@ -124,7 +125,7 @@ public:
     uint childCallsEval : 1;
     uint hasArguments : 1;
     uint hasHeapArguments : 1;
-    uint isEventHandler : 1;
+    uint isTopLevelEventHandler : 1;
     uint hasLocalInClosure : 1;
     uint hasClosureReference : 1;
     uint hasGlobalReference : 1;
@@ -315,12 +316,12 @@ public:
         byteCodeFunction->SetDoBackendArgumentsOptimization(optArgInBackend);
     }
 
-    bool GetIsEventHandler() const {
-        return isEventHandler;
+    bool GetIsTopLevelEventHandler() const {
+        return isTopLevelEventHandler;
     }
 
-    void SetIsEventHandler(bool is) {
-        isEventHandler = is;
+    void SetIsTopLevelEventHandler(bool is) {
+        isTopLevelEventHandler = is;
     }
 
     bool GetChildCallsEval() const {
@@ -794,8 +795,8 @@ public:
 
     void OnStartVisitFunction(ParseNode *pnodeFnc);
     void OnEndVisitFunction(ParseNode *pnodeFnc);
-    void OnStartVisitScope(Scope *scope);
-    void OnEndVisitScope(Scope *scope);
+    void OnStartVisitScope(Scope *scope, bool *pisMergedScope);
+    void OnEndVisitScope(Scope *scope, bool isMergedScope = false);
     void AddCapturedSym(Symbol *sym);
     CapturedSymMap *EnsureCapturedSymMap();
 

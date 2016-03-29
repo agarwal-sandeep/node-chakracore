@@ -8,8 +8,8 @@
 #include "ThreadContextTLSEntry.h"
 #include "JsrtDebugUtils.h"
 
-#define VALIDATE_DEBUG_OBJECT(obj) \
-    if (obj == nullptr) \
+#define VALIDATE_IS_DEBUGGING(debugObject) \
+    if (debugObject == nullptr || !debugObject->IsDebugEventCallbackSet()) \
     { \
         return JsErrorDiagNotDebugging; \
     }
@@ -29,7 +29,6 @@ STDAPI_(JsErrorCode) JsDiagStartDebugging(
 
         VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
 
-        // ToDo (SaAgarwa): If a null debugEventCallback is passed should it be treated as Stop debugging?
         PARAM_NOT_NULL(debugEventCallback);
 
         JsrtRuntime * runtime = JsrtRuntime::FromHandle(runtimeHandle);
@@ -47,7 +46,7 @@ STDAPI_(JsErrorCode) JsDiagStartDebugging(
         {
             return JsErrorRuntimeInUse;
         }
-        else if (runtime->GetDebugObject() != nullptr)
+        else if (runtime->GetDebugObject() != nullptr && runtime->GetDebugObject()->IsDebugEventCallbackSet())
         {
             return JsErrorDiagAlreadyInDebugMode;
         }
@@ -71,35 +70,100 @@ STDAPI_(JsErrorCode) JsDiagStartDebugging(
             threadContext->GetDebugManager()->SetLocalsDisplayFlags(Js::DebugManager::LocalsDisplayFlags::LocalsDisplayFlags_NoGroupMethods);
         }
 
-        for (Js::ScriptContext *scriptContext = threadContext->GetScriptContextList(); scriptContext != nullptr; scriptContext = scriptContext->next)
+        for (Js::ScriptContext *scriptContext = runtime->GetThreadContext()->GetScriptContextList();
+        scriptContext != nullptr && !scriptContext->IsClosed();
+            scriptContext = scriptContext->next)
         {
-            if (!scriptContext->IsClosed())
+            Assert(!scriptContext->IsScriptContextInDebugMode());
+
+            Js::DebugContext* debugContext = scriptContext->GetDebugContext();
+
+            if (debugContext->GetHostDebugContext() == nullptr)
             {
-                Assert(!scriptContext->IsScriptContextInSourceRundownOrDebugMode());
-
-                Js::DebugContext* debugContext = scriptContext->GetDebugContext();
-
-                if (debugContext->GetHostDebugContext() == nullptr)
-                {
-                    debugContext->SetHostDebugContext(debugObject);
-                }
-
-                if (FAILED(scriptContext->OnDebuggerAttached()))
-                {
-                    AssertMsg(false, "Failed to start debugging");
-                    return JsErrorFatal; // Inconsistent state, we can't continue from here?
-                }
-
-                Js::ProbeContainer* probeContainer = debugContext->GetProbeContainer();
-                probeContainer->InitializeInlineBreakEngine(debugObject);
-                probeContainer->InitializeDebuggerScriptOptionCallback(debugObject);
+                debugContext->SetHostDebugContext(debugObject);
             }
+
+            if (FAILED(scriptContext->OnDebuggerAttached()))
+            {
+                AssertMsg(false, "Failed to start debugging");
+                return JsErrorFatal; // Inconsistent state, we can't continue from here?
+            }
+
+            Js::ProbeContainer* probeContainer = debugContext->GetProbeContainer();
+            probeContainer->InitializeInlineBreakEngine(debugObject);
+            probeContainer->InitializeDebuggerScriptOptionCallback(debugObject);
         }
 
         return JsNoError;
     });
 }
 
+STDAPI_(JsErrorCode)
+JsDiagStopDebugging(
+    _In_ JsRuntimeHandle runtimeHandle,
+    _Out_ void** callbackState)
+{
+    return GlobalAPIWrapper([&]() -> JsErrorCode {
+
+        VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
+
+        PARAM_NOT_NULL(callbackState);
+
+        *callbackState = nullptr;
+
+        JsrtRuntime * runtime = JsrtRuntime::FromHandle(runtimeHandle);
+        ThreadContext * threadContext = runtime->GetThreadContext();
+
+        if (threadContext->GetRecycler() && threadContext->GetRecycler()->IsHeapEnumInProgress())
+        {
+            return JsErrorHeapEnumInProgress;
+        }
+        else if (threadContext->IsInThreadServiceCallback())
+        {
+            return JsErrorInThreadServiceCallback;
+        }
+        else if (threadContext->IsInScript())
+        {
+            return JsErrorRuntimeInUse;
+        }
+
+        ThreadContextScope scope(threadContext);
+
+        if (!scope.IsValid())
+        {
+            return JsErrorWrongThread;
+        }
+
+        JsrtDebug* debugObject = runtime->GetDebugObject();
+
+        VALIDATE_IS_DEBUGGING(debugObject);
+
+        for (Js::ScriptContext *scriptContext = runtime->GetThreadContext()->GetScriptContextList();
+        scriptContext != nullptr && !scriptContext->IsClosed();
+            scriptContext = scriptContext->next)
+        {
+            Assert(scriptContext->IsScriptContextInDebugMode());
+
+            if (FAILED(scriptContext->OnDebuggerDetached()))
+            {
+                AssertMsg(false, "Failed to stop debugging");
+                return JsErrorFatal; // Inconsistent state, we can't continue from here?
+            }
+
+            Js::DebugContext* debugContext = scriptContext->GetDebugContext();
+
+            Js::ProbeContainer* probeContainer = debugContext->GetProbeContainer();
+            probeContainer->UninstallInlineBreakpointProbe(nullptr);
+            probeContainer->UninstallDebuggerScriptOptionCallback();
+
+            debugObject->ClearBreakpointDebugDocumentDictionary();
+        }
+
+        *callbackState = debugObject->GetAndClearCallback();
+
+        return JsNoError;
+    });
+}
 
 STDAPI_(JsErrorCode)
 JsDiagGetScripts(
@@ -115,7 +179,7 @@ JsDiagGetScripts(
 
         JsrtDebug* debugObject = currentContext->GetRuntime()->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
         Js::JavascriptArray* scripts = debugObject->GetScripts(scriptContext);
 
@@ -146,7 +210,7 @@ JsDiagGetSource(
 
         JsrtDebug* debugObject = currentContext->GetRuntime()->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
         Js::DynamicObject* sourceObject = debugObject->GetSource(scriptId);
         if (sourceObject == nullptr)
@@ -173,7 +237,7 @@ JsDiagRequestAsyncBreak(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
         for (Js::ScriptContext *scriptContext = runtime->GetThreadContext()->GetScriptContextList();
         scriptContext != nullptr && !scriptContext->IsClosed();
@@ -189,11 +253,11 @@ JsDiagRequestAsyncBreak(
 
 STDAPI_(JsErrorCode)
 JsDiagGetBreakpoints(
-    _Out_ JsValueRef *breakPoints)
+    _Out_ JsValueRef *breakpoints)
 {
     return GlobalAPIWrapper([&]() -> JsErrorCode {
 
-        PARAM_NOT_NULL(breakPoints);
+        PARAM_NOT_NULL(breakpoints);
 
         JsrtContext *currentContext = JsrtContext::GetCurrent();
 
@@ -210,7 +274,7 @@ JsDiagGetBreakpoints(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
         for (Js::ScriptContext *scriptContext = runtime->GetThreadContext()->GetScriptContextList();
         scriptContext != nullptr && !scriptContext->IsClosed();
@@ -219,7 +283,7 @@ JsDiagGetBreakpoints(
             debugObject->GetBreakpoints(&bpsArray, scriptContext);
         }
 
-        *breakPoints = bpsArray;
+        *breakpoints = bpsArray;
 
         return JsNoError;
     });
@@ -249,7 +313,7 @@ JsDiagSetBreakpoint(
             return JsErrorWrongThread;
         }
 
-        VALIDATE_DEBUG_OBJECT(runtime->GetDebugObject());
+        VALIDATE_IS_DEBUGGING(runtime->GetDebugObject());
 
         Js::Utf8SourceInfo* utf8SourceInfo = nullptr;
 
@@ -309,7 +373,7 @@ JsDiagRemoveBreakpoint(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
         if (!debugObject->RemoveBreakpoint(breakpointId))
         {
@@ -322,26 +386,20 @@ JsDiagRemoveBreakpoint(
 
 STDAPI_(JsErrorCode)
 JsDiagSetBreakOnException(
-    _In_ JsDiagBreakOnExceptionType exceptionType)
+    _In_ JsRuntimeHandle runtimeHandle,
+    _In_ JsDiagBreakOnExceptionAttributes exceptionAttributes)
 {
     return GlobalAPIWrapper([&]() -> JsErrorCode {
 
-        JsrtContext *currentContext = JsrtContext::GetCurrent();
+        VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
 
-        JsrtRuntime* runtime = currentContext->GetRuntime();
-
-        ThreadContextScope scope(runtime->GetThreadContext());
-
-        if (!scope.IsValid())
-        {
-            return JsErrorWrongThread;
-        }
+        JsrtRuntime * runtime = JsrtRuntime::FromHandle(runtimeHandle);
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
-        debugObject->SetBreakOnException(exceptionType);
+        debugObject->SetBreakOnException(exceptionAttributes);
 
         return JsNoError;
     });
@@ -349,36 +407,30 @@ JsDiagSetBreakOnException(
 
 STDAPI_(JsErrorCode)
 JsDiagGetBreakOnException(
-    _Out_ JsDiagBreakOnExceptionType* exceptionType)
+    _In_ JsRuntimeHandle runtimeHandle,
+    _Out_ JsDiagBreakOnExceptionAttributes* exceptionAttributes)
 {
     return GlobalAPIWrapper([&]() -> JsErrorCode {
 
-        PARAM_NOT_NULL(exceptionType);
+        VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
 
-        JsrtContext *currentContext = JsrtContext::GetCurrent();
+        PARAM_NOT_NULL(exceptionAttributes);
 
-        JsrtRuntime* runtime = currentContext->GetRuntime();
-
-        ThreadContextScope scope(runtime->GetThreadContext());
-
-        if (!scope.IsValid())
-        {
-            return JsErrorWrongThread;
-        }
+        JsrtRuntime * runtime = JsrtRuntime::FromHandle(runtimeHandle);
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
-        *exceptionType = debugObject->GetBreakOnException();
+        *exceptionAttributes = debugObject->GetBreakOnException();
 
         return JsNoError;
     });
 }
 
 STDAPI_(JsErrorCode)
-JsDiagResume(
-    _In_ JsDiagResumeType resumeType)
+JsDiagSetStepType(
+    _In_ JsDiagStepType stepType)
 {
     return ContextAPIWrapper<true>([&](Js::ScriptContext * scriptContext) -> JsErrorCode {
 
@@ -389,17 +441,17 @@ JsDiagResume(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
-        if (resumeType == JsDiagResumeTypeStepIn)
+        if (stepType == JsDiagStepTypeStepIn)
         {
             debugObject->SetResumeType(BREAKRESUMEACTION_STEP_INTO);
         }
-        else if (resumeType == JsDiagResumeTypeStepOut)
+        else if (stepType == JsDiagStepTypeStepOut)
         {
             debugObject->SetResumeType(BREAKRESUMEACTION_STEP_OUT);
         }
-        else if (resumeType == JsDiagResumeTypeStepOver)
+        else if (stepType == JsDiagStepTypeStepOver)
         {
             debugObject->SetResumeType(BREAKRESUMEACTION_STEP_OVER);
         }
@@ -410,22 +462,22 @@ JsDiagResume(
 
 STDAPI_(JsErrorCode)
 JsDiagGetFunctionPosition(
-    _In_ JsValueRef func,
-    _Out_ JsValueRef *funcInfo)
+    _In_ JsValueRef function,
+    _Out_ JsValueRef *functionInfo)
 {
     return ContextAPIWrapper<false>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
 
-        VALIDATE_INCOMING_REFERENCE(func, scriptContext);
-        PARAM_NOT_NULL(funcInfo);
+        VALIDATE_INCOMING_REFERENCE(function, scriptContext);
+        PARAM_NOT_NULL(functionInfo);
 
-        *funcInfo = JS_INVALID_REFERENCE;
+        *functionInfo = JS_INVALID_REFERENCE;
 
-        if (!Js::RecyclableObject::Is(func) || !Js::ScriptFunction::Is(func))
+        if (!Js::RecyclableObject::Is(function) || !Js::ScriptFunction::Is(function))
         {
             return JsErrorInvalidArgument;
         }
 
-        Js::ScriptFunction* jsFunction = Js::ScriptFunction::FromVar(func);
+        Js::ScriptFunction* jsFunction = Js::ScriptFunction::FromVar(function);
 
         Js::FunctionBody* functionBody = jsFunction->GetFunctionBody();
         if (functionBody != nullptr)
@@ -436,23 +488,23 @@ JsDiagGetFunctionPosition(
                 ULONG lineNumber = functionBody->GetLineNumber();
                 ULONG columnNumber = functionBody->GetColumnNumber();
                 uint startOffset = functionBody->GetStatementStartOffset(0);
-                ULONG stmtStartLineNumber;
-                LONG stmtStartColumnNumber;
+                ULONG firstStatementLine;
+                LONG firstStatementColumn;
 
-                if (functionBody->GetLineCharOffsetFromStartChar(startOffset, &stmtStartLineNumber, &stmtStartColumnNumber))
+                if (functionBody->GetLineCharOffsetFromStartChar(startOffset, &firstStatementLine, &firstStatementColumn))
                 {
                     Js::DynamicObject* funcInfoObject = scriptContext->GetLibrary()->CreateObject();
 
                     if (funcInfoObject != nullptr)
                     {
                         JsrtDebugUtils::AddScriptIdToObject(funcInfoObject, utf8SourceInfo);
-                        JsrtDebugUtils::AddFileNameToObject(funcInfoObject, utf8SourceInfo);
+                        JsrtDebugUtils::AddFileNameOrScriptTypeToObject(funcInfoObject, utf8SourceInfo);
                         JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::line, lineNumber, scriptContext);
                         JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::column, columnNumber, scriptContext);
-                        JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::stmtStartLine, stmtStartLineNumber, scriptContext);
-                        JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::stmtStartColumn, stmtStartColumnNumber, scriptContext);
+                        JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::firstStatementLine, firstStatementLine, scriptContext);
+                        JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::firstStatementColumn, firstStatementColumn, scriptContext);
 
-                        *funcInfo = funcInfoObject;
+                        *functionInfo = funcInfoObject;
                         return JsNoError;
                     }
                 }
@@ -465,7 +517,7 @@ JsDiagGetFunctionPosition(
 
 
 STDAPI_(JsErrorCode)
-JsDiagGetStacktrace(
+JsDiagGetStackTrace(
     _Out_ JsValueRef *stackTrace)
 {
     return ContextAPIWrapper<false>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
@@ -480,7 +532,7 @@ JsDiagGetStacktrace(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
         *stackTrace = debugObject->GetStackFrames(scriptContext);
 
@@ -506,15 +558,13 @@ JsDiagGetStackProperties(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
-        DebuggerObjectBase* debuggerObject = nullptr;
-        if (!debugObject->TryGetFrameObjectFromFrameIndex(scriptContext, stackFrameIndex, &debuggerObject))
+        DebuggerStackFrame* debuggerStackFrame = nullptr;
+        if (!debugObject->TryGetFrameObjectFromFrameIndex(scriptContext, stackFrameIndex, &debuggerStackFrame))
         {
             return JsErrorDiagObjectNotFound;
         }
-
-        DebuggerObjectStackFrame* debuggerStackFrame = (DebuggerObjectStackFrame*)debuggerObject;
 
         Js::DynamicObject* localsObject = debuggerStackFrame->GetLocalsObject();
 
@@ -547,7 +597,7 @@ JsDiagGetProperties(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
         DebuggerObjectBase* debuggerObject = nullptr;
         if (!debugObject->GetDebuggerObjectsManager()->TryGetDebuggerObjectFromHandle(objectHandle, &debuggerObject) || debuggerObject == nullptr)
@@ -584,7 +634,7 @@ JsDiagGetObjectFromHandle(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
         DebuggerObjectBase* debuggerObject = nullptr;
         if (!debugObject->GetDebuggerObjectsManager()->TryGetDebuggerObjectFromHandle(objectHandle, &debuggerObject) || debuggerObject == nullptr)
@@ -606,13 +656,13 @@ JsDiagGetObjectFromHandle(
 
 STDAPI_(JsErrorCode)
 JsDiagEvaluate(
-    _In_ const wchar_t *script,
+    _In_ const wchar_t *expression,
     _In_ unsigned int stackFrameIndex,
     _Out_ JsValueRef *evalResult)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
 
-        PARAM_NOT_NULL(script);
+        PARAM_NOT_NULL(expression);
         PARAM_NOT_NULL(evalResult);
 
         *evalResult = JS_INVALID_REFERENCE;
@@ -624,17 +674,16 @@ JsDiagEvaluate(
 
         JsrtDebug* debugObject = runtime->GetDebugObject();
 
-        VALIDATE_DEBUG_OBJECT(debugObject);
+        VALIDATE_IS_DEBUGGING(debugObject);
 
-        DebuggerObjectBase* debuggerObject = nullptr;
-        if (!debugObject->TryGetFrameObjectFromFrameIndex(scriptContext, stackFrameIndex, &debuggerObject))
+        DebuggerStackFrame* debuggerStackFrame = nullptr;
+        if (!debugObject->TryGetFrameObjectFromFrameIndex(scriptContext, stackFrameIndex, &debuggerStackFrame))
         {
             return JsErrorDiagObjectNotFound;
         }
 
-        DebuggerObjectStackFrame* debuggerStackFrame = (DebuggerObjectStackFrame*)debuggerObject;
+        Js::DynamicObject* result = debuggerStackFrame->Evaluate(expression, false);
 
-        Js::DynamicObject* result = debuggerStackFrame->Evaluate(script, false);
         if (result != nullptr)
         {
             *evalResult = Js::CrossSite::MarshalVar(scriptContext, result);

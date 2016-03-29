@@ -86,6 +86,14 @@ void DebugDocumentManager::ClearDebugDocument(Js::ScriptContext * scriptContext)
     }
 }
 
+void DebugDocumentManager::ClearBreakpointDebugDocumentDictionary()
+{
+    if (this->breakpointDebugDocumentDictionary != nullptr)
+    {
+        this->breakpointDebugDocumentDictionary->Clear();
+    }
+}
+
 bool DebugDocumentManager::RemoveBreakpoint(UINT breakpointId)
 {
     if (this->breakpointDebugDocumentDictionary != nullptr)

@@ -15,6 +15,9 @@ public:
     ~JsrtDebug();
 
     void SetDebugEventCallback(JsDiagDebugEventCallback debugEventCallback, void* callbackState);
+    void* GetAndClearCallback();
+    bool IsDebugEventCallbackSet() const;
+
     void ReportScriptCompile(Js::JavascriptFunction * scriptFunction, Js::Utf8SourceInfo* utf8SourceInfo, CompileScriptException* compileException);
     void ReportBreak(Js::InterpreterHaltState * haltState);
     void ReportExceptionBreak(Js::InterpreterHaltState * haltState);
@@ -31,7 +34,7 @@ public:
     Js::DynamicObject * GetSource(uint scriptId);
 
     Js::JavascriptArray * GetStackFrames(Js::ScriptContext* scriptContext);
-    bool TryGetFrameObjectFromFrameIndex(Js::ScriptContext *scriptContext, uint frameIndex, DebuggerObjectBase ** debuggerObject);
+    bool TryGetFrameObjectFromFrameIndex(Js::ScriptContext *scriptContext, uint frameIndex, DebuggerStackFrame ** debuggerStackFrame);
 
     Js::DynamicObject* SetBreakPoint(Js::Utf8SourceInfo* utf8SourceInfo, UINT lineNumber, UINT columnNumber);
     void GetBreakpoints(Js::JavascriptArray** bpsArray, Js::ScriptContext* scriptContext);
@@ -43,11 +46,12 @@ public:
 
     DebugDocumentManager* GetDebugDocumentManager();
     void ClearDebugDocument(Js::ScriptContext* scriptContext);
+    void ClearBreakpointDebugDocumentDictionary();
 
     bool RemoveBreakpoint(UINT breakpointId);
 
-    void SetBreakOnException(JsDiagBreakOnExceptionType breakOnExceptionType);
-    JsDiagBreakOnExceptionType GetBreakOnException();
+    void SetBreakOnException(JsDiagBreakOnExceptionAttributes exceptionAttributes);
+    JsDiagBreakOnExceptionAttributes GetBreakOnException();
 
     JsDiagDebugEvent GetDebugEventFromStopType(Js::StopType stopType);
 
@@ -61,7 +65,7 @@ private:
     uint callBackDepth;
     DebugDocumentManager* debugDocumentManager;
     JsrtDebugStackFrames* stackFrames;
-    JsDiagBreakOnExceptionType breakOnExceptionType;
+    JsDiagBreakOnExceptionAttributes breakOnExceptionAttributes;
 
     // Js::HaltCallback overrides
     virtual bool CanHalt(Js::InterpreterHaltState* pHaltState);

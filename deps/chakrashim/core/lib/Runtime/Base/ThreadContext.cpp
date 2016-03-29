@@ -1,7 +1,8 @@
 //-------------------------------------------------------------------------------------------------------
-// Copyright (C) Microsoft. All rights reserved.
+// Copyright (C) Microsoft Corporation and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
 //-------------------------------------------------------------------------------------------------------
+
 #include "RuntimeBasePch.h"
 #include "BackendApi.h"
 #include "ThreadServiceWrapper.h"
@@ -318,13 +319,6 @@ void ThreadContext::GlobalInitialize()
     }
 }
 
-#if ENABLE_NATIVE_CODEGEN
-void ThreadContext::ReleasePreReservedSegment()
-{
-    preReservedVirtualAllocator.Shutdown();
-}
-#endif
-
 ThreadContext::~ThreadContext()
 {
     {
@@ -457,8 +451,6 @@ ThreadContext::~ThreadContext()
     this->protoInlineCacheByPropId.Reset();
     this->storeFieldInlineCacheByPropId.Reset();
     this->isInstInlineCacheByFunction.Reset();
-    this->inlineCacheScriptContexts.Reset();
-    this->isInstInlineCacheScriptContexts.Reset();
     this->equivalentTypeCacheEntryPoints.Reset();
     this->prototypeChainEnsuredToHaveOnlyWritableDataPropertiesScriptContext.Reset();
 
@@ -499,10 +491,6 @@ ThreadContext::~ThreadContext()
         this->projectionMemoryInformation = nullptr;
     }
 #endif
-#endif
-
-#if ENABLE_NATIVE_CODEGEN
-    ReleasePreReservedSegment();
 #endif
 }
 
@@ -569,6 +557,7 @@ void ThreadContext::AddSimdFuncToMaps(Js::OpCode op, ...)
     va_start(arguments, op);
 
     int argumentsCount = va_arg(arguments, int);
+    AssertMsg(argumentsCount >= 0 && argumentsCount <= 20, "Invalid arguments count for SIMD opcode");
     if (argumentsCount == 0)
     {
         // no info to add
@@ -2488,25 +2477,20 @@ ThreadContext::DisposeExpirableObject(ExpirableObject* object)
 void
 ThreadContext::ClearScriptContextCaches()
 {
-    // We go through just the inline script context list since if there is no script context
-    // registered on this list, we think that there's no script running on that script context
-    // so we can skip clearing its caches
-    FOREACH_DLISTBASE_ENTRY(Js::ScriptContext *, scriptContext, &inlineCacheScriptContexts)
+    for (Js::ScriptContext *scriptContext = scriptContextList; scriptContext != nullptr; scriptContext = scriptContext->next)
     {
         scriptContext->ClearScriptContextCaches();
     }
-    NEXT_DLISTBASE_ENTRY;
 }
 
 #ifdef PERSISTENT_INLINE_CACHES
 void
 ThreadContext::ClearInlineCachesWithDeadWeakRefs()
 {
-    FOREACH_DLISTBASE_ENTRY(Js::ScriptContext *, scriptContext, &inlineCacheScriptContexts)
+    for (Js::ScriptContext *scriptContext = scriptContextList; scriptContext != nullptr; scriptContext = scriptContext->next)
     {
         scriptContext->ClearInlineCachesWithDeadWeakRefs();
     }
-    NEXT_DLISTBASE_ENTRY;
 
     if (PHASE_TRACE1(Js::InlineCachePhase))
     {
@@ -2533,36 +2517,6 @@ ThreadContext::ClearInlineCachesWithDeadWeakRefs()
 void
 ThreadContext::ClearInlineCaches()
 {
-    BOOL hasItem = FALSE;
-    FOREACH_DLISTBASE_ENTRY(Js::ScriptContext *, scriptContext, &inlineCacheScriptContexts)
-    {
-        scriptContext->ClearInlineCaches();
-        hasItem = TRUE;
-    }
-    NEXT_DLISTBASE_ENTRY;
-
-#if DBG
-    for (Js::ScriptContext *scriptContext = scriptContextList;
-        scriptContext;
-        scriptContext = scriptContext->next)
-    {
-        Assert(scriptContext->GetInlineCacheAllocator()->IsAllZero());
-    };
-#endif
-
-    if (!hasItem)
-    {
-        return;
-    }
-
-    inlineCacheScriptContexts.Reset();
-    inlineCacheThreadInfoAllocator.Reset();
-    protoInlineCacheByPropId.ResetNoDelete();
-    storeFieldInlineCacheByPropId.ResetNoDelete();
-
-    registeredInlineCacheCount = 0;
-    unregisteredInlineCacheCount = 0;
-
     if (PHASE_TRACE1(Js::InlineCachePhase))
     {
         size_t size = 0;
@@ -2570,7 +2524,7 @@ ThreadContext::ClearInlineCaches()
         size_t polyInlineCacheSize = 0;
         uint scriptContextCount = 0;
         for (Js::ScriptContext *scriptContext = scriptContextList;
-            scriptContext;
+        scriptContext;
             scriptContext = scriptContext->next)
         {
             scriptContextCount++;
@@ -2583,31 +2537,36 @@ ThreadContext::ClearInlineCaches()
         printf("Inline cache arena: total = %5I64u KB, free list = %5I64u KB, poly caches = %5I64u KB, script contexts = %u\n",
             static_cast<uint64>(size / 1024), static_cast<uint64>(freeListSize / 1024), static_cast<uint64>(polyInlineCacheSize / 1024), scriptContextCount);
     }
+
+    Js::ScriptContext *scriptContext = this->scriptContextList;
+    while (scriptContext != nullptr)
+    {
+        scriptContext->ClearInlineCaches();
+        scriptContext = scriptContext->next;
+    }
+
+    inlineCacheThreadInfoAllocator.Reset();
+    protoInlineCacheByPropId.ResetNoDelete();
+    storeFieldInlineCacheByPropId.ResetNoDelete();
+
+    registeredInlineCacheCount = 0;
+    unregisteredInlineCacheCount = 0;
 }
 
 void
 ThreadContext::ClearIsInstInlineCaches()
 {
-    FOREACH_DLISTBASE_ENTRY(Js::ScriptContext *, scriptContext, &isInstInlineCacheScriptContexts)
+    Js::ScriptContext *scriptContext = this->scriptContextList;
+    while (scriptContext != nullptr)
     {
         scriptContext->ClearIsInstInlineCaches();
+        scriptContext = scriptContext->next;
     }
-    NEXT_DLISTBASE_ENTRY;
 
-#if DBG
-    for (Js::ScriptContext *scriptContext = scriptContextList;
-        scriptContext;
-        scriptContext = scriptContext->next)
-    {
-        Assert(scriptContext->GetIsInstInlineCacheAllocator()->IsAllZero());
-    };
-#endif
-
-    isInstInlineCacheScriptContexts.Reset();
     isInstInlineCacheThreadInfoAllocator.Reset();
     isInstInlineCacheByFunction.ResetNoDelete();
 }
-#endif
+#endif //PERSISTENT_INLINE_CACHES
 
 void
 ThreadContext::ClearEquivalentTypeCaches()
@@ -2634,30 +2593,6 @@ ThreadContext::ClearEquivalentTypeCaches()
     // Note: Don't reset the list, because we're only clearing the dead types from these caches.
     // There may still be type references we need to keep an eye on.
 #endif
-}
-
-Js::ScriptContext **
-ThreadContext::RegisterInlineCacheScriptContext(Js::ScriptContext * scriptContext)
-{
-    return inlineCacheScriptContexts.PrependNode(&inlineCacheThreadInfoAllocator, scriptContext);
-}
-
-void
-ThreadContext::UnregisterInlineCacheScriptContext(Js::ScriptContext ** scriptContext)
-{
-    inlineCacheScriptContexts.RemoveElement(&inlineCacheThreadInfoAllocator, scriptContext);
-}
-
-Js::ScriptContext **
-ThreadContext::RegisterIsInstInlineCacheScriptContext(Js::ScriptContext * scriptContext)
-{
-    return isInstInlineCacheScriptContexts.PrependNode(&isInstInlineCacheThreadInfoAllocator, scriptContext);
-}
-
-void
-ThreadContext::UnregisterIsInstInlineCacheScriptContext(Js::ScriptContext ** scriptContext)
-{
-    isInstInlineCacheScriptContexts.RemoveElement(&isInstInlineCacheThreadInfoAllocator, scriptContext);
 }
 
 Js::EntryPointInfo **

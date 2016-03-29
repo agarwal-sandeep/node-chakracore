@@ -66,6 +66,7 @@ namespace Js
         DiagBlockScopeInSlot,       // Block scope in slot array
         DiagBlockScopeInObject,     // Block scope in activation object
         DiagBlockScopeRangeEnd,     // Used to end a block scope range.
+        DiagParamScope,             // The scope represents symbols at formals
     };
 
     class PropertyGuard
@@ -473,6 +474,8 @@ namespace Js
             CodeGenFailedOOM,
             CodeGenFailedStackOverflow,
             CodeGenFailedAborted,
+            CodeGenFailedExceedJITLimit,
+            CodeGenFailedUnknown,
             NativeCodeInstallFailure,
             CleanUpForFinalize
         };
@@ -1699,16 +1702,17 @@ namespace Js
 
                 // Following counters uses ((uint32)-1) as default value
                 LocalClosureRegister                    = 16,
-                LocalFrameDisplayRegister               = 17,
-                EnvRegister                             = 18,
-                ThisRegisterForEventHandler             = 19,
-                FirstInnerScopeRegister                 = 20,
-                FuncExprScopeRegister                   = 21,
-                FirstTmpRegister                        = 22,
+                ParamClosureRegister                    = 17,
+                LocalFrameDisplayRegister               = 18,
+                EnvRegister                             = 19,
+                ThisRegisterForEventHandler             = 20,
+                FirstInnerScopeRegister                 = 21,
+                FuncExprScopeRegister                   = 22,
+                FirstTmpRegister                        = 23,
 
                 // Signed integers need keep the sign when promoting 
-                SignedFieldsStart                       = 23,
-                SerializationIndex                      = 23,
+                SignedFieldsStart                       = 24,
+                SerializationIndex                      = 24,
 
                 Max
             };
@@ -1957,6 +1961,7 @@ namespace Js
         bool m_isPartialDeserializedFunction : 1;
         bool m_isAsmJsScheduledForFullJIT : 1;
         bool m_hasLocalClosureRegister : 1;
+        bool m_hasParamClosureRegister : 1;
         bool m_hasLocalFrameDisplayRegister : 1;
         bool m_hasEnvRegister : 1;
         bool m_hasThisRegisterForEventHandler : 1;
@@ -2106,9 +2111,13 @@ namespace Js
         void SetThisRegisterForEventHandler(RegSlot reg);
         void MapAndSetThisRegisterForEventHandler(RegSlot reg);
         RegSlot GetThisRegisterForEventHandler() const;
+
         void SetLocalClosureRegister(RegSlot reg);
         void MapAndSetLocalClosureRegister(RegSlot reg);
         RegSlot GetLocalClosureRegister() const;
+        void SetParamClosureRegister(RegSlot reg);
+        void MapAndSetParamClosureRegister(RegSlot reg);
+        RegSlot GetParamClosureRegister() const;
 
         void SetLocalFrameDisplayRegister(RegSlot reg);
         void MapAndSetLocalFrameDisplayRegister(RegSlot reg);
@@ -2254,10 +2263,12 @@ namespace Js
     public:
         static bool IsNewSimpleJit();
         bool DoSimpleJit() const;
+        bool DoSimpleJitWithLock() const;
         bool DoSimpleJitDynamicProfile() const;
 
     private:
         bool DoInterpreterProfile() const;
+        bool DoInterpreterProfileWithLock() const;
         bool DoInterpreterAutoProfile() const;
 
     public:
@@ -2860,6 +2871,7 @@ namespace Js
         AsmJsFunctionInfo* GetAsmJsFunctionInfoWithLock()const { return static_cast<AsmJsFunctionInfo*>(this->GetAuxPtrWithLock(AuxPointerType::AsmJsFunctionInfo)); }
         AsmJsFunctionInfo* AllocateAsmJsFunctionInfo();
         AsmJsModuleInfo* GetAsmJsModuleInfo()const { return static_cast<AsmJsModuleInfo*>(this->GetAuxPtr(AuxPointerType::AsmJsModuleInfo)); }
+        AsmJsModuleInfo* GetAsmJsModuleInfoWithLock()const { return static_cast<AsmJsModuleInfo*>(this->GetAuxPtrWithLock(AuxPointerType::AsmJsModuleInfo)); }
         void ResetAsmJsInfo()
         {
             SetAuxPtr(AuxPointerType::AsmJsFunctionInfo, nullptr);
@@ -3452,6 +3464,7 @@ namespace Js
         DebuggerScope * GetSiblingScope(RegSlot location, FunctionBody *functionBody);
         void AddProperty(RegSlot location, Js::PropertyId propertyId, DebuggerScopePropertyFlags flags);
         bool GetPropertyIndex(Js::PropertyId propertyId, int& i);
+        bool HasProperty(Js::PropertyId propertyId);
 
         bool IsOffsetInScope(int offset) const;
         bool Contains(Js::PropertyId propertyId, RegSlot location) const;

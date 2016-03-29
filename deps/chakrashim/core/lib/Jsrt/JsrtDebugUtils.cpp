@@ -18,20 +18,24 @@ void JsrtDebugUtils::AddScriptIdToObject(Js::DynamicObject* object, Js::Utf8Sour
     }
 }
 
-void JsrtDebugUtils::AddFileNameToObject(Js::DynamicObject* object, Js::Utf8SourceInfo* utf8SourceInfo)
+void JsrtDebugUtils::AddFileNameOrScriptTypeToObject(Js::DynamicObject* object, Js::Utf8SourceInfo* utf8SourceInfo)
 {
-    const char16* url = utf8SourceInfo->GetSourceContextInfo()->url == nullptr ? _u("") : utf8SourceInfo->GetSourceContextInfo()->url;
-
     if (utf8SourceInfo->IsDynamic())
     {
-        Js::FunctionBody* anyFunctionBody = utf8SourceInfo->GetAnyParsedFunction();
-        if (anyFunctionBody != nullptr)
-        {
-            JsrtDebugUtils::AddPropertyToObject(object, JsrtDebugPropertyId::scriptType, anyFunctionBody->GetSourceName(), utf8SourceInfo->GetScriptContext());
-        }
-    }
+        AssertMsg(utf8SourceInfo->GetSourceContextInfo()->url == nullptr, "How come dynamic code have a url?");
 
-    JsrtDebugUtils::AddPropertyToObject(object, JsrtDebugPropertyId::fileName, url, utf8SourceInfo->GetScriptContext());
+        Js::FunctionBody* anyFunctionBody = utf8SourceInfo->GetAnyParsedFunction();
+
+        Assert(anyFunctionBody != nullptr);
+
+        JsrtDebugUtils::AddPropertyToObject(object, JsrtDebugPropertyId::scriptType, anyFunctionBody->GetSourceName(), utf8SourceInfo->GetScriptContext());
+    }
+    else
+    {
+        // url can be nullptr if JsParseScript/JsRunScript didn't passed any
+        const char16* url = utf8SourceInfo->GetSourceContextInfo()->url == nullptr ? _u("") : utf8SourceInfo->GetSourceContextInfo()->url;
+        JsrtDebugUtils::AddPropertyToObject(object, JsrtDebugPropertyId::fileName, url, utf8SourceInfo->GetScriptContext());
+    }
 }
 
 void JsrtDebugUtils::AddLineColumnToObject(Js::DynamicObject* object, Js::FunctionBody* functionBody, int byteCodeOffset)

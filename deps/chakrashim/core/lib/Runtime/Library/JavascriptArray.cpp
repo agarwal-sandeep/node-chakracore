@@ -8976,9 +8976,6 @@ Case0:
         }
         else
         {
-            // Source was not an array or TypedArray, return object is definitely a JavascriptArray
-            Assert(newArr);
-
             for (uint32 k = 0; k < length; k++)
             {
                 if (!JavascriptOperators::HasItem(obj, k))
@@ -8993,7 +8990,14 @@ Case0:
                     JavascriptNumber::ToVar(k, scriptContext),
                     obj);
 
-                newArr->DirectSetItemAt(k, mappedValue);
+                if (newArr)
+                {
+                    newArr->DirectSetItemAt(k, mappedValue);
+                }
+                else
+                {
+                    JavascriptArray::SetArrayLikeObjects(RecyclableObject::FromVar(newObj), k, mappedValue);
+                }
             }
         }
 
@@ -9125,21 +9129,17 @@ Case0:
                     if (newArr)
                     {
                         newArr->DirectSetItemAt(i, element);
-                        ++i;
                     }
                     else
                     {
                         JavascriptArray::SetArrayLikeObjects(RecyclableObject::FromVar(newObj), i, element);
-                        ++i;
                     }
+                    ++i;
                 }
             }
         }
         else
         {
-            // If source was not an array object, we will always return an array object
-            Assert(newArr);
-
             for (BigIndex k = 0u; k < length; ++k)
             {
                 if (!JavascriptOperators::HasItem(dynamicObject, k.IsSmallIndex() ? k.GetSmallIndex() : k.GetBigIndex()))
@@ -9155,7 +9155,14 @@ Case0:
 
                 if (JavascriptConversion::ToBoolean(selected, scriptContext))
                 {
-                    newArr->DirectSetItemAt(i, element);
+                    if (newArr)
+                    {
+                        newArr->DirectSetItemAt(i, element);
+                    }
+                    else
+                    {
+                        JavascriptArray::SetArrayLikeObjects(RecyclableObject::FromVar(newObj), i, element);
+                    }
                     ++i;
                 }
             }
