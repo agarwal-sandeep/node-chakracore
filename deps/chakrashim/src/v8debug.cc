@@ -793,7 +793,7 @@ namespace v8 {
         L"SendDelayedRespose", SendDelayedRespose);
   }
 
-  void Debug::SetMessageHandler(MessageHandler handler) {
+  void Debug::SetMessageHandler(Isolate* isolate, MessageHandler handler) {
     Debug::handler = handler;
   }
 
