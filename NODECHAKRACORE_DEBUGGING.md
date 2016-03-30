@@ -3,7 +3,7 @@ Debugging with Node-ChakraCore using VS Code
 Instructions for using experimental debugging features of Node-ChakraCore using Visual Studio Code 
 
 ### Debugging during development
-The goal for this work is to make Node-ChakraCore interoperable with existing Node debugging tools. Using the following instructions one can make VSCode debugger work with Node-ChakraCore without the need for modifying the debugging tool itself.
+The goal for this work is to make Node-ChakraCore interoperable with existing Node debugging tools. Using the following instructions one can make VSCode debugger work with Node-ChakraCore without the need for modifying the debugging tool itself. You can follow the progress of this work [here](https://github.com/agarwal-sandeep/node-chakracore/tree/debugging ).
 
 * Create a workspace  
  ```batch
@@ -32,7 +32,7 @@ The goal for this work is to make Node-ChakraCore interoperable with existing No
 * Inspect locals, callstacks, add watches etc.
 
 ### Time Travel Debbuging
-Currently, Time Travel debugging using Node-ChakraCore is an experimental project. [VSCode](https://code.visualstudio.com/) has been forked for this experiment to showcase the potential of Time travel debugging using Node-ChakraCore. Feel free to try your own experiemnts and submit PR to VSCode github repo or Node-ChakraCore.
+Time Travel debugging using Node-ChakraCore is an experimental project. [VSCode](https://code.visualstudio.com/) has been forked for this experiment to showcase the potential of Time travel debugging using Node-ChakraCore. You can follow the progress of this work [here](https://github.com/mrkmarron/ChakraCoreTTD/tree/DebuggerEnabledTTD).
 
 Here are the instructions, code and required binaries for ChakraCore with Time-Travel Debugging as shown at //build 2016.
 Download this self contained package (zip file), it contains the following:
@@ -58,4 +58,5 @@ Server running at http://127.0.0.1:1338/'
 * Notice the break point will hit where the error was raised
 * Using the custom step back icon in the debug navigation bar you can step back in time to identify where the error originated. 
 
-
+Please let us know on the [issues page](https://github.com/Microsoft/ChakraCore/issues) or on twitter [@ChakraCore](https://twitter.com/chakraCore) if you run into issues with any of this. 
+Also, feel free to try your own experiemnts and submit PR to [VSCode github repo](https://github.com/Microsoft/vscode) or [Node-ChakraCore repo](https://github.com/nodejs/node-chakracore/).
