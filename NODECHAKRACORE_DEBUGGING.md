@@ -2,7 +2,7 @@ Debugging with Node-ChakraCore using VS Code
 ===
 Instructions for using experimental debugging features of Node-ChakraCore using Visual Studio Code 
 
-### Regular debugging during development
+### Debugging during development
 The goal for this work is to make Node-ChakraCore interoperable with existing Node debugging tools. Using the following instructions one can make VSCode debugger work with Node-ChakraCore without the need for modifying the debugging tool itself.
 
 * Create a workspace  
