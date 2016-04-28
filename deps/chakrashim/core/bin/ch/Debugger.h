@@ -6,7 +6,7 @@
 
 static const WCHAR controllerScript[] = {
 #include "DbgController.js.encoded"
-    L'\0'
+    _u('\0')
 };
 
 class Debugger
@@ -18,8 +18,9 @@ public:
     bool StartDebugging(JsRuntimeHandle runtime);
     bool StopDebugging(JsRuntimeHandle runtime);
     bool HandleDebugEvent(JsDiagDebugEvent debugEvent, JsValueRef eventData);
-    bool VerifyAndWriteNewBaselineFile(LPCWSTR fileName);
+    bool CompareOrWriteBaselineFile(LPCWSTR fileName);
     bool SourceRunDown();
+    bool DumpFunctionInfo(JsValueRef functionInfo);
 private:
     Debugger(JsRuntimeHandle runtime);
     ~Debugger();
@@ -28,6 +29,8 @@ private:
     JsContextRef m_context;
     bool InstallDebugCallbacks(JsValueRef hostDebugObject);
     bool InstallHostCallback(JsValueRef hostDebugObject, const wchar_t *name, JsNativeFunction nativeFunction);
+    bool SetBaseline();
+    bool SetInspectMaxStringLength();
     bool CallFunction(wchar_t const * functionName, JsValueRef* arguments, unsigned short argumentCount, JsValueRef *result);
 public:
     static void CALLBACK JsDiagDebugEventHandler(_In_ JsDiagDebugEvent debugEvent, _In_ JsValueRef eventData, _In_opt_ void* callbackState);
@@ -41,7 +44,6 @@ public:
     static JsValueRef CALLBACK JsDiagGetBreakOnException(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState);
     static JsValueRef CALLBACK JsDiagSetStepType(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState);
     static JsValueRef CALLBACK JsDiagGetScripts(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState);
-    static JsValueRef CALLBACK JsDiagGetFunctionPosition(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState);
     static JsValueRef CALLBACK JsDiagGetStackProperties(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState);
     static JsValueRef CALLBACK JsDiagGetProperties(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState);
     static JsValueRef CALLBACK JsDiagGetObjectFromHandle(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState);

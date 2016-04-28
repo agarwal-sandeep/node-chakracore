@@ -511,6 +511,26 @@ Error:
     }
     return JS_INVALID_REFERENCE;
 }
+JsValueRef WScriptJsrt::DumpFunctionInfoCallback(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
+{
+    JsValueRef functionInfo = JS_INVALID_REFERENCE;
+
+    if (argumentCount > 1)
+    {
+        if (ChakraRTInterface::JsDiagGetFunctionPosition(arguments[1], &functionInfo) != JsNoError)
+        {
+            // If we can't get the functionInfo pass undefined
+            IfJsErrorFailLogAndRet(ChakraRTInterface::JsGetUndefinedValue(&functionInfo));
+        }
+
+        if (Debugger::debugger != nullptr)
+        {
+            Debugger::debugger->DumpFunctionInfo(functionInfo);
+        }
+    }
+
+    return JS_INVALID_REFERENCE;
+}
 JsValueRef WScriptJsrt::EmptyCallback(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
 {
     return JS_INVALID_REFERENCE;
@@ -550,6 +570,7 @@ bool WScriptJsrt::Initialize()
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"SetTimeout", SetTimeoutCallback));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"SetTimeout", SetTimeoutCallback));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"Detach", DetachCallback));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"DumpFunctionInfo", DumpFunctionInfoCallback));
 
     // ToDo Remove
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"Edit", EmptyCallback));
@@ -713,7 +734,14 @@ void WScriptJsrt::AddMessageQueue(MessageQueue *_messageQueue)
 
 WScriptJsrt::CallbackMessage::CallbackMessage(unsigned int time, JsValueRef function) : MessageBase(time), m_function(function)
 {
-    ChakraRTInterface::JsAddRef(m_function, nullptr);
+    JsErrorCode error = ChakraRTInterface::JsAddRef(m_function, nullptr);
+    if (error != JsNoError)
+    {
+        // Simply report a fatal error and exit because continuing from this point would result in inconsistent state
+        // and FailFast telemetry would not be useful.
+        wprintf(_u("FATAL ERROR: ChakraRTInterface::JsAddRef failed in WScriptJsrt::CallbackMessage::`ctor`. error=0x%x\n"), error);
+        exit(1);
+    }
 }
 
 WScriptJsrt::CallbackMessage::~CallbackMessage()

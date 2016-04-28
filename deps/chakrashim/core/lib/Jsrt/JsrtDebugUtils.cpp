@@ -1,6 +1,7 @@
-//---------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------
 // Copyright (C) Microsoft. All rights reserved.
-//----------------------------------------------------------------------------
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+//-------------------------------------------------------------------------------------------------------
 
 #include "JsrtPch.h"
 #include "JsrtDebugUtils.h"
@@ -310,19 +311,19 @@ void JsrtDebugUtils::AddPropertyType(Js::DynamicObject * object, Js::IDiagObject
 
     DBGPROP_ATTRIB_FLAGS dbPropAttrib = objectDisplayRef->GetTypeAttribute();
 
-    uint propertyAttributes = PROPERTY_ATTRIBUTE_NONE;
+    JsrtDebugPropertyAttribute propertyAttributes = JsrtDebugPropertyAttribute::NONE;
 
     if ((dbPropAttrib & DBGPROP_ATTRIB_VALUE_READONLY) == DBGPROP_ATTRIB_VALUE_READONLY)
     {
-        propertyAttributes |= PROPERTY_ATTRIBUTE_READ_ONLY_VALUE;
+        propertyAttributes |= JsrtDebugPropertyAttribute::READ_ONLY_VALUE;
     }
 
     if (objectDisplayRef->HasChildren())
     {
-        propertyAttributes |= PROPERTY_ATTRIBUTE_HAVE_CHILDRENS;
+        propertyAttributes |= JsrtDebugPropertyAttribute::HAVE_CHILDRENS;
     }
 
-    JsrtDebugUtils::AddPropertyToObject(object, JsrtDebugPropertyId::propertyAttributes, propertyAttributes, scriptContext);
+    JsrtDebugUtils::AddPropertyToObject(object, JsrtDebugPropertyId::propertyAttributes, (UINT)propertyAttributes, scriptContext);
 }
 
 void JsrtDebugUtils::AddVarPropertyToObject(Js::DynamicObject * object, JsrtDebugPropertyId propertyId, Js::Var value, Js::ScriptContext * scriptContext)

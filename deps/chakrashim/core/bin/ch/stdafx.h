@@ -76,13 +76,47 @@ typedef void * Var;
 
 #include "Helpers.h"
 
-#define IfJsErrorFailLog(expr) do { JsErrorCode jsErrorCode = expr; if ((jsErrorCode) != JsNoError) { fwprintf(stderr, L"ERROR: " TEXT(#expr) L" failed. JsErrorCode=0x%x (%s)\n", jsErrorCode, Helpers::JsErrorCodeToString(jsErrorCode)); fflush(stderr); goto Error; } } while (0)
+#define IfJsErrorFailLog(expr) \
+do { \
+    JsErrorCode jsErrorCode = expr; \
+    if ((jsErrorCode) != JsNoError) { \
+        fwprintf(stderr, L"ERROR: " TEXT(#expr) L" failed. JsErrorCode=0x%x (%s)\n", jsErrorCode, Helpers::JsErrorCodeToString(jsErrorCode)); \
+        fflush(stderr); \
+        goto Error; \
+    } \
+} while (0)
 
-#define IfJsErrorFailLogAndRet(expr) do { JsErrorCode jsErrorCode = expr; if ((jsErrorCode) != JsNoError) { fwprintf(stderr, L"ERROR: " TEXT(#expr) L" failed. JsErrorCode=0x%x (%s)\n", jsErrorCode, Helpers::JsErrorCodeToString(jsErrorCode)); fflush(stderr); return JS_INVALID_REFERENCE; } } while (0)
+#define IfJsErrorFailLogAndRet(expr) \
+do { \
+    JsErrorCode jsErrorCode = expr; \
+    if ((jsErrorCode) != JsNoError) { \
+        fwprintf(stderr, L"ERROR: " TEXT(#expr) L" failed. JsErrorCode=0x%x (%s)\n", jsErrorCode, Helpers::JsErrorCodeToString(jsErrorCode)); \
+        fflush(stderr); \
+        Assert(false); \
+        return JS_INVALID_REFERENCE; \
+    } \
+} while (0)
 
-#define IfJsrtErrorFailLogAndRetFalse(expr) do { JsErrorCode jsErrorCode = expr; if ((jsErrorCode) != JsNoError) { fwprintf(stderr, L"ERROR: " TEXT(#expr) L" failed. JsErrorCode=0x%x (%s)\n", jsErrorCode, Helpers::JsErrorCodeToString(jsErrorCode)); fflush(stderr); return false; } } while (0)
+#define IfJsrtErrorFailLogAndRetFalse(expr) \
+do { \
+    JsErrorCode jsErrorCode = expr; \
+    if ((jsErrorCode) != JsNoError) { \
+        fwprintf(stderr, L"ERROR: " TEXT(#expr) L" failed. JsErrorCode=0x%x (%s)\n", jsErrorCode, Helpers::JsErrorCodeToString(jsErrorCode)); \
+        fflush(stderr); \
+        Assert(false); \
+        return false; \
+    } \
+} while (0)
 
-#define IfJsrtErrorFailLogAndRetErrorCode(expr) do { JsErrorCode jsErrorCode = expr; if ((jsErrorCode) != JsNoError) { fwprintf(stderr, L"ERROR: " TEXT(#expr) L" failed. JsErrorCode=0x%x (%s)\n", jsErrorCode, Helpers::JsErrorCodeToString(jsErrorCode)); fflush(stderr); return (jsErrorCode); } } while (0)
+#define IfJsrtErrorFailLogAndRetErrorCode(expr) \
+do { \
+    JsErrorCode jsErrorCode = expr; \
+    if ((jsErrorCode) != JsNoError) { \
+        fwprintf(stderr, L"ERROR: " TEXT(#expr) L" failed. JsErrorCode=0x%x (%s)\n", jsErrorCode, Helpers::JsErrorCodeToString(jsErrorCode)); \
+        fflush(stderr); \
+        return (jsErrorCode); \
+    } \
+} while (0)
 
 #include "TestHooks.h"
 #include "chakrartinterface.h"

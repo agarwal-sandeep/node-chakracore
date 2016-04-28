@@ -3,12 +3,12 @@
 // Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
 //-------------------------------------------------------------------------------------------------------
 
+var TRACE_NONE = 0x0000;
 var TRACE_COMMANDS = 0x001;
 var TRACE_DIAG_OUTPUT = 0x002;
 var TRACE_INTERNAL_FUNCTIONS = 0x004;
 var TRACE_DEBUG_EVENTS = 0x008;
 var TRACE_ALL = TRACE_COMMANDS | TRACE_DIAG_OUTPUT | TRACE_INTERNAL_FUNCTIONS | TRACE_DEBUG_EVENTS;
-
 
 // Have all JsDiag* functions installed on it by Debugger.cpp
 var hostDebugObject = {};
@@ -18,12 +18,11 @@ var controllerObj = (function () {
     var _commandCompletions = [];
     var _wasResumed = false;
     var _currentStackFrameIndex = 0;
-    var _trace = 0x0000;
+    var _trace = TRACE_NONE;
     var _eventLog = [];
     var _baseline = undefined;
     var _exceptionCommands = undefined;
-
-    _trace = TRACE_ALL;
+    var _inspectMaxStringLength = 16;
 
     function internalPrint(str) {
         WScript.Echo(str);
@@ -55,7 +54,92 @@ var controllerObj = (function () {
         return result;
     }
 
+    filterLog = (function () {
+        var parentFilter = { "this": 1, "locals": 1 };
+        var filter = {};
+
+        // Discard all known globals to reduce baseline noise.
+        [
+            "#__proto__",
+            "NaN",
+            "Infinity",
+            "undefined",
+            "eval",
+            "parseInt",
+            "parseFloat",
+            "isNaN",
+            "isFinite",
+            "decodeURI",
+            "decodeURIComponent",
+            "encodeURI",
+            "encodeURIComponent",
+            "escape",
+            "unescape",
+            "CollectGarbage",
+            "Object",
+            "Array",
+            "Boolean",
+            "Symbol",
+            "Proxy",
+            "Reflect",
+            "Promise",
+            "Date",
+            "Function",
+            "Math",
+            "Number",
+            "String",
+            "RegExp",
+            "ArrayBuffer",
+            "DataView",
+            "Int8Array",
+            "Uint8Array",
+            "Uint8ClampedArray",
+            "Int16Array",
+            "Uint16Array",
+            "Int32Array",
+            "Uint32Array",
+            "Float32Array",
+            "Float64Array",
+            "JSON",
+            "Intl",
+            "Map",
+            "Set",
+            "WeakMap",
+            "WeakSet",
+            "Error",
+            "EvalError",
+            "RangeError",
+            "ReferenceError",
+            "SyntaxError",
+            "TypeError",
+            "URIError",
+            "WScript",
+            "print"
+        ].forEach(function (name) {
+            filter[name] = 1;
+        });
+
+        function filterInternal(parentName, obj, depth) {
+            for (var p in obj) {
+                if (parentFilter[parentName] == 1 && filter[p] == 1) {
+                    delete obj[p];
+                } else if (typeof obj[p] == "object") {
+                    filterInternal(p.trim(), obj[p], depth + 1);
+                }
+            }
+        }
+
+        return function (obj) {
+            try {
+                filterInternal("this"/*filter root*/, obj, 0);
+            } catch (ex) {
+                printError("exception during filter: " + ex);
+            }
+        };
+    })();
+
     function recordEvent(json) {
+        filterLog(json);
         _eventLog.push(json);
     }
 
@@ -87,16 +171,16 @@ var controllerObj = (function () {
             var bpObject = callHostFunction(hostDebugObject.JsDiagSetBreakpoint, scriptId, line, column);
             return {
                 id: bpObject.breakpointId,
-                scriptId : scriptId,
+                scriptId: scriptId,
                 name: name,
                 line: bpObject.line,
                 column: bpObject.column,
-                execStr: execStr
+                execStr: execStr,
+                enabled: true
             };
         }
 
-        function addBpObject(bpObj)
-        {
+        function addBpObject(bpObj) {
             internalTrace(TRACE_INTERNAL_FUNCTIONS, "addBpObject: ", bpObj);
             _bpMap[bpObj.id] = bpObj;
         }
@@ -113,21 +197,35 @@ var controllerObj = (function () {
                     name: name,
                     line: line,
                     column: column,
-                    execStr: execStr
+                    execStr: execStr,
+                    enabled: false
                 }
                 addBpObject(bpObj);
             },
             enableBreakpoint: function (name) {
                 var bpObj = getBpFromName(name);
-                delete _bpMap[bpObj.id];
-                internalTrace(TRACE_INTERNAL_FUNCTIONS, "enableBreakpoint: ", name, " bpObj: ", bpObj);
-                bpObj = internalSetBp(bpObj.name, bpObj.scriptId, bpObj.line, bpObj.column, bpObj.execStr);
-                addBpObject(bpObj);
+                if (bpObj) {
+                    delete _bpMap[bpObj.id];
+                    internalTrace(TRACE_INTERNAL_FUNCTIONS, "enableBreakpoint: ", name, " bpObj: ", bpObj);
+                    bpObj = internalSetBp(bpObj.name, bpObj.scriptId, bpObj.line, bpObj.column, bpObj.execStr);
+                    addBpObject(bpObj);
+                }
             },
             deleteBreakpoint: function (name) {
                 var bpObj = getBpFromName(name);
-                internalTrace(TRACE_INTERNAL_FUNCTIONS, "deleteBreakpoint: ", name, " bpObj: ", bpObj);
-                callHostFunction(hostDebugObject.JsDiagRemoveBreakpoint, bpObj.id);
+                if (bpObj && bpObj.enabled) {
+                    internalTrace(TRACE_INTERNAL_FUNCTIONS, "deleteBreakpoint: ", name, " bpObj: ", bpObj);
+                    callHostFunction(hostDebugObject.JsDiagRemoveBreakpoint, bpObj.id);
+                    delete _bpMap[bpObj.id];
+                }
+            },
+            disableBreakpoint: function (name) {
+                var bpObj = getBpFromName(name);
+                if (bpObj && bpObj.enabled) {
+                    internalTrace(TRACE_INTERNAL_FUNCTIONS, "disableBreakpoint: ", name, " bpObj: ", bpObj);
+                    callHostFunction(hostDebugObject.JsDiagRemoveBreakpoint, bpObj.id);
+                    _bpMap[bpObj.id].enabled = false;
+                }
             },
             getExecStr: function (id) {
                 for (var i in _bpMap) {
@@ -143,6 +241,10 @@ var controllerObj = (function () {
                         _bpMap[i].execStr = newExecStr;
                     }
                 }
+            },
+            clearAllBreakpoints: function () {
+                _bpMap = [];
+                _locBpId = -1;
             }
         }
     })();
@@ -264,19 +366,19 @@ var controllerObj = (function () {
                         //   exception(uncaught)
                         //   exception(all)
                         if (isExceptionBreakpoint) {
-                            var exceptionType = -1;
+                            var exceptionAttributes = -1;
                             if (bpName !== undefined) {
                                 if (bpName == "none") {
-                                    exceptionType = 0; // JsDiagBreakOnExceptionTypeNone
+                                    exceptionAttributes = 0; // JsDiagBreakOnExceptionAttributeNone
                                 } else if (bpName == "uncaught") {
-                                    exceptionType = 1; // JsDiagBreakOnExceptionTypeUncaught
+                                    exceptionAttributes = 0x2; // JsDiagBreakOnExceptionAttributeFirstChance
                                 } else if (bpName == "all") {
-                                    exceptionType = 2; // JsDiagBreakOnExceptionTypeAll
+                                    exceptionAttributes = 0x1 | 0x2; // JsDiagBreakOnExceptionAttributeUncaught | JsDiagBreakOnExceptionAttributeFirstChance
                                 }
                             } else {
                                 // throw "No exception type specified";
                             }
-                            callHostFunction(hostDebugObject.JsDiagSetBreakOnException, exceptionType);
+                            callHostFunction(hostDebugObject.JsDiagSetBreakOnException, exceptionAttributes);
                         }
 
                         // Parse the breakpoint execution string
@@ -287,7 +389,7 @@ var controllerObj = (function () {
                             return;
                         }
 
-                        // Insert the breakpoint at the beginning of the line.
+                        // Insert the breakpoint.
                         if (isExceptionBreakpoint) {
                             if (_exceptionCommands != undefined) {
                                 printError("More than one 'exception' annotation found");
@@ -359,33 +461,142 @@ var controllerObj = (function () {
         }
     }
 
+    function GetObjectDisplay(obj) {
+        var objectDisplay = ("className" in obj) ? obj["className"] : obj["type"];
+
+        var value = ("value" in obj) ? obj["value"] : obj["display"];
+
+        if (value && value.length > _inspectMaxStringLength) {
+            objectDisplay += " <large string>";
+        } else {
+            objectDisplay += " " + value;
+        }
+
+        return objectDisplay;
+    }
+
     function GetChild(obj, level) {
         function GetChildrens(obj, level) {
+            var retArray = {};
             for (var i = 0; i < obj.length; ++i) {
-                GetChild(obj[i], level);
+                var propName = (obj[i].name == "__proto__") ? "#__proto__" : obj[i].name;
+                retArray[propName] = GetChild(obj[i], level);
             }
+
+            return retArray;
         }
+
+        var retValue = {};
+
         if ("handle" in obj) {
             if (level >= 0) {
-                var childProps = callHostFunction(hostDebugObject.JsDiagGetProperties, obj["handle"], 1000, 1000);
-                if (childProps && (obj["handle"] in childProps)) {
-                    var properties = childProps[obj["handle"]]["properties"];
-                    GetChildrens(properties, level - 1);
-
-                    var debuggerOnlyProperties = childProps[obj["handle"]]["debuggerOnlyProperties"];
-                    GetChildrens(debuggerOnlyProperties, level - 1);
-
-                    Array.prototype.push.apply(properties, debuggerOnlyProperties);
-                    if (properties.length > 0) {
-                        obj["childrens"] = properties;
-                    }
+                var childProps = callHostFunction(hostDebugObject.JsDiagGetProperties, obj["handle"], 0, 1000);
+                var properties = childProps["properties"];
+                var debuggerOnlyProperties = childProps["debuggerOnlyProperties"];
+                Array.prototype.push.apply(properties, debuggerOnlyProperties);
+                if (properties.length > 0) {
+                    retValue = GetChildrens(properties, level - 1);
+                } else {
+                    retValue = GetObjectDisplay(obj);
                 }
+            } else {
+                retValue = GetObjectDisplay(obj);
             }
             delete obj["handle"];
         }
+
         if ("propertyAttributes" in obj) {
             delete obj["propertyAttributes"];
         }
+
+        return retValue;
+    }
+
+    function compareWithBaseline() {
+        function compareObjects(a, b, obj_namespace) {
+            var objectsEqual = true;
+
+            // This is a basic object comparison function, primarily to be used for JSON data.
+            // It doesn't handle cyclical objects.
+
+            function fail(step, message) {
+                if (message == undefined) {
+                    message = "diff baselines for details";
+                }
+                printError("Step " + step + "; on: " + obj_namespace + ": " + message);
+                objectsEqual = false;
+            }
+
+            function failNonObj(step, a, b, message) {
+                if (message == undefined) {
+                    message = "";
+                }
+                printError("Step " + step + "; Local Diff on: " + obj_namespace + ": " + message);
+                printError("Value 1:" + JSON.stringify(a));
+                printError("Value 2:" + JSON.stringify(b));
+                print("");
+                objectsEqual = false;
+            }
+
+            // (1) Check strict equality.
+            if (a === b)
+                return true;
+
+            // (2) non-Objects must have passed the strict equality comparison in (1)
+            if ((typeof a != "object") || (typeof b != "object")) {
+                failNonObj(2, a, b);
+                return false;
+            }
+
+            // (3) check all properties
+            for (var p in a) {
+                // (4) check the property
+                if (a[p] === b[p])
+                    continue;
+
+                // (5) non-Objects must have passed the strict equality comparison in (4)
+                if (typeof (a[p]) != "object") {
+                    failNonObj(5, a[p], b[p], "Property " + p);
+                    continue;
+                }
+
+                // (6) recursively check objects or arrays
+                if (!compareObjects(a[p], b[p], obj_namespace + "." + p)) {
+                    // Don't need to report error message as it'll be reported inside nested call
+                    objectsEqual = false;
+                    continue;
+                }
+            }
+
+            // (7) check any properties not in the previous enumeration
+            var hasOwnProperty = Object.prototype.hasOwnProperty;
+            for (var p in b) {
+                if (hasOwnProperty.call(b, p) && !hasOwnProperty.call(a, p)) {
+                    fail(7, "Property missing: " + p + ", value: " + JSON.stringify(b[p]));
+                    continue;
+                }
+            }
+            return objectsEqual;
+        }
+
+        var PASSED = 0;
+        var FAILED = 1;
+
+        if (_baseline == undefined) {
+            return PASSED;
+        }
+
+        try {
+            if (compareObjects(_baseline, _eventLog, "baseline")) {
+                return PASSED;
+            }
+        }
+        catch (ex) {
+            printError("EXCEPTION: " + ex);
+        }
+
+        printError("TEST FAILED");
+        return FAILED;
     }
 
     return {
@@ -429,44 +640,37 @@ var controllerObj = (function () {
                 if (expandLevel == undefined || expandLevel < 0) {
                     expandLevel = 0;
                 }
-                var localsObject = callHostFunction(hostDebugObject.JsDiagGetStackProperties, _currentStackFrameIndex);
+                var stackProperties = callHostFunction(hostDebugObject.JsDiagGetStackProperties, _currentStackFrameIndex);
 
                 if (expandLevel >= 0) {
-                    if ("exception" in localsObject) {
-                        GetChild(localsObject["exception"], expandLevel - 1);
-                    }
-                    if ("arguments" in localsObject) {
-                        GetChild(localsObject["arguments"], expandLevel - 1);
-                    }
-                    if ("returnValue" in localsObject) {
-                        GetChild(localsObject["returnValue"], expandLevel - 1);
-                    }
-                    if ("functionCallsReturn" in localsObject) {
-                        var functionCallsReturn = localsObject["functionCallsReturn"];
-                        for (var i = 0; i < functionCallsReturn.length; ++i) {
-                            GetChild(functionCallsReturn[i], expandLevel - 1);
+                    var localsJSON = {};
+                    ["thisObject", "exception", "arguments", "returnValue"].forEach(function (name) {
+                        if (name in stackProperties) {
+                            var stackObject = stackProperties[name];
+                            localsJSON[stackObject.name] = GetChild(stackObject, expandLevel - 1);
+                        }
+                    });
+                    ["functionCallsReturn", "locals"].forEach(function (name) {
+                        if (name in stackProperties) {
+                            var stackObject = stackProperties[name];
+                            if (stackObject.length > 0) {
+                                localsJSON[name] = {};
+                                for (var i = 0; i < stackObject.length; ++i) {
+                                    localsJSON[name][stackObject[i].name] = GetChild(stackObject[i], expandLevel - 1);
+                                }
+                            }
+                        }
+                    });
+                    if ("scopes" in stackProperties) {
+                        var scopesArray = stackProperties["scopes"];
+                        for (var i = 0; i < scopesArray.length; ++i) {
+                            localsJSON["scopes" + i] = GetChild(scopesArray[i], expandLevel - 1);
                         }
                     }
-                    if ("locals" in localsObject) {
-                        var locals = localsObject["locals"];
-                        for (var i = 0; i < locals.length; ++i) {
-                            GetChild(locals[i], expandLevel - 1);
-                        }
+                    if ("globals" in stackProperties && expandLevel > 0) {
+                        localsJSON["globals"] = GetChild(stackProperties["globals"], expandLevel - 1);
                     }
-                    if ("scopes" in localsObject) {
-                        var scopes = localsObject["scopes"];
-                        for (var i = 0; i < scopes.length; ++i) {
-                            GetChild(scopes[i], expandLevel - 1);
-                        }
-                    }
-                    if ("globals" in localsObject) {
-                        var globals = localsObject["globals"];
-                        GetChild(globals, expandLevel - 1);
-                    }
-
-                    
-
-                    recordEvent(localsObject);
+                    recordEvent(localsJSON);
                 }
             },
             stack: function (flags) {
@@ -475,38 +679,30 @@ var controllerObj = (function () {
                 }
 
                 var stackTrace = callHostFunction(hostDebugObject.JsDiagGetStackTrace);
-
+                var stackTraceArray = [];
                 for (var i = 0; i < stackTrace.length; ++i) {
-                    var stack = stackTrace[i];
-                    stack.fileName = filterFileName(stack.fileName);
-
-                    var lookupObject = callHostFunction(hostDebugObject.JsDiagGetObjectFromHandle, stackTrace[i].functionHandle);
-                    if ("fileName" in lookupObject) {
-                        lookupObject["fileName"] = filterFileName(lookupObject["fileName"]);
-                    }
-                    if ("handle" in lookupObject) {
-                        delete lookupObject["handle"];
-                    }
-
-                    stackTrace[i]["functionHandle"] = lookupObject;
+                    var stack = {};
+                    stack["line"] = stackTrace[i].line;
+                    stack["column"] = stackTrace[i].column;
+                    stack["sourceText"] = stackTrace[i].sourceText;
+                    var functionObject = callHostFunction(hostDebugObject.JsDiagGetObjectFromHandle, stackTrace[i].functionHandle);
+                    stack["function"] = functionObject.name;
+                    stackTraceArray.push(stack);
                 }
-
-                var lookupHandles = [];
-                for (var i = 0; i < stackTrace.length; ++i) {
-                    lookupHandles.push(stackTrace[i].functionHandle);
-                    lookupHandles.push(stackTrace[i].scriptHandle);
-                }
-
                 recordEvent({
-                    'callStack': stackTrace
+                    'callStack': stackTraceArray
                 });
             },
             evaluate: function (expression, expandLevel, flags) {
                 if (expression != undefined) {
+                    if (typeof expandLevel != "number" || expandLevel <= 0) {
+                        expandLevel = 0;
+                    }
                     var evalResult = callHostFunction(hostDebugObject.JsDiagEvaluate, _currentStackFrameIndex, expression);
-                    GetChild(evalResult, expandLevel - 1);
+                    var evaluateOutput = {};
+                    evaluateOutput[evalResult.name] = GetChild(evalResult, expandLevel - 1);
                     recordEvent({
-                        'evaluate': evalResult
+                        'evaluate': evaluateOutput
                     });
                 }
             },
@@ -514,7 +710,7 @@ var controllerObj = (function () {
                 bpManager.enableBreakpoint(name);
             },
             disableBp: function (name) {
-                bpManager.deleteBreakpoint(name);
+                bpManager.disableBreakpoint(name);
             },
             deleteBp: function (name) {
                 bpManager.deleteBreakpoint(name);
@@ -536,6 +732,11 @@ var controllerObj = (function () {
             },
             dumpSourceList: function () {
                 var sources = callHostFunction(hostDebugObject.JsDiagGetScripts);
+                sources.forEach(function (source) {
+                    if ("fileName" in source) {
+                        source["fileName"] = filterFileName(source["fileName"]);
+                    }
+                });
                 recordEvent({
                     'sources': sources
                 });
@@ -552,23 +753,51 @@ var controllerObj = (function () {
                 internalPrint(baseline);
             }
         },
+        dumpFunctionInfo: function (funcInfo) {
+            if (!funcInfo) {
+                funcInfo = {};
+            }
+            else {
+                funcInfo["fileName"] = filterFileName(funcInfo["fileName"]);
+            }
+            recordEvent({
+                'functionInfo': funcInfo
+            });
+        },
+        setInspectMaxStringLength: function (value) {
+            _inspectMaxStringLength = value;
+        },
         getOutputJson: function () {
             return JSON.stringify(_eventLog, undefined, "  ");
+        },
+        verify: function () {
+            return compareWithBaseline();
         },
         handleDebugEvent: function (debugEvent, eventData) {
             function debugEventToString(debugEvent) {
                 switch (debugEvent) {
-                    case 0: return "JsDiagDebugEventSourceCompile";
-                    case 1: return "JsDiagDebugEventCompileError";
-                    case 2: return "JsDiagDebugEventBreak";
-                    case 3: return "JsDiagDebugEventStepComplete";
-                    case 4: return "JsDiagDebugEventDebuggerStatement";
-                    case 5: return "JsDiagDebugEventAsyncBreak";
-                    case 6: return "JsDiagDebugEventRuntimeException";
-                    default: return "UnKnown";
+                    case 0:
+                        return "JsDiagDebugEventSourceCompile";
+                    case 1:
+                        return "JsDiagDebugEventCompileError";
+                    case 2:
+                        return "JsDiagDebugEventBreak";
+                    case 3:
+                        return "JsDiagDebugEventStepComplete";
+                    case 4:
+                        return "JsDiagDebugEventDebuggerStatement";
+                    case 5:
+                        return "JsDiagDebugEventAsyncBreak";
+                    case 6:
+                        return "JsDiagDebugEventRuntimeException";
+                    default:
+                        return "UnKnown";
                 }
             }
-            internalTrace(TRACE_DEBUG_EVENTS, { 'debugEvent': debugEventToString(debugEvent), 'eventData': eventData });
+            internalTrace(TRACE_DEBUG_EVENTS, {
+                'debugEvent': debugEventToString(debugEvent),
+                'eventData': eventData
+            });
             switch (debugEvent) {
                 case 0:
                     /*JsDiagDebugEventSourceCompile*/
@@ -600,6 +829,7 @@ var controllerObj = (function () {
             }
         },
         handleSourceRunDown: function (sources) {
+            bpManager.clearAllBreakpoints();
             for (var len = 0; len < sources.length; ++len) {
                 var source = callHostFunction(hostDebugObject.JsDiagGetSource, sources[len].scriptId);
                 addSourceFile(source.source, source.scriptId);
@@ -607,7 +837,6 @@ var controllerObj = (function () {
         },
     }
 })();
-
 
 // Commands for use from the breakpoint execution string in test files
 function log(str) {
@@ -653,6 +882,7 @@ function dumpBreak() {
 function dumpSourceList() {
     controllerObj.pushCommand(controllerObj.debuggerCommands.dumpSourceList, arguments);
 }
+
 // Start internal tracing. E.g.: /**bp:trace(TRACE_COMMANDS)**/
 function trace() {
     controllerObj.pushCommand(controllerObj.debuggerCommands.trace, arguments);
@@ -670,9 +900,19 @@ function deleteMbp() { }
 function GetOutputJson() {
     return controllerObj.getOutputJson.apply(controllerObj, arguments);
 }
+function Verify() {
+    return controllerObj.verify.apply(controllerObj, arguments);
+}
 function SetBaseline() {
     return controllerObj.setBaseline.apply(controllerObj, arguments);
 }
+function SetInspectMaxStringLength() {
+    return controllerObj.setInspectMaxStringLength.apply(controllerObj, arguments);
+}
+function DumpFunctionInfo() {
+    return controllerObj.dumpFunctionInfo.apply(controllerObj, arguments);
+}
+
 
 // Called from Debugger.cpp to handle JsDiagDebugEvent
 function HandleDebugEvent() {

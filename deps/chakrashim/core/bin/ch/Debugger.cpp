@@ -4,7 +4,9 @@
 //-------------------------------------------------------------------------------------------------------
 #include "stdafx.h"
 
-void CALLBACK Debugger::JsDiagDebugEventHandler(_In_ JsDiagDebugEvent debugEvent, _In_ JsValueRef eventData, _In_opt_ void* callbackState)
+#define MAX_BASELINE_SIZE       (1024*1024*200)
+
+void CHAKRA_CALLBACK Debugger::JsDiagDebugEventHandler(_In_ JsDiagDebugEvent debugEvent, _In_ JsValueRef eventData, _In_opt_ void* callbackState)
 {
     Debugger* debugger = (Debugger*)callbackState;
     debugger->HandleDebugEvent(debugEvent, eventData);
@@ -52,6 +54,7 @@ JsValueRef Debugger::JsDiagGetStackTrace(JsValueRef callee, bool isConstructCall
 
 JsValueRef Debugger::JsDiagRequestAsyncBreak(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
+    IfJsErrorFailLogAndRet(ChakraRTInterface::JsDiagRequestAsyncBreak(Debugger::GetRuntime()));
     return JS_INVALID_REFERENCE;
 }
 
@@ -95,7 +98,12 @@ JsValueRef Debugger::JsDiagSetBreakOnException(JsValueRef callee, bool isConstru
 
 JsValueRef Debugger::JsDiagGetBreakOnException(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
-    return JS_INVALID_REFERENCE;
+    JsDiagBreakOnExceptionAttributes exceptionAttributes;
+    IfJsErrorFailLogAndRet(ChakraRTInterface::JsDiagGetBreakOnException(Debugger::GetRuntime(), &exceptionAttributes));
+
+    JsValueRef exceptionAttributesRef;
+    IfJsErrorFailLogAndRet(ChakraRTInterface::JsDoubleToNumber((double)exceptionAttributes, &exceptionAttributesRef));
+    return exceptionAttributesRef;
 }
 
 JsValueRef Debugger::JsDiagSetStepType(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
@@ -116,11 +124,6 @@ JsValueRef Debugger::JsDiagGetScripts(JsValueRef callee, bool isConstructCall, J
     JsValueRef sourcesList = JS_INVALID_REFERENCE;
     IfJsErrorFailLogAndRet(ChakraRTInterface::JsDiagGetScripts(&sourcesList));
     return sourcesList;
-}
-
-JsValueRef Debugger::JsDiagGetFunctionPosition(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
-{
-    return JS_INVALID_REFERENCE;
 }
 
 JsValueRef Debugger::JsDiagGetStackProperties(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
@@ -209,21 +212,66 @@ Debugger * Debugger::GetDebugger(JsRuntimeHandle runtime)
     return Debugger::debugger;
 }
 
+void Debugger::CloseDebugger()
+{
+    if (Debugger::debugger != nullptr)
+    {
+        delete Debugger::debugger;
+        Debugger::debugger = nullptr;
+    }
+}
+
+JsRuntimeHandle Debugger::GetRuntime()
+{
+    return Debugger::debugger != nullptr ? Debugger::debugger->m_runtime : JS_INVALID_RUNTIME_HANDLE;
+}
+
+class AutoRestoreContext
+{
+public:
+    AutoRestoreContext(JsContextRef newContext)
+    {
+        ChakraRTInterface::JsGetCurrentContext(&oldContext);
+
+        if (oldContext != newContext)
+        {
+            ChakraRTInterface::JsSetCurrentContext(newContext);
+            contextChanged = true;
+        }
+        else
+        {
+            contextChanged = false;
+        }
+    }
+
+    ~AutoRestoreContext()
+    {
+        if (contextChanged)
+        {
+            ChakraRTInterface::JsSetCurrentContext(oldContext);
+        }
+    }
+private:
+    JsContextRef oldContext;
+    bool contextChanged;
+};
+
 bool Debugger::Initialize()
 {
     // Create a new context and run dbgcontroller.js in that context
     // setup dbgcontroller.js callbacks
-    // put runtime in debug mode
 
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsCreateContext(this->m_runtime, &this->m_context));
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(m_context));
+
+    AutoRestoreContext autoRestoreContext(this->m_context);
 
     JsValueRef globalFunc = JS_INVALID_REFERENCE;
 
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsParseScriptWithFlags(controllerScript, JS_SOURCE_CONTEXT_NONE, _u("DbgController.js"), JsParseScriptAttributeLibraryCode, &globalFunc));
+    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsParseScriptWithAttributes(controllerScript, JS_SOURCE_CONTEXT_NONE, _u("DbgController.js"), JsParseScriptAttributeLibraryCode, &globalFunc));
 
     JsValueRef undefinedValue;
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetUndefinedValue(&undefinedValue));
+
     JsValueRef args[] = { undefinedValue };
     JsValueRef result = JS_INVALID_REFERENCE;
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsCallFunction(globalFunc, args, _countof(args), &result));
@@ -244,6 +292,16 @@ bool Debugger::Initialize()
         return false;
     }
 
+    if (HostConfigFlags::flags.dbgbaselineIsEnabled)
+    {
+        this->SetBaseline();
+    }
+
+    if (HostConfigFlags::flags.InspectMaxStringLengthIsEnabled)
+    {
+        this->SetInspectMaxStringLength();
+    }
+
     return true;
 }
 
@@ -260,7 +318,6 @@ bool Debugger::InstallDebugCallbacks(JsValueRef hostDebugObject)
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetBreakOnException"), Debugger::JsDiagGetBreakOnException));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagSetStepType"), Debugger::JsDiagSetStepType));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetScripts"), Debugger::JsDiagGetScripts));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetFunctionPosition"), Debugger::JsDiagGetFunctionPosition));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetStackProperties"), Debugger::JsDiagGetStackProperties));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetProperties"), Debugger::JsDiagGetProperties));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetObjectFromHandle"), Debugger::JsDiagGetObjectFromHandle));
@@ -271,7 +328,7 @@ Error:
 
 bool Debugger::InstallHostCallback(JsValueRef hostDebugObject, const wchar_t * name, JsNativeFunction nativeFunction)
 {
-    
+
     JsPropertyIdRef propertyIdRef;
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetPropertyIdFromName(name, &propertyIdRef));
 
@@ -283,33 +340,125 @@ bool Debugger::InstallHostCallback(JsValueRef hostDebugObject, const wchar_t * n
     return true;
 }
 
+bool Debugger::SetBaseline()
+{
+    LPSTR script = nullptr;
+    FILE *file = nullptr;
+    int numChars = 0;
+    LPWSTR wideScript = nullptr;
+    HRESULT hr = S_OK;
+
+    if (_wfopen_s(&file, HostConfigFlags::flags.dbgbaseline, _u("rb")) != 0)
+    {
+        Helpers::LogError(_u("opening baseline file '%s'"), HostConfigFlags::flags.dbgbaseline);
+    }
+    else
+    {
+        int fileSize = _filelength(_fileno(file));
+        if (fileSize <= MAX_BASELINE_SIZE)
+        {
+            script = new char[fileSize + 1];
+
+            numChars = static_cast<int>(fread(script, sizeof(script[0]), fileSize, file));
+            if (numChars == fileSize)
+            {
+                script[numChars] = '\0';
+
+                // Convert to wide for sending to script.
+                wideScript = new char16[numChars + 2];
+                if (MultiByteToWideChar(CP_UTF8, 0, script, static_cast<int>(strlen(script)) + 1, wideScript, numChars + 2) == 0)
+                {
+                    Helpers::LogError(_u("MultiByteToWideChar"));
+                    IfFailGo(E_FAIL);
+                }
+
+                // Pass in undefined for 'this'
+                JsValueRef undefinedRef;
+                IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetUndefinedValue(&undefinedRef));
+
+                JsValueRef wideScriptRef;
+                IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsPointerToString(wideScript, wcslen(wideScript), &wideScriptRef));
+
+                JsValueRef args[] = { undefinedRef, wideScriptRef };
+
+                JsValueRef result = JS_INVALID_REFERENCE;
+
+                this->CallFunction(_u("SetBaseline"), args, _countof(args), &result);
+            }
+            else
+            {
+                Helpers::LogError(_u("failed to read from baseline file"));
+                IfFailGo(E_FAIL);
+            }
+        }
+        else
+        {
+            Helpers::LogError(_u("baseline file too large"));
+            IfFailGo(E_FAIL);
+        }
+    }
+Error:
+    if (script)
+        delete[] script;
+    if (wideScript)
+        delete[] wideScript;
+    if (file)
+        fclose(file);
+    return hr == S_OK;
+}
+
+bool Debugger::SetInspectMaxStringLength()
+{
+    Assert(HostConfigFlags::flags.InspectMaxStringLength > 0);
+
+    // Pass in undefined for 'this'
+    JsValueRef undefinedRef;
+    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetUndefinedValue(&undefinedRef));
+
+    JsValueRef maxStringRef;
+    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsDoubleToNumber(HostConfigFlags::flags.InspectMaxStringLength, &maxStringRef));
+
+    JsValueRef args[] = { undefinedRef, maxStringRef };
+
+    JsValueRef result = JS_INVALID_REFERENCE;
+
+    this->CallFunction(_u("SetInspectMaxStringLength"), args, _countof(args), &result);
+    return false;
+}
+
 bool Debugger::CallFunction(wchar_t const * functionName, JsValueRef * arguments, unsigned short argumentCount, JsValueRef * result)
 {
-    JsValueRef globalObj = JS_INVALID_REFERENCE;
-    JsValueRef targetFunc = JS_INVALID_REFERENCE;
-    JsPropertyIdRef targetFuncId = JS_INVALID_REFERENCE;
-
-    // Save the current context
-    JsContextRef prevContext = JS_INVALID_REFERENCE;
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetCurrentContext(&prevContext));
-
-    // Set the current context
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(m_context));
+    AutoRestoreContext autoRestoreContext(this->m_context);
 
     // Get the global object
+    JsValueRef globalObj = JS_INVALID_REFERENCE;
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetGlobalObject(&globalObj));
 
     // Get a script string for the function name
+    JsPropertyIdRef targetFuncId = JS_INVALID_REFERENCE;
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetPropertyIdFromName(functionName, &targetFuncId));
 
     // Get the target function
+    JsValueRef targetFunc = JS_INVALID_REFERENCE;
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetProperty(globalObj, targetFuncId, &targetFunc));
 
     // Call the function
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsCallFunction(targetFunc, arguments, argumentCount, result));
 
-    // Restore the previous context
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(prevContext));
+    return true;
+}
+
+bool Debugger::DumpFunctionInfo(JsValueRef functionInfo)
+{
+    // Pass in undefined for 'this'
+    JsValueRef undefinedRef;
+    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetUndefinedValue(&undefinedRef));
+
+    JsValueRef args[] = { undefinedRef, functionInfo };
+
+    JsValueRef result = JS_INVALID_REFERENCE;
+
+    this->CallFunction(_u("DumpFunctionInfo"), args, _countof(args), &result);
 
     return true;
 }
@@ -333,12 +482,7 @@ bool Debugger::StopDebugging(JsRuntimeHandle runtime)
 
 bool Debugger::HandleDebugEvent(JsDiagDebugEvent debugEvent, JsValueRef eventData)
 {
-    // Save the current context
-    JsContextRef prevContext = JS_INVALID_REFERENCE;
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetCurrentContext(&prevContext));
-
-    // Set the current context
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(m_context));
+    AutoRestoreContext autoRestoreContext(this->m_context);
 
     // Pass in undefined for 'this'
     JsValueRef undefinedRef;
@@ -353,20 +497,12 @@ bool Debugger::HandleDebugEvent(JsDiagDebugEvent debugEvent, JsValueRef eventDat
 
     this->CallFunction(_u("HandleDebugEvent"), args, _countof(args), &result);
 
-    // Restore the previous context
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(prevContext));
-
     return true;
 }
 
-bool Debugger::VerifyAndWriteNewBaselineFile(LPCWSTR fileName)
+bool Debugger::CompareOrWriteBaselineFile(LPCWSTR fileName)
 {
-    // Save the current context
-    JsContextRef prevContext = JS_INVALID_REFERENCE;
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetCurrentContext(&prevContext));
-
-    // Set the current context
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(m_context));
+    AutoRestoreContext autoRestoreContext(this->m_context);
 
     // Pass in undefined for 'this'
     JsValueRef undefinedRef;
@@ -376,40 +512,62 @@ bool Debugger::VerifyAndWriteNewBaselineFile(LPCWSTR fileName)
 
     JsValueRef result = JS_INVALID_REFERENCE;
 
-    this->CallFunction(_u("GetOutputJson"), args, _countof(args), &result);
+    bool testPassed = false;
 
-    LPCWSTR baselineData;
-    size_t baselineDataLength;
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsStringToPointer(result, &baselineData, &baselineDataLength));
+    if (HostConfigFlags::flags.dbgbaselineIsEnabled)
+    {
+        this->CallFunction(_u("Verify"), args, _countof(args), &result);
+        JsValueRef numberVal;
+        IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsConvertValueToNumber(result, &numberVal));
+        int val;
+        IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsNumberToInt(numberVal, &val));
+        testPassed = (val == 0);
+    }
+
+    if (!testPassed)
+    {
+        this->CallFunction(_u("GetOutputJson"), args, _countof(args), &result);
+
+        LPCWSTR baselineData;
+        size_t baselineDataLength;
+        IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsStringToPointer(result, &baselineData, &baselineDataLength));
 
 #pragma warning(disable: 38021) // From MSDN: For the code page UTF-8 dwFlags must be set to either 0 or WC_ERR_INVALID_CHARS. Otherwise, the function fails with ERROR_INVALID_FLAGS.
-    int multiByteDataLength = WideCharToMultiByte(CP_UTF8, 0, baselineData, -1, NULL, 0, NULL, NULL);
-    LPSTR baselineDataANSI = new char[multiByteDataLength];
-    if (WideCharToMultiByte(CP_UTF8, 0, baselineData, -1, baselineDataANSI, multiByteDataLength, NULL, NULL) == 0)
-    {
+        int multiByteDataLength = WideCharToMultiByte(CP_UTF8, 0, baselineData, -1, NULL, 0, NULL, NULL);
+        LPSTR baselineDataANSI = new char[multiByteDataLength];
+        if (WideCharToMultiByte(CP_UTF8, 0, baselineData, -1, baselineDataANSI, multiByteDataLength, NULL, NULL) == 0)
+        {
 #pragma warning(default: 38021) // From MSDN: For the code page UTF-8 dwFlags must be set to either 0 or WC_ERR_INVALID_CHARS. Otherwise, the function fails with ERROR_INVALID_FLAGS.
-        return false;
+            return false;
+        }
+
+        wchar_t baselineFilename[256];
+        swprintf_s(baselineFilename, _countof(baselineFilename), HostConfigFlags::flags.dbgbaselineIsEnabled ? _u("%s.dbg.baseline.rebase") : _u("%s.dbg.baseline"), fileName);
+
+        FILE *file = nullptr;
+        if (_wfopen_s(&file, baselineFilename, _u("wt")) != 0)
+        {
+            return false;
+        }
+
+        int countWritten = static_cast<int>(fwrite(baselineDataANSI, sizeof(baselineDataANSI[0]), strlen(baselineDataANSI), file));
+        if (countWritten != (int)strlen(baselineDataANSI))
+        {
+            Assert(false);
+            return false;
+        }
+
+        fclose(file);
+
+        if (!HostConfigFlags::flags.dbgbaselineIsEnabled)
+        {
+            wprintf(_u("No baseline file specified, baseline created at '%s'\n"), baselineFilename);
+        }
+        else
+        {
+            Helpers::LogError(_u("Rebase file created at '%s'\n"), baselineFilename);
+        }
     }
-
-    wchar_t baselineFilename[256];
-    swprintf_s(baselineFilename, _countof(baselineFilename), _u("%s.dbg.baseline"), fileName);
-
-    FILE *file = nullptr;
-    if (_wfopen_s(&file, baselineFilename, _u("wt")) != 0)
-    {
-        return false;
-    }
-
-    int countWritten = static_cast<int>(fwrite(baselineDataANSI, sizeof(baselineDataANSI[0]), strlen(baselineDataANSI), file));
-    if (countWritten != (int)strlen(baselineDataANSI))
-    {
-        return false;
-    }
-
-    fclose(file);
-
-    // Restore the previous context
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(prevContext));
 
     return true;
 }
@@ -419,12 +577,7 @@ bool Debugger::SourceRunDown()
     JsValueRef sourcesList = JS_INVALID_REFERENCE;
     IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsDiagGetScripts(&sourcesList));
 
-    // Save the current context
-    JsContextRef prevContext = JS_INVALID_REFERENCE;
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsGetCurrentContext(&prevContext));
-
-    // Set the current context
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(m_context));
+    AutoRestoreContext autoRestoreContext(this->m_context);
 
     // Pass in undefined for 'this'
     JsValueRef undefinedRef;
@@ -436,22 +589,5 @@ bool Debugger::SourceRunDown()
 
     this->CallFunction(_u("HandleSourceRunDown"), args, _countof(args), &result);
 
-    // Restore the previous context
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsSetCurrentContext(prevContext));
-
     return true;
-}
-
-void Debugger::CloseDebugger()
-{
-    if (Debugger::debugger != nullptr)
-    {
-        delete Debugger::debugger;
-        Debugger::debugger = nullptr;
-    }
-}
-
-JsRuntimeHandle Debugger::GetRuntime()
-{
-    return Debugger::debugger != nullptr ? Debugger::debugger->m_runtime : JS_INVALID_RUNTIME_HANDLE;
 }

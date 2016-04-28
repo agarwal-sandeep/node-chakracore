@@ -743,7 +743,7 @@ namespace Js
                 aLeft = JavascriptConversion::ToPrimitive(aLeft, JavascriptHint::HintNumber, scriptContext);
             }
             //BugFix: When @@ToPrimitive of an object is overridden with a function that returns null/undefined
-            //this helper will fall into a inescapable goto loop as the checks for null/undefined were outside of the path 
+            //this helper will fall into a inescapable goto loop as the checks for null/undefined were outside of the path
             return RelationalComparisonHelper(aLeft, aRight, scriptContext, leftFirst, undefinedAs);
         }
 
@@ -1347,12 +1347,11 @@ CommonNumber:
     {
         RecyclableObject* function = GetIteratorFunction(aRight, scriptContext);
         JavascriptMethod method = function->GetEntryPoint();
-        if ((JavascriptArray::Is(aRight) && method == JavascriptArray::EntryInfo::Values.GetOriginalEntryPoint()) ||
-            (TypedArrayBase::Is(aRight) && method == TypedArrayBase::EntryInfo::Values.GetOriginalEntryPoint()))
+        if (((JavascriptArray::Is(aRight) && method == JavascriptArray::EntryInfo::Values.GetOriginalEntryPoint())
+                || (TypedArrayBase::Is(aRight) && method == TypedArrayBase::EntryInfo::Values.GetOriginalEntryPoint()))
+            // We can't optimize away the iterator if the array iterator prototype is user defined.
+            && !JavascriptLibrary::ArrayIteratorPrototypeHasUserDefinedNext(scriptContext))
         {
-            // TODO: There is a compliance bug here in the case where the user has changed %ArrayIteratorPrototype%.next(); we won't call it.
-            // Checking if the property has been modified is currently not possible without doing a Get on it which might call user code.
-            // Fixing this bug will require a way to get the value stored in the property without doing the evaluation semantics of a Get.
             return aRight;
         }
 
@@ -2459,8 +2458,11 @@ CommonNumber:
             Var member;
 
             // If the item is found in the array own body, then it is a number
-            if (JavascriptOperators::GetOwnItem(object, index, &member, scriptContext))
+            if (JavascriptOperators::GetOwnItem(object, index, &member, scriptContext)
+                && !JavascriptOperators::IsUndefined(member))
+            {
                 return TRUE;
+            }
         }
         return FALSE;
     }
@@ -2844,6 +2846,29 @@ CommonNumber:
         // If we have console scope and no one in the scope had the property add it to console scope
         if ((length > 0) && ConsoleScopeActivationObject::Is(pDisplay->GetItem(length - 1)))
         {
+            // CheckPrototypesForAccessorOrNonWritableProperty does not check for const in global object. We should check it here. 
+            if ((length > 1) && GlobalObject::Is(pDisplay->GetItem(length - 2)))
+            {
+                GlobalObject* globalObject = GlobalObject::FromVar(pDisplay->GetItem(length - 2));
+                Var setterValue = nullptr;
+
+                DescriptorFlags flags = JavascriptOperators::GetRootSetter(globalObject, propertyId, &setterValue, &info, scriptContext);
+                Assert((flags & Accessor) != Accessor);
+                Assert((flags & Proxy) != Proxy);
+                if ((flags & Data) == Data && (flags & Writable) == None)
+                {
+                    if (!allowUndecInConsoleScope)
+                    {
+                        if (flags & Const)
+                        {
+                            JavascriptError::ThrowTypeError(scriptContext, ERRAssignmentToConst);
+                        }
+                        Assert(!isLexicalThisSlotSymbol);
+                        return;
+                    }
+                }
+            }
+
             RecyclableObject* obj = RecyclableObject::FromVar((DynamicObject*)pDisplay->GetItem(length - 1));
             OUTPUT_TRACE(Js::ConsoleScopePhase, _u("Adding property '%s' to console scope object\n"), scriptContext->GetPropertyName(propertyId)->GetBuffer());
             JavascriptOperators::SetProperty(obj, obj, propertyId, newValue, scriptContext, propertyOperationFlags);
@@ -4492,49 +4517,56 @@ CommonNumber:
         }
 
         BOOL  returnValue = false;
+#define MEMCOPY_TYPED_ARRAY(type, conversion) type ## ::FromVar(dstInstance)->DirectSetItemAtRange( type ## ::FromVar(srcInstance), srcStart, dstStart, length, JavascriptConversion:: ## conversion)
         switch (instanceType)
         {
         case TypeIds_Int8Array:
         {
-            // The typed array will deal with all possible values for the index
-            returnValue = Int8Array::FromVar(dstInstance)->DirectSetItemAtRange(Int8Array::FromVar(srcInstance), srcStart, dstStart, length, JavascriptConversion::ToInt8);
+            returnValue = MEMCOPY_TYPED_ARRAY(Int8Array, ToInt8);
             break;
         }
-
         case TypeIds_Uint8Array:
         {
-            returnValue = Uint8Array::FromVar(dstInstance)->DirectSetItemAtRange(Uint8Array::FromVar(srcInstance), srcStart, dstStart, length, JavascriptConversion::ToUInt8);
+            returnValue = MEMCOPY_TYPED_ARRAY(Uint8Array, ToUInt8);
             break;
         }
-
         case TypeIds_Uint8ClampedArray:
         {
-            returnValue = Uint8ClampedArray::FromVar(dstInstance)->DirectSetItemAtRange(Uint8ClampedArray::FromVar(srcInstance), srcStart, dstStart, length, JavascriptConversion::ToUInt8Clamped);
+            returnValue = MEMCOPY_TYPED_ARRAY(Uint8ClampedArray, ToUInt8Clamped);
             break;
         }
-
         case TypeIds_Int16Array:
         {
-            returnValue = Int16Array::FromVar(dstInstance)->DirectSetItemAtRange(Int16Array::FromVar(srcInstance), srcStart, dstStart, length, JavascriptConversion::ToInt16);
+            returnValue = MEMCOPY_TYPED_ARRAY(Int16Array, ToInt16);
             break;
         }
-
         case TypeIds_Uint16Array:
         {
-            returnValue = Uint16Array::FromVar(dstInstance)->DirectSetItemAtRange(Uint16Array::FromVar(srcInstance), srcStart, dstStart, length, JavascriptConversion::ToUInt16);
+            returnValue = MEMCOPY_TYPED_ARRAY(Uint16Array, ToUInt16);
             break;
         }
         case TypeIds_Int32Array:
         {
-            returnValue = Int32Array::FromVar(dstInstance)->DirectSetItemAtRange(Int32Array::FromVar(srcInstance), srcStart, dstStart, length, JavascriptConversion::ToInt32);
+            returnValue = MEMCOPY_TYPED_ARRAY(Int32Array, ToInt32);
             break;
         }
         case TypeIds_Uint32Array:
         {
-            returnValue = Uint32Array::FromVar(dstInstance)->DirectSetItemAtRange(Uint32Array::FromVar(srcInstance), srcStart, dstStart, length, JavascriptConversion::ToUInt32);
+            returnValue = MEMCOPY_TYPED_ARRAY(Uint32Array, ToUInt32);
+            break;
+        }
+        case TypeIds_Float32Array:
+        {
+            returnValue = MEMCOPY_TYPED_ARRAY(Float32Array, ToFloat);
+            break;
+        }
+        case TypeIds_Float64Array:
+        {
+            returnValue = MEMCOPY_TYPED_ARRAY(Float64Array, ToNumber);
             break;
         }
         case TypeIds_Array:
+        case TypeIds_NativeFloatArray:
         case TypeIds_NativeIntArray:
         {
             if (dstStart < 0 || srcStart < 0)
@@ -4543,33 +4575,32 @@ CommonNumber:
                 break;
             }
             // Upper bounds check for source array
-            uint32 end;
-            if (UInt32Math::Add(srcStart, length, &end) || end > ((ArrayObject*)srcInstance)->GetLength())
-            {
-                return false;
-            }
+            JavascriptArray* srcArray = JavascriptArray::FromVar(srcInstance);
+            JavascriptArray* dstArray = JavascriptArray::FromVar(dstInstance);
             if (scriptContext->optimizationOverrides.IsEnabledArraySetElementFastPath())
             {
                 INT_PTR vt = VirtualTableInfoBase::GetVirtualTable(dstInstance);
                 if (instanceType == TypeIds_Array)
                 {
-                    returnValue = JavascriptArray::FromVar(dstInstance)->DirectSetItemAtRangeFromArray<Var>(dstStart, length, JavascriptArray::FromVar(srcInstance), srcStart);
+                    returnValue = dstArray->DirectSetItemAtRangeFromArray<Var>(dstStart, length, srcArray, srcStart);
+                }
+                else if (instanceType == TypeIds_NativeIntArray)
+                {
+                    returnValue = dstArray->DirectSetItemAtRangeFromArray<int32>(dstStart, length, srcArray, srcStart);
                 }
                 else
                 {
-                    returnValue = JavascriptArray::FromVar(dstInstance)->DirectSetItemAtRangeFromArray<int32>(dstStart, length, JavascriptArray::FromVar(srcInstance), srcStart);
+                    returnValue = dstArray->DirectSetItemAtRangeFromArray<double>(dstStart, length, srcArray, srcStart);
                 }
                 returnValue &= vt == VirtualTableInfoBase::GetVirtualTable(dstInstance);
             }
             break;
         }
         default:
-        {
             AssertMsg(false, "We don't support this type for memcopy yet.");
             break;
         }
-        }
-
+#undef MEMCOPY_TYPED_ARRAY
         return returnValue;
     }
 
@@ -4665,10 +4696,8 @@ CommonNumber:
             break;
         }
         default:
-        {
             AssertMsg(false, "We don't support this type for memset yet.");
             break;
-        }
         }
 
 #undef MEMSET_TYPED_ARRAY
@@ -9090,7 +9119,9 @@ CommonNumber:
             // Stack numbers are ok, as we will call ToObject to wrap it in a number object anyway
             // See JavascriptOperators::GetThisHelper
             Assert(JavascriptOperators::GetTypeId(object) == TypeIds_Integer ||
-                JavascriptOperators::GetTypeId(object) == TypeIds_Number || !ThreadContext::IsOnStack(object));
+                JavascriptOperators::GetTypeId(object) == TypeIds_Number ||
+                threadContext->HasNoSideEffect(function) ||
+                !ThreadContext::IsOnStack(object));
 
             // Verify that the scriptcontext is alive before firing getter/setter
             if (!scriptContext->VerifyAlive(!function->IsExternal(), requestContext))
@@ -9386,80 +9417,116 @@ CommonNumber:
 
     Var JavascriptOperators::OP_ResumeYield(ResumeYieldData* yieldData, RecyclableObject* iterator)
     {
+        bool isNext = yieldData->exceptionObj == nullptr;
+        bool isThrow = !isNext && !yieldData->exceptionObj->IsGeneratorReturnException();
+
+        if (iterator != nullptr) // yield*
+        {
+            ScriptContext* scriptContext = iterator->GetScriptContext();
+            PropertyId propertyId = isNext ? PropertyIds::next : isThrow ? PropertyIds::throw_ : PropertyIds::return_;
+            Var prop = JavascriptOperators::GetProperty(iterator, propertyId, scriptContext);
+
+            if (!isNext && JavascriptOperators::IsUndefinedOrNull(prop))
+            {
+                if (isThrow)
+                {
+                    // 5.b.iii.2
+                    // NOTE: If iterator does not have a throw method, this throw is going to terminate the yield* loop.
+                    // But first we need to give iterator a chance to clean up.
+
+                    prop = JavascriptOperators::GetProperty(iterator, PropertyIds::return_, scriptContext);
+                    if (!JavascriptOperators::IsUndefinedOrNull(prop))
+                    {
+                        if (!JavascriptConversion::IsCallable(prop))
+                        {
+                            JavascriptError::ThrowTypeError(scriptContext, JSERR_Property_NeedFunction, _u("return"));
+                        }
+
+                        RecyclableObject* method = RecyclableObject::FromVar(prop);
+                        Var args[] = { iterator, yieldData->data };
+                        CallInfo callInfo(CallFlags_Value, _countof(args));
+                        Var result = JavascriptFunction::CallFunction<true>(method, method->GetEntryPoint(), Arguments(callInfo, args));
+
+                        if (!JavascriptOperators::IsObject(result))
+                        {
+                            JavascriptError::ThrowTypeError(scriptContext, JSERR_NeedObject);
+                        }
+                    }
+
+                    // 5.b.iii.3
+                    // NOTE: The next step throws a TypeError to indicate that there was a yield* protocol violation:
+                    // iterator does not have a throw method.
+                    JavascriptError::ThrowTypeError(scriptContext, JSERR_Property_NeedFunction, _u("throw"));
+                }
+
+                // Do not use ThrowExceptionObject for return() API exceptions since these exceptions are not real exceptions
+                throw yieldData->exceptionObj;
+            }
+
+            if (!JavascriptConversion::IsCallable(prop))
+            {
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_Property_NeedFunction, isNext ? _u("next") : isThrow ? _u("throw") : _u("return"));
+            }
+
+            RecyclableObject* method = RecyclableObject::FromVar(prop);
+            Var args[] = { iterator, yieldData->data };
+            CallInfo callInfo(CallFlags_Value, _countof(args));
+            Var result = JavascriptFunction::CallFunction<true>(method, method->GetEntryPoint(), Arguments(callInfo, args));
+
+            if (!JavascriptOperators::IsObject(result))
+            {
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_NeedObject);
+            }
+
+            if (isThrow || isNext)
+            {
+                // 5.b.ii.2
+                // NOTE: Exceptions from the inner iterator throw method are propagated.
+                // Normal completions from an inner throw method are processed similarly to an inner next.
+                return result;
+            }
+
+            RecyclableObject* obj = RecyclableObject::FromVar(result);
+            Var done = JavascriptOperators::GetProperty(obj, PropertyIds::done, scriptContext);
+            if (done == iterator->GetLibrary()->GetTrue())
+            {
+                Var value = JavascriptOperators::GetProperty(obj, PropertyIds::value, scriptContext);
+                yieldData->exceptionObj->SetThrownObject(value);
+                // Do not use ThrowExceptionObject for return() API exceptions since these exceptions are not real exceptions
+                throw yieldData->exceptionObj;
+            }
+            return result;
+        }
+
         // CONSIDER: Fast path this early out return path in JITed code before helper call to avoid the helper call overhead in the common case e.g. next() calls.
-        if (yieldData->exceptionObj == nullptr)
+        if (isNext)
         {
             return yieldData->data;
         }
 
-        ScriptContext* scriptContext = yieldData->exceptionObj->GetScriptContext();
-        bool isReturn = yieldData->exceptionObj->IsGeneratorReturnException();
-
-        if (iterator != nullptr)
-        {
-            PropertyId propertyId = isReturn ? PropertyIds::return_ : PropertyIds::throw_;
-            Var prop = nullptr;
-            Var args[] = { iterator, yieldData->data };
-            CallInfo callInfo(CallFlags_Value, _countof(args));
-
-            if (JavascriptOperators::GetProperty(iterator, iterator, propertyId, &prop, iterator->GetScriptContext())
-                    && prop != iterator->GetLibrary()->GetUndefined())
-            {
-                RecyclableObject* method = RecyclableObject::FromVar(prop);
-
-                Var result = JavascriptFunction::CallFunction<true>(method, method->GetEntryPoint(), Arguments(callInfo, args));
-
-                if (isReturn)
-                {
-                    if (!JavascriptOperators::IsObject(result))
-                    {
-                        JavascriptError::ThrowTypeError(scriptContext, JSERR_NeedObject);
-                    }
-
-                    Var value = JavascriptOperators::GetProperty(RecyclableObject::FromVar(result), PropertyIds::value, scriptContext);
-                    // CONSIDER: Using an exception to carry the return value and force finally code to execute is a bit of a janky
-                    // solution since we have to override the value here in the case of yield* expressions.  It works but is there
-                    // a more elegant way?
-                    //
-                    // Instead what if ResumeYield was a "set Dst then optionally branch" opcode, that could also throw? Then we could
-                    // avoid using a special exception entirely with byte code something like this:
-                    //
-                    // ;; Ry is the yieldData
-                    //
-                    // ResumeYield Rx Ry $returnPathLabel
-                    // ... code like normal
-                    // $returnPathLabel:
-                    // Ld_A R0 Rx
-                    // Br $exitFinallyAndReturn
-                    //
-                    // This would probably give better performance for the common case of calling next() on generators since we wouldn't
-                    // have to wrap the call to the generator code in a try catch.
-                    yieldData->exceptionObj->SetThrownObject(value);
-                }
-            }
-            else if (!isReturn)
-            {
-                // Throw is called on yield* but the iterator does not have a throw method. This is a protocol violation.
-                // So we have to call IteratorClose().
-                if (JavascriptOperators::GetProperty(iterator, iterator, PropertyIds::return_, &prop, iterator->GetScriptContext())
-                        && prop != iterator->GetLibrary()->GetUndefined())
-                {
-                    // As per the spec we ignore the inner result after checking whether it is a valid object
-                    RecyclableObject* method = RecyclableObject::FromVar(prop);
-                    Var result = JavascriptFunction::CallFunction<true>(method, method->GetEntryPoint(), Arguments(callInfo, args));
-                    if (!JavascriptOperators::IsObject(result))
-                    {
-                        JavascriptError::ThrowTypeError(scriptContext, JSERR_NeedObject);
-                    }
-                }
-            }
-        }
-
-        if (!isReturn)
+        if (isThrow)
         {
             // Use ThrowExceptionObject() to get debugger support for breaking on throw
-            JavascriptExceptionOperators::ThrowExceptionObject(yieldData->exceptionObj, scriptContext, true);
+            JavascriptExceptionOperators::ThrowExceptionObject(yieldData->exceptionObj, yieldData->exceptionObj->GetScriptContext(), true);
         }
+
+        // CONSIDER: Using an exception to carry the return value and force finally code to execute is a bit of a janky
+        // solution since we have to override the value here in the case of yield* expressions.  It works but is there
+        // a more elegant way?
+        //
+        // Instead what if ResumeYield was a "set Dst then optionally branch" opcode, that could also throw? Then we could
+        // avoid using a special exception entirely with byte code something like this:
+        //
+        // ;; Ry is the yieldData
+        //
+        // ResumeYield Rx Ry $returnPathLabel
+        // ... code like normal
+        // $returnPathLabel:
+        // Ld_A R0 Rx
+        // Br $exitFinallyAndReturn
+        //
+        // This would probably give better performance for the common case of calling next() on generators since we wouldn't
+        // have to wrap the call to the generator code in a try catch.
 
         // Do not use ThrowExceptionObject for return() API exceptions since these exceptions are not real exceptions
         throw yieldData->exceptionObj;
@@ -9488,7 +9555,7 @@ CommonNumber:
 
         if (e != nullptr)
         {
-            reject->GetEntryPoint()(reject, CallInfo(CallFlags_Value, 2), library->GetUndefined(), e->GetThrownObject(scriptContext));
+            JavascriptPromise::TryRejectWithExceptionObject(e, reject, scriptContext);
         }
 
         return promise;
@@ -10173,55 +10240,47 @@ CommonNumber:
         return TypeIds_FirstNumberType <= typeId && typeId <= TypeIds_LastNumberType;
     }
 
-    BOOL JavascriptOperators::IsIterable(RecyclableObject* instance, ScriptContext* scriptContext)
-    {
-        if (JavascriptProxy::Is(instance))
-        {
-            Var func = JavascriptOperators::GetProperty(instance, PropertyIds::_symbolIterator, scriptContext);
-            if (JavascriptOperators::IsUndefinedObject(func))
-            {
-                return FALSE;
-            }
-            else
-            {
-                return TRUE;
-            }
-        }
-        else
-        {
-            return JavascriptOperators::HasProperty(instance, PropertyIds::_symbolIterator);
-        }
-    }
-
     // GetIterator as described in ES6.0 (draft 22) Section 7.4.1
-    RecyclableObject* JavascriptOperators::GetIterator(Var iterable, ScriptContext* scriptContext)
+    RecyclableObject* JavascriptOperators::GetIterator(Var iterable, ScriptContext* scriptContext, bool optional)
     {
         RecyclableObject* iterableObj = RecyclableObject::FromVar(JavascriptOperators::ToObject(iterable, scriptContext));
-        return JavascriptOperators::GetIterator(iterableObj, scriptContext);
+        return JavascriptOperators::GetIterator(iterableObj, scriptContext, optional);
     }
 
-    RecyclableObject* JavascriptOperators::GetIteratorFunction(Var iterable, ScriptContext* scriptContext)
+    RecyclableObject* JavascriptOperators::GetIteratorFunction(Var iterable, ScriptContext* scriptContext, bool optional)
     {
         RecyclableObject* iterableObj = RecyclableObject::FromVar(JavascriptOperators::ToObject(iterable, scriptContext));
-        return JavascriptOperators::GetIteratorFunction(iterableObj, scriptContext);
+        return JavascriptOperators::GetIteratorFunction(iterableObj, scriptContext, optional);
     }
 
-    RecyclableObject* JavascriptOperators::GetIteratorFunction(RecyclableObject* instance, ScriptContext * scriptContext)
+    RecyclableObject* JavascriptOperators::GetIteratorFunction(RecyclableObject* instance, ScriptContext * scriptContext, bool optional)
     {
         Var func = JavascriptOperators::GetProperty(instance, PropertyIds::_symbolIterator, scriptContext);
 
+        if (optional && JavascriptOperators::IsUndefinedOrNull(func))
+        {
+            return nullptr;
+        }
+
         if (!JavascriptConversion::IsCallable(func))
         {
-            JavascriptError::ThrowTypeError(scriptContext, JSERR_NeedFunction);
+            JavascriptError::ThrowTypeError(scriptContext, JSERR_Property_NeedFunction);
         }
 
         RecyclableObject* function = RecyclableObject::FromVar(func);
         return function;
     }
 
-    RecyclableObject* JavascriptOperators::GetIterator(RecyclableObject* instance, ScriptContext * scriptContext)
+    RecyclableObject* JavascriptOperators::GetIterator(RecyclableObject* instance, ScriptContext * scriptContext, bool optional)
     {
-        RecyclableObject* function = GetIteratorFunction(instance, scriptContext);
+        RecyclableObject* function = GetIteratorFunction(instance, scriptContext, optional);
+
+        if (function == nullptr)
+        {
+            Assert(optional);
+            return nullptr;
+        }
+
         Var iterator = function->GetEntryPoint()(function, CallInfo(Js::CallFlags_Value, 1), instance);
 
         if (!JavascriptOperators::IsObject(iterator))

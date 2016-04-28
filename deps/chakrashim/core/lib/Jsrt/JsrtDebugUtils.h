@@ -1,6 +1,7 @@
-//---------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------
 // Copyright (C) Microsoft. All rights reserved.
-//----------------------------------------------------------------------------
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+//-------------------------------------------------------------------------------------------------------
 
 #pragma once
 
@@ -9,12 +10,11 @@ BEGIN_ENUM_UINT(JsrtDebugPropertyId)
 #include "JsrtDebugPropertiesEnum.h"
 END_ENUM_UINT()
 
-enum JsrtDebugPropertyAttribute
-{
-    PROPERTY_ATTRIBUTE_NONE = 0x0,
-    PROPERTY_ATTRIBUTE_HAVE_CHILDRENS = 0x1,
-    PROPERTY_ATTRIBUTE_READ_ONLY_VALUE = 0x2
-};
+BEGIN_ENUM_UINT(JsrtDebugPropertyAttribute)
+    NONE,
+    HAVE_CHILDRENS,
+    READ_ONLY_VALUE,
+END_ENUM_UINT()
 
 class JsrtDebugUtils
 {

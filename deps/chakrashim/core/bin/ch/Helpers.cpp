@@ -217,3 +217,14 @@ LPCWSTR Helpers::JsErrorCodeToString(JsErrorCode jsErrorCode)
         break;
     }
 }
+
+void Helpers::LogError(__in __nullterminated char16 *msg, ...)
+{
+    va_list args;
+    va_start(args, msg);
+    wprintf(_u("ERROR: "));
+    vwprintf(msg, args);
+    wprintf(_u("\n"));
+    fflush(stdout);
+    va_end(args);
+}

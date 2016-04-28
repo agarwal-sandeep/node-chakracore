@@ -1,0 +1,63 @@
+[
+  {
+    "functionInfo": {
+      "scriptId": 2,
+      "fileName": "jsdiaggetfunctionposition.js",
+      "line": 3,
+      "column": 1,
+      "firstStatementLine": 3,
+      "firstStatementColumn": 2
+    }
+  },
+  {
+    "functionInfo": {
+      "scriptId": 2,
+      "fileName": "jsdiaggetfunctionposition.js",
+      "line": 10,
+      "column": 10,
+      "firstStatementLine": 10,
+      "firstStatementColumn": 4
+    }
+  },
+  {
+    "functionInfo": {
+      "scriptId": 3,
+      "fileName": "dummyfilename.js",
+      "line": 1,
+      "column": 1,
+      "firstStatementLine": 0,
+      "firstStatementColumn": 15
+    }
+  },
+  {
+    "functionInfo": {
+      "scriptId": 5,
+      "parentScriptId": 4,
+      "scriptType": "Function code",
+      "line": 1,
+      "column": 1,
+      "firstStatementLine": 1,
+      "firstStatementColumn": 6,
+      "fileName": ""
+    }
+  },
+  {
+    "functionInfo": {
+      "scriptId": 2,
+      "fileName": "jsdiaggetfunctionposition.js",
+      "line": 22,
+      "column": 34,
+      "firstStatementLine": 23,
+      "firstStatementColumn": 2
+    }
+  },
+  {
+    "functionInfo": {}
+  },
+  {
+    "functionInfo": {}
+  },
+  {
+    "functionInfo": {}
+  }
+]

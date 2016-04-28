@@ -20,6 +20,10 @@
 #ifndef _CHAKRADEBUG_H_
 #define _CHAKRADEBUG_H_
 
+#include <windows.h>
+
+#include "ChakraCommon.h"
+
     /// <summary>
     ///     Debug events reported from ChakraCore engine.
     /// </summary>
@@ -102,7 +106,7 @@
     /// <param name="debugEvent">The type of JsDiagDebugEvent event.</param>
     /// <param name="eventData">Additional data related to the debug event.</param>
     /// <param name="callbackState">The state passed to <c>JsDiagStartDebugging</c>.</param>
-    typedef void (CALLBACK * JsDiagDebugEventCallback)(_In_ JsDiagDebugEvent debugEvent, _In_ JsValueRef eventData, _In_opt_ void* callbackState);
+    typedef void (CHAKRA_CALLBACK * JsDiagDebugEventCallback)(_In_ JsDiagDebugEvent debugEvent, _In_ JsValueRef eventData, _In_opt_ void* callbackState);
 
     /// <summary>
     ///     Starts debugging in the given runtime.
@@ -116,7 +120,7 @@
     /// <remarks>
     ///     The runtime should be active on the current thread and should not be in debug state
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagStartDebugging(
             _In_ JsRuntimeHandle runtimeHandle,
             _In_ JsDiagDebugEventCallback debugEventCallback,
@@ -133,7 +137,7 @@
     /// <remarks>
     ///     The runtime should be active on the current thread and in debug state.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagStopDebugging(
             _In_ JsRuntimeHandle runtimeHandle,
             _Out_ void** callbackState);
@@ -148,7 +152,7 @@
     /// <remarks>
     ///     The runtime should be in debug state. This API can be called from another runtime.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagRequestAsyncBreak(
             _In_ JsRuntimeHandle runtimeHandle);
 
@@ -172,7 +176,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetBreakpoints(
             _Out_ JsValueRef *breakpoints);
 
@@ -198,7 +202,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagSetBreakpoint(
             _In_ unsigned int scriptId,
             _In_ unsigned int lineNumber,
@@ -215,7 +219,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagRemoveBreakpoint(
             _In_ unsigned int breakpointId);
 
@@ -235,7 +239,7 @@
     /// <remarks>
     ///     The runtime should be in debug state. This API can be called from another runtime.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagSetBreakOnException(
             _In_ JsRuntimeHandle runtimeHandle,
             _In_ JsDiagBreakOnExceptionAttributes exceptionAttributes);
@@ -251,7 +255,7 @@
     /// <remarks>
     ///     The runtime should be in debug state. This API can be called from another runtime.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetBreakOnException(
             _In_ JsRuntimeHandle runtimeHandle,
             _Out_ JsDiagBreakOnExceptionAttributes* exceptionAttributes);
@@ -269,7 +273,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagSetStepType(
             _In_ JsDiagStepType stepType);
 
@@ -299,7 +303,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetScripts(
             _Out_ JsValueRef *scriptsArray);
 
@@ -325,7 +329,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can be called when runtime is at a break or running.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetSource(
             _In_ unsigned int scriptId,
             _Out_ JsValueRef *source);
@@ -353,7 +357,7 @@
     /// <remarks>
     ///     This API can be called when runtime is at a break or running.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetFunctionPosition(
             _In_ JsValueRef function,
             _Out_ JsValueRef *functionInfo);
@@ -381,7 +385,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetStackTrace(
             _Out_ JsValueRef *stackTrace);
 
@@ -393,6 +397,14 @@
     /// <remarks>
     ///     <para>
     ///     {
+    ///         "thisObject": {
+    ///             "name": "this",
+    ///             "type" : "object",
+    ///             "className" : "Object",
+    ///             "display" : "{...}",
+    ///             "propertyAttributes" : 1,
+    ///             "handle" : 306
+    ///         },
     ///         "exception" : {
     ///             "name" : "{exception}",
     ///             "type" : "object",
@@ -441,7 +453,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetStackProperties(
             _In_ unsigned int stackFrameIndex,
             _Out_ JsValueRef *properties);
@@ -485,7 +497,7 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetProperties(
             _In_ unsigned int objectHandle,
             _In_ unsigned int fromCount,
@@ -515,11 +527,12 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagGetObjectFromHandle(
             _In_ unsigned int objectHandle,
             _Out_ JsValueRef *handleObject);
 
+#ifdef _WIN32
     /// <summary>
     ///     Evaluate an expression on given frame.
     /// </summary>
@@ -543,10 +556,11 @@
     /// <remarks>
     ///     The current runtime should be in debug state. This API can only be called when runtime is at a break.
     /// </remarks>
-    STDAPI_(JsErrorCode)
+    CHAKRA_API
         JsDiagEvaluate(
             _In_ const wchar_t *expression,
             _In_ unsigned int stackFrameIndex,
             _Out_ JsValueRef *evalResult);
+#endif // _WIN32
 
 #endif // _CHAKRADEBUG_H_

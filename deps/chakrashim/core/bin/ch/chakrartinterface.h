@@ -49,7 +49,7 @@ struct JsAPIHooks
     typedef JsErrorCode (WINAPI *JsrtSetPromiseContinuationCallbackPtr)(JsPromiseContinuationCallback callback, void *callbackState);
     typedef JsErrorCode (WINAPI *JsrtGetContextOfObject)(JsValueRef object, JsContextRef *callbackState);
 
-    typedef JsErrorCode(WINAPI *JsrtParseScriptWithFlags)(const wchar_t *script, JsSourceContext sourceContext, const wchar_t *sourceUrl, JsParseScriptAttributes parseAttributes, JsValueRef *result);
+    typedef JsErrorCode(WINAPI *JsrtParseScriptWithAttributes)(const wchar_t *script, JsSourceContext sourceContext, const wchar_t *sourceUrl, JsParseScriptAttributes parseAttributes, JsValueRef *result);
     typedef JsErrorCode(WINAPI *JsrtDiagStartDebugging)(JsRuntimeHandle runtimeHandle, JsDiagDebugEventCallback debugEventCallback, void* callbackState);
     typedef JsErrorCode(WINAPI *JsrtDiagStopDebugging)(JsRuntimeHandle runtimeHandle, void** callbackState);
     typedef JsErrorCode(WINAPI *JsrtDiagGetSource)(unsigned int scriptId, JsValueRef *source);
@@ -111,7 +111,7 @@ struct JsAPIHooks
     JsrtRunSerializedScriptPtr pfJsrtRunSerializedScript;
     JsrtSetPromiseContinuationCallbackPtr pfJsrtSetPromiseContinuationCallback;
     JsrtGetContextOfObject pfJsrtGetContextOfObject;
-    JsrtParseScriptWithFlags pfJsParseScriptWithFlags;
+    JsrtParseScriptWithAttributes pfJsrtParseScriptWithAttributes;
     JsrtDiagStartDebugging pfJsrtDiagStartDebugging;
     JsrtDiagStopDebugging pfJsrtDiagStopDebugging;
     JsrtDiagGetSource pfJsrtDiagGetSource;
@@ -173,6 +173,9 @@ public:
     static bool IsEnabledCheckMemoryFlag() { return CHECKED_CALL_RETURN(IsEnabledCheckMemoryLeakFlag, FALSE); }
     static HRESULT SetCheckMemoryLeakFlag(bool flag) { return CHECKED_CALL(SetCheckMemoryLeakFlag, flag); }
     static HRESULT SetEnableCheckMemoryLeakOutput(bool flag) { return CHECKED_CALL(SetEnableCheckMemoryLeakOutput, flag); }
+#endif
+#ifdef DEBUG
+    static HRESULT SetCheckOpHelpersFlag(bool flag) { return CHECKED_CALL(SetCheckOpHelpersFlag, flag); }
 #endif
 
     static HRESULT GetCrashOnExceptionFlag(bool * flag)
@@ -236,7 +239,7 @@ public:
     static JsErrorCode WINAPI JsRunSerializedScript(const char16 *script, BYTE *buffer, DWORD_PTR sourceContext, const char16 *sourceUrl, JsValueRef* result) { return m_jsApiHooks.pfJsrtRunSerializedScript(script, buffer, sourceContext, sourceUrl, result); }
     static JsErrorCode WINAPI JsSetPromiseContinuationCallback(JsPromiseContinuationCallback callback, void *callbackState) { return m_jsApiHooks.pfJsrtSetPromiseContinuationCallback(callback, callbackState); }
     static JsErrorCode WINAPI JsGetContextOfObject(JsValueRef object, JsContextRef* context) { return m_jsApiHooks.pfJsrtGetContextOfObject(object, context); }
-    static JsErrorCode WINAPI JsParseScriptWithFlags(const wchar_t *script, JsSourceContext sourceContext, const wchar_t *sourceUrl, JsParseScriptAttributes parseAttributes, JsValueRef *result) { return m_jsApiHooks.pfJsParseScriptWithFlags(script, sourceContext, sourceUrl, parseAttributes, result); }
+    static JsErrorCode WINAPI JsParseScriptWithAttributes(const wchar_t *script, JsSourceContext sourceContext, const wchar_t *sourceUrl, JsParseScriptAttributes parseAttributes, JsValueRef *result) { return m_jsApiHooks.pfJsrtParseScriptWithAttributes(script, sourceContext, sourceUrl, parseAttributes, result); }
     static JsErrorCode WINAPI JsDiagStartDebugging(JsRuntimeHandle runtimeHandle, JsDiagDebugEventCallback debugEventCallback, void* callbackState) { return m_jsApiHooks.pfJsrtDiagStartDebugging(runtimeHandle, debugEventCallback, callbackState); }
     static JsErrorCode WINAPI JsDiagStopDebugging(JsRuntimeHandle runtimeHandle, void** callbackState) { return m_jsApiHooks.pfJsrtDiagStopDebugging(runtimeHandle, callbackState); }
     static JsErrorCode WINAPI JsDiagGetSource(unsigned int scriptId, JsValueRef *source) { return m_jsApiHooks.pfJsrtDiagGetSource(scriptId, source); }

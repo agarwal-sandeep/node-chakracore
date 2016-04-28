@@ -3,9 +3,9 @@
 // Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
 //-------------------------------------------------------------------------------------------------------
 #include "RuntimeDebugPch.h"
-#include "Language\JavascriptFunctionArgIndex.h"
-#include "Language\InterpreterStackFrame.h"
-#include "Language\JavascriptStackWalker.h"
+#include "Language/JavascriptFunctionArgIndex.h"
+#include "Language/InterpreterStackFrame.h"
+#include "Language/JavascriptStackWalker.h"
 
 namespace Js
 {
@@ -197,11 +197,11 @@ namespace Js
 
     }
 
-    Js::ScriptFunction* DiagStackFrame::TryGetFunctionForEval(Js::ScriptContext* scriptContext, LPCOLESTR pszSrc, BOOL isStrictMode, BOOL isThisAvailable, BOOL isLibraryCode /* = FALSE */)
+    Js::ScriptFunction* DiagStackFrame::TryGetFunctionForEval(Js::ScriptContext* scriptContext, LPCOLESTR pszSrc, BOOL isLibraryCode /* = FALSE */)
     {
         // TODO: pass the real length of the source code instead of wcslen
         ulong grfscr = fscrReturnExpression | fscrEval | fscrEvalCode | fscrGlobalCode | fscrConsoleScopeEval;
-        if (!isThisAvailable)
+        if (!this->IsThisAvailable())
         {
             grfscr |= fscrDebuggerErrorOnGlobalThis;
         }
@@ -209,7 +209,7 @@ namespace Js
         {
             grfscr |= fscrIsLibraryCode;
         }
-        return scriptContext->GetGlobalObject()->EvalHelper(scriptContext, pszSrc, static_cast<int>(wcslen(pszSrc)), kmodGlobal, grfscr, Js::Constants::EvalCode, FALSE, FALSE, isStrictMode);
+        return scriptContext->GetGlobalObject()->EvalHelper(scriptContext, pszSrc, static_cast<int>(wcslen(pszSrc)), kmodGlobal, grfscr, Js::Constants::EvalCode, FALSE, FALSE, this->IsStrictMode());
     }
 
     void DiagStackFrame::EvaluateImmediate(LPCOLESTR pszSrc, BOOL isLibraryCode, Js::ResolvedObject * resolvedObject)
@@ -220,8 +220,7 @@ namespace Js
 
         if (resolvedObject->obj == nullptr)
         {
-            Js::ScriptFunction* pfuncScript = this->TryGetFunctionForEval(this->GetScriptContext(), pszSrc,
-                this->IsStrictMode(), this->IsThisAvailable(), isLibraryCode);
+            Js::ScriptFunction* pfuncScript = this->TryGetFunctionForEval(this->GetScriptContext(), pszSrc, isLibraryCode);
             if (pfuncScript != nullptr)
             {
                 // Passing the nonuser code state from the enclosing function to the current function.
@@ -311,7 +310,8 @@ namespace Js
         Js::ScriptContext* scriptContext = this->GetScriptContext();
 
         ArenaAllocator *arena = scriptContext->GetThreadContext()->GetDebugManager()->GetDiagnosticArena()->Arena();
-        Js::LocalsWalker *localsWalker = Anew(arena, Js::LocalsWalker, this, Js::FrameWalkerFlags::FW_EnumWithScopeAlso | Js::FrameWalkerFlags::FW_AllowLexicalThis | Js::FrameWalkerFlags::FW_AllowSuperReference);
+        Js::LocalsWalker *localsWalker = Anew(arena, Js::LocalsWalker, this, 
+            Js::FrameWalkerFlags::FW_EnumWithScopeAlso | Js::FrameWalkerFlags::FW_AllowLexicalThis | Js::FrameWalkerFlags::FW_AllowSuperReference | Js::FrameWalkerFlags::FW_DontAddGlobalsDirectly);
 
         // Store the diag address of a var to the map so that it will be used for editing the value.
         typedef JsUtil::BaseDictionary<Js::PropertyId, Js::IDiagObjectAddress*, ArenaAllocator, PrimeSizePolicy> PropIdToDiagAddressMap;
@@ -344,7 +344,7 @@ namespace Js
         // Remove its prototype object so that those item will not be visible to the expression evaluation.
         dummyObject->SetPrototype(scriptContext->GetLibrary()->GetNull());
         Js::DebugManager* debugManager = scriptContext->GetDebugContext()->GetProbeContainer()->GetDebugManager();
-        Js::FrameDisplay* env = debugManager->GetFrameDisplay(scriptContext, dummyObject, activeScopeObject, /* addGlobalThisAtScopeTwo = */ false);
+        Js::FrameDisplay* env = debugManager->GetFrameDisplay(scriptContext, dummyObject, activeScopeObject);
         pfuncScript->SetEnvironment(env);
 
         Js::Var varThis = this->GetThisFromFrame(nullptr, localsWalker);

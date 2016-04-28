@@ -69,7 +69,7 @@ JsErrorCode CheckContext(JsrtContext *currentContext, bool verifyRuntimeState, b
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsCreateRuntime(_In_ JsRuntimeAttributes attributes, _In_opt_ JsThreadServiceCallback threadService, _Out_ JsRuntimeHandle *runtimeHandle)
+CHAKRA_API JsCreateRuntime(_In_ JsRuntimeAttributes attributes, _In_opt_ JsThreadServiceCallback threadService, _Out_ JsRuntimeHandle *runtimeHandle)
 {
     return GlobalAPIWrapper([&] () -> JsErrorCode {
         PARAM_NOT_NULL(runtimeHandle);
@@ -196,19 +196,19 @@ JsErrorCode JsCollectGarbageCommon(JsRuntimeHandle runtimeHandle)
     });
 }
 
-STDAPI_(JsErrorCode) JsCollectGarbage(_In_ JsRuntimeHandle runtimeHandle)
+CHAKRA_API JsCollectGarbage(_In_ JsRuntimeHandle runtimeHandle)
 {
     return JsCollectGarbageCommon<CollectNowExhaustive>(runtimeHandle);
 }
 
 #ifdef ENABLE_DEBUG_CONFIG_OPTIONS
-STDAPI_(JsErrorCode) JsPrivateCollectGarbageSkipStack(_In_ JsRuntimeHandle runtimeHandle)
+CHAKRA_API JsPrivateCollectGarbageSkipStack(_In_ JsRuntimeHandle runtimeHandle)
 {
     return JsCollectGarbageCommon<CollectNowExhaustiveSkipStack>(runtimeHandle);
 }
 #endif
 
-STDAPI_(JsErrorCode) JsDisposeRuntime(_In_ JsRuntimeHandle runtimeHandle)
+CHAKRA_API JsDisposeRuntime(_In_ JsRuntimeHandle runtimeHandle)
 {
     return GlobalAPIWrapper([&] () -> JsErrorCode {
         VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
@@ -238,16 +238,16 @@ STDAPI_(JsErrorCode) JsDisposeRuntime(_In_ JsRuntimeHandle runtimeHandle)
             }
         }
 
-        if (runtime->GetDebugObject() != nullptr)
+        if (runtime->GetJsrtDebugManager() != nullptr)
         {
-            runtime->GetDebugObject()->ClearDebuggerObjects();
+            runtime->GetJsrtDebugManager()->ClearDebuggerObjects();
         }
 
         // Close any open Contexts.
         // We need to do this before recycler shutdown, because ScriptEngine->Close won't work then.
         runtime->CloseContexts();
 
-        runtime->ClearDebugObject();
+        runtime->DeleteJsrtDebugManager();
 
 #if defined(CHECK_MEMORY_LEAK) || defined(LEAK_REPORT)
         bool doFinalGC = false;
@@ -290,7 +290,7 @@ STDAPI_(JsErrorCode) JsDisposeRuntime(_In_ JsRuntimeHandle runtimeHandle)
     });
 }
 
-STDAPI_(JsErrorCode) JsAddRef(_In_ JsRef ref, _Out_opt_ unsigned int *count)
+CHAKRA_API JsAddRef(_In_ JsRef ref, _Out_opt_ unsigned int *count)
 {
     VALIDATE_JSREF(ref);
     if (count != nullptr)
@@ -340,7 +340,7 @@ STDAPI_(JsErrorCode) JsAddRef(_In_ JsRef ref, _Out_opt_ unsigned int *count)
     }
 }
 
-STDAPI_(JsErrorCode) JsRelease(_In_ JsRef ref, _Out_opt_ unsigned int *count)
+CHAKRA_API JsRelease(_In_ JsRef ref, _Out_opt_ unsigned int *count)
 {
     VALIDATE_JSREF(ref);
     if (count != nullptr)
@@ -389,7 +389,7 @@ STDAPI_(JsErrorCode) JsRelease(_In_ JsRef ref, _Out_opt_ unsigned int *count)
 }
 
 
-STDAPI_(JsErrorCode) JsSetObjectBeforeCollectCallback(_In_ JsRef ref, _In_opt_ void *callbackState, _In_ JsObjectBeforeCollectCallback objectBeforeCollectCallback)
+CHAKRA_API JsSetObjectBeforeCollectCallback(_In_ JsRef ref, _In_opt_ void *callbackState, _In_ JsObjectBeforeCollectCallback objectBeforeCollectCallback)
 {
     VALIDATE_JSREF(ref);
 
@@ -431,7 +431,7 @@ STDAPI_(JsErrorCode) JsSetObjectBeforeCollectCallback(_In_ JsRef ref, _In_opt_ v
     }
 }
 
-STDAPI_(JsErrorCode) JsCreateContext(_In_ JsRuntimeHandle runtimeHandle, _Out_ JsContextRef *newContext)
+CHAKRA_API JsCreateContext(_In_ JsRuntimeHandle runtimeHandle, _Out_ JsContextRef *newContext)
 {
     return GlobalAPIWrapper([&]() -> JsErrorCode {
         PARAM_NOT_NULL(newContext);
@@ -458,19 +458,19 @@ STDAPI_(JsErrorCode) JsCreateContext(_In_ JsRuntimeHandle runtimeHandle, _Out_ J
 
         JsrtContext * context = JsrtContext::New(runtime);
 
-        JsrtDebug* debugObject = runtime->GetDebugObject();
+        JsrtDebugManager* jsrtDebugManager = runtime->GetJsrtDebugManager();
 
-        if (debugObject != nullptr)
+        if (jsrtDebugManager != nullptr)
         {
             Js::ScriptContext* scriptContext = context->GetScriptContext();
             scriptContext->InitializeDebugging();
 
             Js::DebugContext* debugContext = scriptContext->GetDebugContext();
-            debugContext->SetHostDebugContext(debugObject);
+            debugContext->SetHostDebugContext(jsrtDebugManager);
 
             Js::ProbeContainer* probeContainer = debugContext->GetProbeContainer();
-            probeContainer->InitializeInlineBreakEngine(debugObject);
-            probeContainer->InitializeDebuggerScriptOptionCallback(debugObject);
+            probeContainer->InitializeInlineBreakEngine(jsrtDebugManager);
+            probeContainer->InitializeDebuggerScriptOptionCallback(jsrtDebugManager);
 
             threadContext->GetDebugManager()->SetLocalsDisplayFlags(Js::DebugManager::LocalsDisplayFlags::LocalsDisplayFlags_NoGroupMethods);
         }
@@ -480,7 +480,7 @@ STDAPI_(JsErrorCode) JsCreateContext(_In_ JsRuntimeHandle runtimeHandle, _Out_ J
     });
 }
 
-STDAPI_(JsErrorCode) JsGetCurrentContext(_Out_ JsContextRef *currentContext)
+CHAKRA_API JsGetCurrentContext(_Out_ JsContextRef *currentContext)
 {
     PARAM_NOT_NULL(currentContext);
 
@@ -491,7 +491,7 @@ STDAPI_(JsErrorCode) JsGetCurrentContext(_Out_ JsContextRef *currentContext)
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsSetCurrentContext(_In_ JsContextRef newContext)
+CHAKRA_API JsSetCurrentContext(_In_ JsContextRef newContext)
 {
     return GlobalAPIWrapper([&] () -> JsErrorCode {
         JsrtContext *currentContext = JsrtContext::GetCurrent();
@@ -515,7 +515,7 @@ STDAPI_(JsErrorCode) JsSetCurrentContext(_In_ JsContextRef newContext)
     });
 }
 
-STDAPI_(JsErrorCode) JsGetContextOfObject(_In_ JsValueRef object, _Out_ JsContextRef *context)
+CHAKRA_API JsGetContextOfObject(_In_ JsValueRef object, _Out_ JsContextRef *context)
 {
     VALIDATE_JSREF(object);
     PARAM_NOT_NULL(context);
@@ -532,7 +532,7 @@ STDAPI_(JsErrorCode) JsGetContextOfObject(_In_ JsValueRef object, _Out_ JsContex
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsGetContextData(_In_ JsContextRef context, _Out_ void **data)
+CHAKRA_API JsGetContextData(_In_ JsContextRef context, _Out_ void **data)
 {
     VALIDATE_JSREF(context);
     PARAM_NOT_NULL(data);
@@ -549,7 +549,7 @@ STDAPI_(JsErrorCode) JsGetContextData(_In_ JsContextRef context, _Out_ void **da
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsSetContextData(_In_ JsContextRef context, _In_ void *data)
+CHAKRA_API JsSetContextData(_In_ JsContextRef context, _In_ void *data)
 {
     VALIDATE_JSREF(context);
 
@@ -581,7 +581,7 @@ void HandleScriptCompileError(Js::ScriptContext * scriptContext, CompileScriptEx
     scriptContext->GetThreadContext()->SetRecordedException(exceptionObject);
 }
 
-STDAPI_(JsErrorCode) JsGetUndefinedValue(_Out_ JsValueRef *undefinedValue)
+CHAKRA_API JsGetUndefinedValue(_Out_ JsValueRef *undefinedValue)
 {
     return ContextAPINoScriptWrapper([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(undefinedValue);
@@ -593,7 +593,7 @@ STDAPI_(JsErrorCode) JsGetUndefinedValue(_Out_ JsValueRef *undefinedValue)
     /*allowInObjectBeforeCollectCallback*/true);
 }
 
-STDAPI_(JsErrorCode) JsGetNullValue(_Out_ JsValueRef *nullValue)
+CHAKRA_API JsGetNullValue(_Out_ JsValueRef *nullValue)
 {
     return ContextAPINoScriptWrapper([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(nullValue);
@@ -605,7 +605,7 @@ STDAPI_(JsErrorCode) JsGetNullValue(_Out_ JsValueRef *nullValue)
     /*allowInObjectBeforeCollectCallback*/true);
 }
 
-STDAPI_(JsErrorCode) JsGetTrueValue(_Out_ JsValueRef *trueValue)
+CHAKRA_API JsGetTrueValue(_Out_ JsValueRef *trueValue)
 {
     return ContextAPINoScriptWrapper([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(trueValue);
@@ -617,7 +617,7 @@ STDAPI_(JsErrorCode) JsGetTrueValue(_Out_ JsValueRef *trueValue)
     /*allowInObjectBeforeCollectCallback*/true);
 }
 
-STDAPI_(JsErrorCode) JsGetFalseValue(_Out_ JsValueRef *falseValue)
+CHAKRA_API JsGetFalseValue(_Out_ JsValueRef *falseValue)
 {
     return ContextAPINoScriptWrapper([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(falseValue);
@@ -629,7 +629,7 @@ STDAPI_(JsErrorCode) JsGetFalseValue(_Out_ JsValueRef *falseValue)
     /*allowInObjectBeforeCollectCallback*/true);
 }
 
-STDAPI_(JsErrorCode) JsBoolToBoolean(_In_ bool value, _Out_ JsValueRef *booleanValue)
+CHAKRA_API JsBoolToBoolean(_In_ bool value, _Out_ JsValueRef *booleanValue)
 {
     return ContextAPINoScriptWrapper([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(booleanValue);
@@ -641,7 +641,7 @@ STDAPI_(JsErrorCode) JsBoolToBoolean(_In_ bool value, _Out_ JsValueRef *booleanV
     /*allowInObjectBeforeCollectCallback*/true);
 }
 
-STDAPI_(JsErrorCode) JsBooleanToBool(_In_ JsValueRef value, _Out_ bool *boolValue)
+CHAKRA_API JsBooleanToBool(_In_ JsValueRef value, _Out_ bool *boolValue)
 {
     VALIDATE_JSREF(value);
     PARAM_NOT_NULL(boolValue);
@@ -658,7 +658,7 @@ STDAPI_(JsErrorCode) JsBooleanToBool(_In_ JsValueRef value, _Out_ bool *boolValu
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsConvertValueToBoolean(_In_ JsValueRef value, _Out_ JsValueRef *result)
+CHAKRA_API JsConvertValueToBoolean(_In_ JsValueRef value, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(value, scriptContext);
@@ -677,7 +677,7 @@ STDAPI_(JsErrorCode) JsConvertValueToBoolean(_In_ JsValueRef value, _Out_ JsValu
     });
 }
 
-STDAPI_(JsErrorCode) JsGetValueType(_In_ JsValueRef value, _Out_ JsValueType *type)
+CHAKRA_API JsGetValueType(_In_ JsValueRef value, _Out_ JsValueType *type)
 {
     VALIDATE_JSREF(value);
     PARAM_NOT_NULL(type);
@@ -744,7 +744,7 @@ STDAPI_(JsErrorCode) JsGetValueType(_In_ JsValueRef value, _Out_ JsValueType *ty
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsDoubleToNumber(_In_ double dbl, _Out_ JsValueRef *asValue)
+CHAKRA_API JsDoubleToNumber(_In_ double dbl, _Out_ JsValueRef *asValue)
 {
     PARAM_NOT_NULL(asValue);
     if (Js::JavascriptNumber::TryToVarFastWithCheck(dbl, asValue)) {
@@ -757,7 +757,7 @@ STDAPI_(JsErrorCode) JsDoubleToNumber(_In_ double dbl, _Out_ JsValueRef *asValue
     });
 }
 
-STDAPI_(JsErrorCode) JsIntToNumber(_In_ int intValue, _Out_ JsValueRef *asValue)
+CHAKRA_API JsIntToNumber(_In_ int intValue, _Out_ JsValueRef *asValue)
 {
     PARAM_NOT_NULL(asValue);
     if (Js::JavascriptNumber::TryToVarFast(intValue, asValue))
@@ -771,7 +771,7 @@ STDAPI_(JsErrorCode) JsIntToNumber(_In_ int intValue, _Out_ JsValueRef *asValue)
     });
 }
 
-STDAPI_(JsErrorCode) JsNumberToDouble(_In_ JsValueRef value, _Out_ double *asDouble)
+CHAKRA_API JsNumberToDouble(_In_ JsValueRef value, _Out_ double *asDouble)
 {
     VALIDATE_JSREF(value);
     PARAM_NOT_NULL(asDouble);
@@ -795,7 +795,7 @@ STDAPI_(JsErrorCode) JsNumberToDouble(_In_ JsValueRef value, _Out_ double *asDou
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsNumberToInt(_In_ JsValueRef value, _Out_ int *asInt)
+CHAKRA_API JsNumberToInt(_In_ JsValueRef value, _Out_ int *asInt)
 {
     VALIDATE_JSREF(value);
     PARAM_NOT_NULL(asInt);
@@ -819,7 +819,7 @@ STDAPI_(JsErrorCode) JsNumberToInt(_In_ JsValueRef value, _Out_ int *asInt)
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsConvertValueToNumber(_In_ JsValueRef value, _Out_ JsValueRef *result)
+CHAKRA_API JsConvertValueToNumber(_In_ JsValueRef value, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(value, scriptContext);
@@ -830,7 +830,7 @@ STDAPI_(JsErrorCode) JsConvertValueToNumber(_In_ JsValueRef value, _Out_ JsValue
     });
 }
 
-STDAPI_(JsErrorCode) JsGetStringLength(_In_ JsValueRef value, _Out_ int *length)
+CHAKRA_API JsGetStringLength(_In_ JsValueRef value, _Out_ int *length)
 {
     VALIDATE_JSREF(value);
     PARAM_NOT_NULL(length);
@@ -847,7 +847,7 @@ STDAPI_(JsErrorCode) JsGetStringLength(_In_ JsValueRef value, _Out_ int *length)
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsPointerToString(_In_reads_(stringLength) const wchar_t *stringValue, _In_ size_t stringLength, _Out_ JsValueRef *string)
+CHAKRA_API JsPointerToString(_In_reads_(stringLength) const wchar_t *stringValue, _In_ size_t stringLength, _Out_ JsValueRef *string)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(stringValue);
@@ -866,7 +866,7 @@ STDAPI_(JsErrorCode) JsPointerToString(_In_reads_(stringLength) const wchar_t *s
 // TODO: The annotation of stringPtr is wrong.  Need to fix definition in chakrart.h
 // The warning is '*stringPtr' could be '0' : this does not adhere to the specification for the function 'JsStringToPointer'.
 #pragma warning(suppress:6387)
-STDAPI_(JsErrorCode) JsStringToPointer(_In_ JsValueRef stringValue, _Outptr_result_buffer_(*stringLength) const wchar_t **stringPtr, _Out_ size_t *stringLength)
+CHAKRA_API JsStringToPointer(_In_ JsValueRef stringValue, _Outptr_result_buffer_(*stringLength) const wchar_t **stringPtr, _Out_ size_t *stringLength)
 {
     VALIDATE_JSREF(stringValue);
     PARAM_NOT_NULL(stringPtr);
@@ -888,7 +888,7 @@ STDAPI_(JsErrorCode) JsStringToPointer(_In_ JsValueRef stringValue, _Outptr_resu
     });
 }
 
-STDAPI_(JsErrorCode) JsConvertValueToString(_In_ JsValueRef value, _Out_ JsValueRef *result)
+CHAKRA_API JsConvertValueToString(_In_ JsValueRef value, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(value, scriptContext);
@@ -900,7 +900,7 @@ STDAPI_(JsErrorCode) JsConvertValueToString(_In_ JsValueRef value, _Out_ JsValue
     });
 }
 
-STDAPI_(JsErrorCode) JsGetGlobalObject(_Out_ JsValueRef *globalObject)
+CHAKRA_API JsGetGlobalObject(_Out_ JsValueRef *globalObject)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(globalObject);
@@ -911,7 +911,7 @@ STDAPI_(JsErrorCode) JsGetGlobalObject(_Out_ JsValueRef *globalObject)
     /*allowInObjectBeforeCollectCallback*/true);
 }
 
-STDAPI_(JsErrorCode) JsCreateObject(_Out_ JsValueRef *object)
+CHAKRA_API JsCreateObject(_Out_ JsValueRef *object)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(object);
@@ -921,7 +921,7 @@ STDAPI_(JsErrorCode) JsCreateObject(_Out_ JsValueRef *object)
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateExternalObject(_In_opt_ void *data, _In_opt_ JsFinalizeCallback finalizeCallback, _Out_ JsValueRef *object)
+CHAKRA_API JsCreateExternalObject(_In_opt_ void *data, _In_opt_ JsFinalizeCallback finalizeCallback, _Out_ JsValueRef *object)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(object);
@@ -931,7 +931,7 @@ STDAPI_(JsErrorCode) JsCreateExternalObject(_In_opt_ void *data, _In_opt_ JsFina
     });
 }
 
-STDAPI_(JsErrorCode) JsConvertValueToObject(_In_ JsValueRef value, _Out_ JsValueRef *result)
+CHAKRA_API JsConvertValueToObject(_In_ JsValueRef value, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(value, scriptContext);
@@ -944,7 +944,7 @@ STDAPI_(JsErrorCode) JsConvertValueToObject(_In_ JsValueRef value, _Out_ JsValue
     });
 }
 
-STDAPI_(JsErrorCode) JsGetPrototype(_In_ JsValueRef object, _Out_ JsValueRef *prototypeObject)
+CHAKRA_API JsGetPrototype(_In_ JsValueRef object, _Out_ JsValueRef *prototypeObject)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -957,7 +957,7 @@ STDAPI_(JsErrorCode) JsGetPrototype(_In_ JsValueRef object, _Out_ JsValueRef *pr
     });
 }
 
-STDAPI_(JsErrorCode) JsSetPrototype(_In_ JsValueRef object, _In_ JsValueRef prototypeObject)
+CHAKRA_API JsSetPrototype(_In_ JsValueRef object, _In_ JsValueRef prototypeObject)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -975,7 +975,7 @@ STDAPI_(JsErrorCode) JsSetPrototype(_In_ JsValueRef object, _In_ JsValueRef prot
     });
 }
 
-STDAPI_(JsErrorCode) JsInstanceOf(_In_ JsValueRef object, _In_ JsValueRef constructor, _Out_ bool *result) {
+CHAKRA_API JsInstanceOf(_In_ JsValueRef object, _In_ JsValueRef constructor, _Out_ bool *result) {
     return ContextAPIWrapper<true>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(object, scriptContext);
         VALIDATE_INCOMING_REFERENCE(constructor, scriptContext);
@@ -987,7 +987,7 @@ STDAPI_(JsErrorCode) JsInstanceOf(_In_ JsValueRef object, _In_ JsValueRef constr
     });
 }
 
-STDAPI_(JsErrorCode) JsGetExtensionAllowed(_In_ JsValueRef object, _Out_ bool *value)
+CHAKRA_API JsGetExtensionAllowed(_In_ JsValueRef object, _Out_ bool *value)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1000,7 +1000,7 @@ STDAPI_(JsErrorCode) JsGetExtensionAllowed(_In_ JsValueRef object, _Out_ bool *v
     });
 }
 
-STDAPI_(JsErrorCode) JsPreventExtension(_In_ JsValueRef object)
+CHAKRA_API JsPreventExtension(_In_ JsValueRef object)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1011,7 +1011,7 @@ STDAPI_(JsErrorCode) JsPreventExtension(_In_ JsValueRef object)
     });
 }
 
-STDAPI_(JsErrorCode) JsGetProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _Out_ JsValueRef *value)
+CHAKRA_API JsGetProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _Out_ JsValueRef *value)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1025,7 +1025,7 @@ STDAPI_(JsErrorCode) JsGetProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef 
     });
 }
 
-STDAPI_(JsErrorCode) JsGetOwnPropertyDescriptor(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _Out_ JsValueRef *propertyDescriptor)
+CHAKRA_API JsGetOwnPropertyDescriptor(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _Out_ JsValueRef *propertyDescriptor)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1047,7 +1047,7 @@ STDAPI_(JsErrorCode) JsGetOwnPropertyDescriptor(_In_ JsValueRef object, _In_ JsP
     });
 }
 
-STDAPI_(JsErrorCode) JsGetOwnPropertyNames(_In_ JsValueRef object, _Out_ JsValueRef *propertyNames)
+CHAKRA_API JsGetOwnPropertyNames(_In_ JsValueRef object, _Out_ JsValueRef *propertyNames)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1060,7 +1060,7 @@ STDAPI_(JsErrorCode) JsGetOwnPropertyNames(_In_ JsValueRef object, _Out_ JsValue
     });
 }
 
-STDAPI_(JsErrorCode) JsGetOwnPropertySymbols(_In_ JsValueRef object, _Out_ JsValueRef *propertySymbols)
+CHAKRA_API JsGetOwnPropertySymbols(_In_ JsValueRef object, _Out_ JsValueRef *propertySymbols)
 {
     return ContextAPIWrapper<true>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1072,7 +1072,7 @@ STDAPI_(JsErrorCode) JsGetOwnPropertySymbols(_In_ JsValueRef object, _Out_ JsVal
     });
 }
 
-STDAPI_(JsErrorCode) JsSetProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _In_ JsValueRef value, _In_ bool useStrictRules)
+CHAKRA_API JsSetProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _In_ JsValueRef value, _In_ bool useStrictRules)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1086,7 +1086,7 @@ STDAPI_(JsErrorCode) JsSetProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef 
     });
 }
 
-STDAPI_(JsErrorCode) JsHasProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _Out_ bool *hasProperty)
+CHAKRA_API JsHasProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _Out_ bool *hasProperty)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1100,7 +1100,7 @@ STDAPI_(JsErrorCode) JsHasProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef 
     });
 }
 
-STDAPI_(JsErrorCode) JsDeleteProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _In_ bool useStrictRules, _Out_ JsValueRef *result)
+CHAKRA_API JsDeleteProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _In_ bool useStrictRules, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1115,7 +1115,7 @@ STDAPI_(JsErrorCode) JsDeleteProperty(_In_ JsValueRef object, _In_ JsPropertyIdR
     });
 }
 
-STDAPI_(JsErrorCode) JsDefineProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _In_ JsValueRef propertyDescriptor, _Out_ bool *result)
+CHAKRA_API JsDefineProperty(_In_ JsValueRef object, _In_ JsPropertyIdRef propertyId, _In_ JsValueRef propertyDescriptor, _Out_ bool *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1138,7 +1138,7 @@ STDAPI_(JsErrorCode) JsDefineProperty(_In_ JsValueRef object, _In_ JsPropertyIdR
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateArray(_In_ unsigned int length, _Out_ JsValueRef *result)
+CHAKRA_API JsCreateArray(_In_ unsigned int length, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(result);
@@ -1150,7 +1150,7 @@ STDAPI_(JsErrorCode) JsCreateArray(_In_ unsigned int length, _Out_ JsValueRef *r
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateArrayBuffer(_In_ unsigned int byteLength, _Out_ JsValueRef *result)
+CHAKRA_API JsCreateArrayBuffer(_In_ unsigned int byteLength, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(result);
@@ -1163,7 +1163,7 @@ STDAPI_(JsErrorCode) JsCreateArrayBuffer(_In_ unsigned int byteLength, _Out_ JsV
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateExternalArrayBuffer(_Pre_maybenull_ _Pre_writable_byte_size_(byteLength) void *data, _In_ unsigned int byteLength,
+CHAKRA_API JsCreateExternalArrayBuffer(_Pre_maybenull_ _Pre_writable_byte_size_(byteLength) void *data, _In_ unsigned int byteLength,
     _In_opt_ JsFinalizeCallback finalizeCallback, _In_opt_ void *callbackState, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
@@ -1187,7 +1187,7 @@ STDAPI_(JsErrorCode) JsCreateExternalArrayBuffer(_Pre_maybenull_ _Pre_writable_b
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateTypedArray(_In_ JsTypedArrayType arrayType, _In_ JsValueRef baseArray, _In_ unsigned int byteOffset,
+CHAKRA_API JsCreateTypedArray(_In_ JsTypedArrayType arrayType, _In_ JsValueRef baseArray, _In_ unsigned int byteOffset,
     _In_ unsigned int elementLength, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
@@ -1266,7 +1266,7 @@ STDAPI_(JsErrorCode) JsCreateTypedArray(_In_ JsTypedArrayType arrayType, _In_ Js
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateDataView(_In_ JsValueRef arrayBuffer, _In_ unsigned int byteOffset, _In_ unsigned int byteLength, _Out_ JsValueRef *result)
+CHAKRA_API JsCreateDataView(_In_ JsValueRef arrayBuffer, _In_ unsigned int byteOffset, _In_ unsigned int byteLength, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(arrayBuffer, scriptContext);
@@ -1301,7 +1301,7 @@ inline JsTypedArrayType GetTypedArrayType(Js::TypeId typeId)
     return static_cast<JsTypedArrayType>(typeId + (JsArrayTypeInt8 - Js::TypeIds_Int8Array));
 }
 
-STDAPI_(JsErrorCode) JsGetTypedArrayInfo(_In_ JsValueRef typedArray, _Out_opt_ JsTypedArrayType *arrayType, _Out_opt_ JsValueRef *arrayBuffer,
+CHAKRA_API JsGetTypedArrayInfo(_In_ JsValueRef typedArray, _Out_opt_ JsTypedArrayType *arrayType, _Out_opt_ JsValueRef *arrayBuffer,
     _Out_opt_ unsigned int *byteOffset, _Out_opt_ unsigned int *byteLength)
 {
     VALIDATE_JSREF(typedArray);
@@ -1335,7 +1335,7 @@ STDAPI_(JsErrorCode) JsGetTypedArrayInfo(_In_ JsValueRef typedArray, _Out_opt_ J
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsGetArrayBufferStorage(_In_ JsValueRef instance, _Outptr_result_bytebuffer_(*bufferLength) BYTE **buffer,
+CHAKRA_API JsGetArrayBufferStorage(_In_ JsValueRef instance, _Outptr_result_bytebuffer_(*bufferLength) BYTE **buffer,
     _Out_ unsigned int *bufferLength)
 {
     VALIDATE_JSREF(instance);
@@ -1356,7 +1356,7 @@ STDAPI_(JsErrorCode) JsGetArrayBufferStorage(_In_ JsValueRef instance, _Outptr_r
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsGetTypedArrayStorage(_In_ JsValueRef instance, _Outptr_result_bytebuffer_(*bufferLength) BYTE **buffer,
+CHAKRA_API JsGetTypedArrayStorage(_In_ JsValueRef instance, _Outptr_result_bytebuffer_(*bufferLength) BYTE **buffer,
     _Out_ unsigned int *bufferLength, _Out_opt_ JsTypedArrayType *typedArrayType, _Out_opt_ int *elementSize)
 {
     VALIDATE_JSREF(instance);
@@ -1421,7 +1421,7 @@ STDAPI_(JsErrorCode) JsGetTypedArrayStorage(_In_ JsValueRef instance, _Outptr_re
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsGetDataViewStorage(_In_ JsValueRef instance, _Outptr_result_bytebuffer_(*bufferLength) BYTE **buffer, _Out_ unsigned int *bufferLength)
+CHAKRA_API JsGetDataViewStorage(_In_ JsValueRef instance, _Outptr_result_bytebuffer_(*bufferLength) BYTE **buffer, _Out_ unsigned int *bufferLength)
 {
     VALIDATE_JSREF(instance);
     PARAM_NOT_NULL(buffer);
@@ -1442,7 +1442,7 @@ STDAPI_(JsErrorCode) JsGetDataViewStorage(_In_ JsValueRef instance, _Outptr_resu
 }
 
 
-STDAPI_(JsErrorCode) JsCreateSymbol(_In_ JsValueRef description, _Out_ JsValueRef *result)
+CHAKRA_API JsCreateSymbol(_In_ JsValueRef description, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(result);
@@ -1466,7 +1466,7 @@ STDAPI_(JsErrorCode) JsCreateSymbol(_In_ JsValueRef description, _Out_ JsValueRe
     });
 }
 
-STDAPI_(JsErrorCode) JsHasIndexedProperty(_In_ JsValueRef object, _In_ JsValueRef index, _Out_ bool *result)
+CHAKRA_API JsHasIndexedProperty(_In_ JsValueRef object, _In_ JsValueRef index, _Out_ bool *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1480,7 +1480,7 @@ STDAPI_(JsErrorCode) JsHasIndexedProperty(_In_ JsValueRef object, _In_ JsValueRe
     });
 }
 
-STDAPI_(JsErrorCode) JsGetIndexedProperty(_In_ JsValueRef object, _In_ JsValueRef index, _Out_ JsValueRef *result)
+CHAKRA_API JsGetIndexedProperty(_In_ JsValueRef object, _In_ JsValueRef index, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1494,7 +1494,7 @@ STDAPI_(JsErrorCode) JsGetIndexedProperty(_In_ JsValueRef object, _In_ JsValueRe
     });
 }
 
-STDAPI_(JsErrorCode) JsSetIndexedProperty(_In_ JsValueRef object, _In_ JsValueRef index, _In_ JsValueRef value)
+CHAKRA_API JsSetIndexedProperty(_In_ JsValueRef object, _In_ JsValueRef index, _In_ JsValueRef value)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1507,7 +1507,7 @@ STDAPI_(JsErrorCode) JsSetIndexedProperty(_In_ JsValueRef object, _In_ JsValueRe
     });
 }
 
-STDAPI_(JsErrorCode) JsDeleteIndexedProperty(_In_ JsValueRef object, _In_ JsValueRef index)
+CHAKRA_API JsDeleteIndexedProperty(_In_ JsValueRef object, _In_ JsValueRef index)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_OBJECT(object, scriptContext);
@@ -1553,7 +1553,7 @@ void GetObjectArrayData(Js::ArrayObject* objectArray, void** data, JsTypedArrayT
     *length = typedArray->GetLength();
 }
 
-STDAPI_(JsErrorCode) JsSetIndexedPropertiesToExternalData(
+CHAKRA_API JsSetIndexedPropertiesToExternalData(
     _In_ JsValueRef object,
     _In_ void* data,
     _In_ JsTypedArrayType arrayType,
@@ -1621,7 +1621,7 @@ STDAPI_(JsErrorCode) JsSetIndexedPropertiesToExternalData(
     });
 }
 
-STDAPI_(JsErrorCode) JsHasIndexedPropertiesExternalData(_In_ JsValueRef object, _Out_ bool *value)
+CHAKRA_API JsHasIndexedPropertiesExternalData(_In_ JsValueRef object, _Out_ bool *value)
 {
     VALIDATE_JSREF(object);
     PARAM_NOT_NULL(value);
@@ -1640,7 +1640,7 @@ STDAPI_(JsErrorCode) JsHasIndexedPropertiesExternalData(_In_ JsValueRef object, 
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsGetIndexedPropertiesExternalData(
+CHAKRA_API JsGetIndexedPropertiesExternalData(
     _In_ JsValueRef object,
     _Out_ void** buffer,
     _Out_ JsTypedArrayType* arrayType,
@@ -1705,7 +1705,7 @@ STDAPI_(JsErrorCode) JsGetIndexedPropertiesExternalData(
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsEquals(_In_ JsValueRef object1, _In_ JsValueRef object2, _Out_ bool *result)
+CHAKRA_API JsEquals(_In_ JsValueRef object1, _In_ JsValueRef object2, _Out_ bool *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(object1, scriptContext);
@@ -1717,7 +1717,7 @@ STDAPI_(JsErrorCode) JsEquals(_In_ JsValueRef object1, _In_ JsValueRef object2, 
     });
 }
 
-STDAPI_(JsErrorCode) JsStrictEquals(_In_ JsValueRef object1, _In_ JsValueRef object2, _Out_ bool *result)
+CHAKRA_API JsStrictEquals(_In_ JsValueRef object1, _In_ JsValueRef object2, _Out_ bool *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(object1, scriptContext);
@@ -1729,7 +1729,7 @@ STDAPI_(JsErrorCode) JsStrictEquals(_In_ JsValueRef object1, _In_ JsValueRef obj
     });
 }
 
-STDAPI_(JsErrorCode) JsHasExternalData(_In_ JsValueRef object, _Out_ bool *value)
+CHAKRA_API JsHasExternalData(_In_ JsValueRef object, _Out_ bool *value)
 {
     VALIDATE_JSREF(object);
     PARAM_NOT_NULL(value);
@@ -1741,7 +1741,7 @@ STDAPI_(JsErrorCode) JsHasExternalData(_In_ JsValueRef object, _Out_ bool *value
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsGetExternalData(_In_ JsValueRef object, _Out_ void **data)
+CHAKRA_API JsGetExternalData(_In_ JsValueRef object, _Out_ void **data)
 {
     VALIDATE_JSREF(object);
     PARAM_NOT_NULL(data);
@@ -1761,7 +1761,7 @@ STDAPI_(JsErrorCode) JsGetExternalData(_In_ JsValueRef object, _Out_ void **data
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsSetExternalData(_In_ JsValueRef object, _In_opt_ void *data)
+CHAKRA_API JsSetExternalData(_In_ JsValueRef object, _In_opt_ void *data)
 {
     VALIDATE_JSREF(object);
 
@@ -1779,7 +1779,7 @@ STDAPI_(JsErrorCode) JsSetExternalData(_In_ JsValueRef object, _In_opt_ void *da
     END_JSRT_NO_EXCEPTION
 }
 
-STDAPI_(JsErrorCode) JsCallFunction(_In_ JsValueRef function, _In_reads_(cargs) JsValueRef *args, _In_ ushort cargs, _Out_opt_ JsValueRef *result)
+CHAKRA_API JsCallFunction(_In_ JsValueRef function, _In_reads_(cargs) JsValueRef *args, _In_ ushort cargs, _Out_opt_ JsValueRef *result)
 {
     if (result != nullptr)
     {
@@ -1813,7 +1813,7 @@ STDAPI_(JsErrorCode) JsCallFunction(_In_ JsValueRef function, _In_reads_(cargs) 
     });
 }
 
-STDAPI_(JsErrorCode) JsConstructObject(_In_ JsValueRef function, _In_reads_(cargs) JsValueRef *args, _In_ ushort cargs, _Out_ JsValueRef *result)
+CHAKRA_API JsConstructObject(_In_ JsValueRef function, _In_reads_(cargs) JsValueRef *args, _In_ ushort cargs, _Out_ JsValueRef *result)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_FUNCTION(function, scriptContext);
@@ -1840,7 +1840,7 @@ STDAPI_(JsErrorCode) JsConstructObject(_In_ JsValueRef function, _In_reads_(carg
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateFunction(_In_ JsNativeFunction nativeFunction, _In_opt_ void *callbackState, _Out_ JsValueRef *function)
+CHAKRA_API JsCreateFunction(_In_ JsNativeFunction nativeFunction, _In_opt_ void *callbackState, _Out_ JsValueRef *function)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext *scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(nativeFunction);
@@ -1854,7 +1854,7 @@ STDAPI_(JsErrorCode) JsCreateFunction(_In_ JsNativeFunction nativeFunction, _In_
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateNamedFunction(_In_ JsValueRef name, _In_ JsNativeFunction nativeFunction, _In_opt_ void *callbackState, _Out_ JsValueRef *function)
+CHAKRA_API JsCreateNamedFunction(_In_ JsValueRef name, _In_ JsNativeFunction nativeFunction, _In_opt_ void *callbackState, _Out_ JsValueRef *function)
 {
     return ContextAPIWrapper<true>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(name, scriptContext);
@@ -1883,7 +1883,7 @@ void SetErrorMessage(Js::ScriptContext *scriptContext, JsValueRef newError, JsVa
     Js::JavascriptOperators::OP_SetProperty(newError, Js::PropertyIds::message, message, scriptContext);
 }
 
-STDAPI_(JsErrorCode) JsCreateError(_In_ JsValueRef message, _Out_ JsValueRef *error)
+CHAKRA_API JsCreateError(_In_ JsValueRef message, _Out_ JsValueRef *error)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext * scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(message, scriptContext);
@@ -1898,7 +1898,7 @@ STDAPI_(JsErrorCode) JsCreateError(_In_ JsValueRef message, _Out_ JsValueRef *er
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateRangeError(_In_ JsValueRef message, _Out_ JsValueRef *error)
+CHAKRA_API JsCreateRangeError(_In_ JsValueRef message, _Out_ JsValueRef *error)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext * scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(message, scriptContext);
@@ -1915,7 +1915,7 @@ STDAPI_(JsErrorCode) JsCreateRangeError(_In_ JsValueRef message, _Out_ JsValueRe
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateReferenceError(_In_ JsValueRef message, _Out_ JsValueRef *error)
+CHAKRA_API JsCreateReferenceError(_In_ JsValueRef message, _Out_ JsValueRef *error)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext * scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(message, scriptContext);
@@ -1932,7 +1932,7 @@ STDAPI_(JsErrorCode) JsCreateReferenceError(_In_ JsValueRef message, _Out_ JsVal
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateSyntaxError(_In_ JsValueRef message, _Out_ JsValueRef *error)
+CHAKRA_API JsCreateSyntaxError(_In_ JsValueRef message, _Out_ JsValueRef *error)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext * scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(message, scriptContext);
@@ -1949,7 +1949,7 @@ STDAPI_(JsErrorCode) JsCreateSyntaxError(_In_ JsValueRef message, _Out_ JsValueR
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateTypeError(_In_ JsValueRef message, _Out_ JsValueRef *error)
+CHAKRA_API JsCreateTypeError(_In_ JsValueRef message, _Out_ JsValueRef *error)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext * scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(message, scriptContext);
@@ -1966,7 +1966,7 @@ STDAPI_(JsErrorCode) JsCreateTypeError(_In_ JsValueRef message, _Out_ JsValueRef
     });
 }
 
-STDAPI_(JsErrorCode) JsCreateURIError(_In_ JsValueRef message, _Out_ JsValueRef *error)
+CHAKRA_API JsCreateURIError(_In_ JsValueRef message, _Out_ JsValueRef *error)
 {
     return ContextAPIWrapper<true>([&] (Js::ScriptContext * scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(message, scriptContext);
@@ -1983,7 +1983,7 @@ STDAPI_(JsErrorCode) JsCreateURIError(_In_ JsValueRef message, _Out_ JsValueRef 
     });
 }
 
-STDAPI_(JsErrorCode) JsHasException(_Out_ bool *hasException)
+CHAKRA_API JsHasException(_Out_ bool *hasException)
 {
     PARAM_NOT_NULL(hasException);
     *hasException = false;
@@ -2017,7 +2017,7 @@ STDAPI_(JsErrorCode) JsHasException(_Out_ bool *hasException)
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsGetAndClearException(_Out_ JsValueRef *exception)
+CHAKRA_API JsGetAndClearException(_Out_ JsValueRef *exception)
 {
     PARAM_NOT_NULL(exception);
     *exception = nullptr;
@@ -2070,7 +2070,7 @@ STDAPI_(JsErrorCode) JsGetAndClearException(_Out_ JsValueRef *exception)
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsSetException(_In_ JsValueRef exception)
+CHAKRA_API JsSetException(_In_ JsValueRef exception)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext* scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(exception, scriptContext);
@@ -2088,7 +2088,7 @@ STDAPI_(JsErrorCode) JsSetException(_In_ JsValueRef exception)
     });
 }
 
-STDAPI_(JsErrorCode) JsGetRuntimeMemoryUsage(_In_ JsRuntimeHandle runtimeHandle, _Out_ size_t * memoryUsage)
+CHAKRA_API JsGetRuntimeMemoryUsage(_In_ JsRuntimeHandle runtimeHandle, _Out_ size_t * memoryUsage)
 {
     VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
     PARAM_NOT_NULL(memoryUsage);
@@ -2102,7 +2102,7 @@ STDAPI_(JsErrorCode) JsGetRuntimeMemoryUsage(_In_ JsRuntimeHandle runtimeHandle,
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsSetRuntimeMemoryLimit(_In_ JsRuntimeHandle runtimeHandle, _In_ size_t memoryLimit)
+CHAKRA_API JsSetRuntimeMemoryLimit(_In_ JsRuntimeHandle runtimeHandle, _In_ size_t memoryLimit)
 {
     VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
 
@@ -2114,7 +2114,7 @@ STDAPI_(JsErrorCode) JsSetRuntimeMemoryLimit(_In_ JsRuntimeHandle runtimeHandle,
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsGetRuntimeMemoryLimit(_In_ JsRuntimeHandle runtimeHandle, _Out_ size_t * memoryLimit)
+CHAKRA_API JsGetRuntimeMemoryLimit(_In_ JsRuntimeHandle runtimeHandle, _Out_ size_t * memoryLimit)
 {
     VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
     PARAM_NOT_NULL(memoryLimit);
@@ -2133,7 +2133,7 @@ C_ASSERT(JsMemoryFree == AllocationPolicyManager::MemoryAllocateEvent::MemoryFre
 C_ASSERT(JsMemoryFailure == AllocationPolicyManager::MemoryAllocateEvent::MemoryFailure);
 C_ASSERT(JsMemoryFailure == AllocationPolicyManager::MemoryAllocateEvent::MemoryMax);
 
-STDAPI_(JsErrorCode) JsSetRuntimeMemoryAllocationCallback(_In_ JsRuntimeHandle runtime, _In_opt_ void *callbackState, _In_ JsMemoryAllocationCallback allocationCallback)
+CHAKRA_API JsSetRuntimeMemoryAllocationCallback(_In_ JsRuntimeHandle runtime, _In_opt_ void *callbackState, _In_ JsMemoryAllocationCallback allocationCallback)
 {
     VALIDATE_INCOMING_RUNTIME_HANDLE(runtime);
 
@@ -2145,7 +2145,7 @@ STDAPI_(JsErrorCode) JsSetRuntimeMemoryAllocationCallback(_In_ JsRuntimeHandle r
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsSetRuntimeBeforeCollectCallback(_In_ JsRuntimeHandle runtime, _In_opt_ void *callbackState, _In_ JsBeforeCollectCallback beforeCollectCallback)
+CHAKRA_API JsSetRuntimeBeforeCollectCallback(_In_ JsRuntimeHandle runtime, _In_opt_ void *callbackState, _In_ JsBeforeCollectCallback beforeCollectCallback)
 {
     return GlobalAPIWrapper([&]() -> JsErrorCode {
         VALIDATE_INCOMING_RUNTIME_HANDLE(runtime);
@@ -2155,7 +2155,7 @@ STDAPI_(JsErrorCode) JsSetRuntimeBeforeCollectCallback(_In_ JsRuntimeHandle runt
     });
 }
 
-STDAPI_(JsErrorCode) JsDisableRuntimeExecution(_In_ JsRuntimeHandle runtimeHandle)
+CHAKRA_API JsDisableRuntimeExecution(_In_ JsRuntimeHandle runtimeHandle)
 {
     VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
 
@@ -2178,7 +2178,7 @@ STDAPI_(JsErrorCode) JsDisableRuntimeExecution(_In_ JsRuntimeHandle runtimeHandl
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsEnableRuntimeExecution(_In_ JsRuntimeHandle runtimeHandle)
+CHAKRA_API JsEnableRuntimeExecution(_In_ JsRuntimeHandle runtimeHandle)
 {
     return GlobalAPIWrapper([&] () -> JsErrorCode {
         VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
@@ -2210,7 +2210,7 @@ STDAPI_(JsErrorCode) JsEnableRuntimeExecution(_In_ JsRuntimeHandle runtimeHandle
     });
 }
 
-STDAPI_(JsErrorCode) JsIsRuntimeExecutionDisabled(_In_ JsRuntimeHandle runtimeHandle, _Out_ bool *isDisabled)
+CHAKRA_API JsIsRuntimeExecutionDisabled(_In_ JsRuntimeHandle runtimeHandle, _Out_ bool *isDisabled)
 {
     VALIDATE_INCOMING_RUNTIME_HANDLE(runtimeHandle);
     PARAM_NOT_NULL(isDisabled);
@@ -2221,7 +2221,7 @@ STDAPI_(JsErrorCode) JsIsRuntimeExecutionDisabled(_In_ JsRuntimeHandle runtimeHa
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsGetPropertyIdFromName(_In_z_ const wchar_t *name, _Out_ JsPropertyIdRef *propertyId)
+CHAKRA_API JsGetPropertyIdFromName(_In_z_ const wchar_t *name, _Out_ JsPropertyIdRef *propertyId)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext * scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(name);
@@ -2245,7 +2245,7 @@ STDAPI_(JsErrorCode) JsGetPropertyIdFromName(_In_z_ const wchar_t *name, _Out_ J
     });
 }
 
-STDAPI_(JsErrorCode) JsGetPropertyIdFromSymbol(_In_ JsValueRef symbol, _Out_ JsPropertyIdRef *propertyId)
+CHAKRA_API JsGetPropertyIdFromSymbol(_In_ JsValueRef symbol, _Out_ JsPropertyIdRef *propertyId)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext * scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_REFERENCE(symbol, scriptContext);
@@ -2263,7 +2263,7 @@ STDAPI_(JsErrorCode) JsGetPropertyIdFromSymbol(_In_ JsValueRef symbol, _Out_ JsP
     /*allowInObjectBeforeCollectCallback*/true);
 }
 
-STDAPI_(JsErrorCode) JsGetSymbolFromPropertyId(_In_ JsPropertyIdRef propertyId, _Out_ JsValueRef *symbol)
+CHAKRA_API JsGetSymbolFromPropertyId(_In_ JsPropertyIdRef propertyId, _Out_ JsValueRef *symbol)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext * scriptContext) -> JsErrorCode {
         VALIDATE_INCOMING_PROPERTYID(propertyId);
@@ -2282,7 +2282,7 @@ STDAPI_(JsErrorCode) JsGetSymbolFromPropertyId(_In_ JsPropertyIdRef propertyId, 
 }
 
 #pragma prefast(suppress:6101, "Prefast doesn't see through the lambda")
-STDAPI_(JsErrorCode) JsGetPropertyNameFromId(_In_ JsPropertyIdRef propertyId, _Outptr_result_z_ const wchar_t **name)
+CHAKRA_API JsGetPropertyNameFromId(_In_ JsPropertyIdRef propertyId, _Outptr_result_z_ const wchar_t **name)
 {
     return GlobalAPIWrapper([&]() -> JsErrorCode {
         VALIDATE_INCOMING_PROPERTYID(propertyId);
@@ -2301,7 +2301,7 @@ STDAPI_(JsErrorCode) JsGetPropertyNameFromId(_In_ JsPropertyIdRef propertyId, _O
     });
 }
 
-STDAPI_(JsErrorCode) JsGetPropertyIdType(_In_ JsPropertyIdRef propertyId, _Out_ JsPropertyIdType* propertyIdType)
+CHAKRA_API JsGetPropertyIdType(_In_ JsPropertyIdRef propertyId, _Out_ JsPropertyIdType* propertyIdType)
 {
     return GlobalAPIWrapper([&]() -> JsErrorCode {
         VALIDATE_INCOMING_PROPERTYID(propertyId);
@@ -2321,7 +2321,7 @@ STDAPI_(JsErrorCode) JsGetPropertyIdType(_In_ JsPropertyIdRef propertyId, _Out_ 
 }
 
 
-STDAPI_(JsErrorCode) JsGetRuntime(_In_ JsContextRef context, _Out_ JsRuntimeHandle *runtime)
+CHAKRA_API JsGetRuntime(_In_ JsContextRef context, _Out_ JsRuntimeHandle *runtime)
 {
     VALIDATE_JSREF(context);
     PARAM_NOT_NULL(runtime);
@@ -2337,7 +2337,7 @@ STDAPI_(JsErrorCode) JsGetRuntime(_In_ JsContextRef context, _Out_ JsRuntimeHand
     return JsNoError;
 }
 
-STDAPI_(JsErrorCode) JsIdle(_Out_opt_ unsigned int *nextIdleTick)
+CHAKRA_API JsIdle(_Out_opt_ unsigned int *nextIdleTick)
 {
     PARAM_NOT_NULL(nextIdleTick);
 
@@ -2371,7 +2371,7 @@ STDAPI_(JsErrorCode) JsIdle(_Out_opt_ unsigned int *nextIdleTick)
     });
 }
 
-STDAPI_(JsErrorCode) JsSetPromiseContinuationCallback(_In_ JsPromiseContinuationCallback promiseContinuationCallback, _In_opt_ void *callbackState)
+CHAKRA_API JsSetPromiseContinuationCallback(_In_ JsPromiseContinuationCallback promiseContinuationCallback, _In_opt_ void *callbackState)
 {
     return ContextAPINoScriptWrapper([&](Js::ScriptContext * scriptContext) -> JsErrorCode {
         PARAM_NOT_NULL(promiseContinuationCallback);
@@ -2475,12 +2475,12 @@ JsErrorCode RunScriptCore(const wchar_t *script, JsSourceContext sourceContext, 
     });
 }
 
-STDAPI_(JsErrorCode) JsParseScript(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
+CHAKRA_API JsParseScript(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
 {
     return RunScriptCore(script, sourceContext, sourceUrl, true, JsParseScriptAttributeNone, false, result);
 }
 
-STDAPI_(JsErrorCode) JsParseScriptWithAttributes(
+CHAKRA_API JsParseScriptWithAttributes(
     _In_z_ const wchar_t *script,
     _In_ JsSourceContext sourceContext,
     _In_z_ const wchar_t *sourceUrl,
@@ -2490,17 +2490,17 @@ STDAPI_(JsErrorCode) JsParseScriptWithAttributes(
     return RunScriptCore(script, sourceContext, sourceUrl, true, parseAttributes, false, result);
 }
 
-STDAPI_(JsErrorCode) JsRunScript(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
+CHAKRA_API JsRunScript(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
 {
     return RunScriptCore(script, sourceContext, sourceUrl, false, JsParseScriptAttributeNone, false, result);
 }
 
-STDAPI_(JsErrorCode) JsExperimentalApiRunModule(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
+CHAKRA_API JsExperimentalApiRunModule(_In_z_ const wchar_t * script, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
 {
     return RunScriptCore(script, sourceContext, sourceUrl, false, JsParseScriptAttributeNone, true, result);
 }
 
-JsErrorCode JsSerializeScriptCore(const wchar_t *script, BYTE *functionTable, int functionTableSize, unsigned char *buffer, unsigned long *bufferSize)
+JsErrorCode JsSerializeScriptCore(const wchar_t *script, BYTE *functionTable, int functionTableSize, unsigned char *buffer, unsigned int *bufferSize)
 {
     Js::JavascriptFunction *function;
     CompileScriptException se;
@@ -2586,7 +2586,10 @@ JsErrorCode JsSerializeScriptCore(const wchar_t *script, BYTE *functionTable, in
 #endif
 
         BEGIN_TEMP_ALLOCATOR(tempAllocator, scriptContext, L"ByteCodeSerializer");
-        HRESULT hr = Js::ByteCodeSerializer::SerializeToBuffer(scriptContext, tempAllocator, static_cast<DWORD>(cSourceCodeLength), utf8Code, 0, nullptr, functionBody, functionBody->GetHostSrcInfo(), false, &buffer, bufferSize, dwFlags);
+        // We cast buffer size to DWORD* because on Windows, DWORD = unsigned long = unsigned int
+        // On 64-bit clang on linux, this is not true, unsigned long is larger than unsigned int
+        // However, the PAL defines DWORD for us on linux as unsigned int so the cast is safe here.
+        HRESULT hr = Js::ByteCodeSerializer::SerializeToBuffer(scriptContext, tempAllocator, static_cast<DWORD>(cSourceCodeLength), utf8Code, functionBody, functionBody->GetHostSrcInfo(), false, &buffer, (DWORD*) bufferSize, dwFlags);
         END_TEMP_ALLOCATOR(tempAllocator, scriptContext);
 
         if (SUCCEEDED(hr))
@@ -2601,8 +2604,8 @@ JsErrorCode JsSerializeScriptCore(const wchar_t *script, BYTE *functionTable, in
 
 }
 
-STDAPI_(JsErrorCode) JsSerializeScript(_In_z_ const wchar_t *script, _Out_writes_to_opt_(*bufferSize, *bufferSize) unsigned char *buffer,
-    _Inout_ unsigned long *bufferSize)
+CHAKRA_API JsSerializeScript(_In_z_ const wchar_t *script, _Out_writes_to_opt_(*bufferSize, *bufferSize) unsigned char *buffer,
+    _Inout_ unsigned int *bufferSize)
 {
     return JsSerializeScriptCore(script, nullptr, 0, buffer, bufferSize);
 }
@@ -2718,24 +2721,24 @@ JsErrorCode RunSerializedScriptCore(const wchar_t *script, JsSerializedScriptLoa
     });
 }
 
-STDAPI_(JsErrorCode) JsParseSerializedScript(_In_z_ const wchar_t * script, _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext,
+CHAKRA_API JsParseSerializedScript(_In_z_ const wchar_t * script, _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext,
     _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
 {
     return RunSerializedScriptCore(script, nullptr, nullptr, buffer, sourceContext, sourceUrl, true, result);
 }
 
-STDAPI_(JsErrorCode) JsRunSerializedScript(_In_z_ const wchar_t * script, _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext,
+CHAKRA_API JsRunSerializedScript(_In_z_ const wchar_t * script, _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext,
     _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
 {
     return RunSerializedScriptCore(script, nullptr, nullptr, buffer, sourceContext, sourceUrl, false, result);
 }
 
-STDAPI_(JsErrorCode) JsParseSerializedScriptWithCallback(_In_ JsSerializedScriptLoadSourceCallback scriptLoadCallback, _In_ JsSerializedScriptUnloadCallback scriptUnloadCallback, _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
+CHAKRA_API JsParseSerializedScriptWithCallback(_In_ JsSerializedScriptLoadSourceCallback scriptLoadCallback, _In_ JsSerializedScriptUnloadCallback scriptUnloadCallback, _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_ JsValueRef * result)
 {
     return RunSerializedScriptCore(nullptr, scriptLoadCallback, scriptUnloadCallback, buffer, sourceContext, sourceUrl, true, result);
 }
 
-STDAPI_(JsErrorCode) JsRunSerializedScriptWithCallback(_In_ JsSerializedScriptLoadSourceCallback scriptLoadCallback, _In_ JsSerializedScriptUnloadCallback scriptUnloadCallback, _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_opt_ JsValueRef * result)
+CHAKRA_API JsRunSerializedScriptWithCallback(_In_ JsSerializedScriptLoadSourceCallback scriptLoadCallback, _In_ JsSerializedScriptUnloadCallback scriptUnloadCallback, _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext, _In_z_ const wchar_t *sourceUrl, _Out_opt_ JsValueRef * result)
 {
     return RunSerializedScriptCore(nullptr, scriptLoadCallback, scriptUnloadCallback, buffer, sourceContext, sourceUrl, false, result);
 }
