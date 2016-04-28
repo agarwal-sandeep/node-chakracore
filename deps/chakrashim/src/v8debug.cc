@@ -420,6 +420,9 @@ namespace v8 {
     if (argumentCount > 1 &&
       jsrt::ToString(arguments[1], &scriptRef, &script) == JsNoError) {
       wprintf(L"%s\n", script);
+#ifdef DEBUG
+      flushall();
+#endif
     }
 
     return JS_INVALID_REFERENCE;
@@ -475,17 +478,17 @@ namespace v8 {
     return source;
   }
 
-  static JsValueRef __stdcall JsResume(
+  static JsValueRef __stdcall JsSetStepType(
       JsValueRef callee,
       bool isConstructCall,
       JsValueRef *arguments,
       unsigned short argumentCount,
       void *callbackState) {
     bool success = false;
-    int resumeType;
+    int stepType;
     if (argumentCount > 1 &&
-      jsrt::ValueToInt(arguments[1], &resumeType) == JsNoError) {
-      JsErrorCode errorCode = JsDiagResume((JsDiagResumeType)resumeType);
+      jsrt::ValueToInt(arguments[1], &stepType) == JsNoError) {
+      JsErrorCode errorCode = JsDiagSetStepType((JsDiagStepType)stepType);
       CHAKRA_VERIFY(errorCode == JsNoError);
       success = true;
     }
@@ -535,14 +538,14 @@ namespace v8 {
     return funcInfo;
   }
 
-  static JsValueRef __stdcall JsGetStacktrace(
+  static JsValueRef __stdcall JsGetStackTrace(
       JsValueRef callee,
       bool isConstructCall,
       JsValueRef *arguments,
       unsigned short argumentCount,
       void *callbackState) {
     JsValueRef stackInfo = JS_INVALID_REFERENCE;
-    JsErrorCode errorCode = JsDiagGetStacktrace(&stackInfo);
+    JsErrorCode errorCode = JsDiagGetStackTrace(&stackInfo);
     CHAKRA_VERIFY(errorCode == JsNoError);
 
     return stackInfo;
@@ -648,6 +651,9 @@ namespace v8 {
       jsrt::ValueToInt(arguments[2], &frameIndex) == JsNoError &&
       jsrt::ToString(arguments[1], &scriptRef, &script) == JsNoError) {
       JsErrorCode errorCode = JsDiagEvaluate(script, frameIndex, &result);
+      if (errorCode != JsNoError) {
+          jsrt::Fatal("internal error %s(%d): %d", __FILE__, __LINE__, errorCode);
+      }
       CHAKRA_VERIFY(errorCode == JsNoError);
     }
 
@@ -668,6 +674,9 @@ namespace v8 {
       jsrt::ToString(arguments[1], &scriptRef, &script) == JsNoError) {
       JsErrorCode errorCode = JsRunScript(
           script, JS_SOURCE_CONTEXT_NONE, L"", &result);
+      if (errorCode != JsNoError) {
+          jsrt::Fatal("internal error %s(%d): %d", __FILE__, __LINE__, errorCode);
+      }
       CHAKRA_VERIFY(errorCode == JsNoError);
     }
 
@@ -680,13 +689,13 @@ namespace v8 {
       JsValueRef *arguments,
       unsigned short argumentCount,
       void *callbackState) {
-    int breakOnExceptionType;
+    int breakOnExceptionAttributes;
     bool success = false;
 
     if (argumentCount > 1 &&
-      jsrt::ValueToInt(arguments[1], &breakOnExceptionType) == JsNoError &&
-      JsDiagSetBreakOnException(
-          (JsDiagBreakOnExceptionType)breakOnExceptionType) == JsNoError) {
+      jsrt::ValueToInt(arguments[1], &breakOnExceptionAttributes) == JsNoError &&
+      JsDiagSetBreakOnException(jsrt::IsolateShim::GetCurrent()->GetRuntimeHandle(),
+          (JsDiagBreakOnExceptionAttributes)breakOnExceptionAttributes) == JsNoError) {
       success = true;
     }
 
@@ -702,14 +711,16 @@ namespace v8 {
       JsValueRef *arguments,
       unsigned short argumentCount,
       void *callbackState) {
-    JsDiagBreakOnExceptionType breakOnExceptionType =
-        JsDiagBreakOnExceptionTypeNone;
+      JsDiagBreakOnExceptionAttributes breakOnExceptionAttributes =
+          JsDiagBreakOnExceptionAttributeNone;
 
-    JsErrorCode errorCode = JsDiagGetBreakOnException(&breakOnExceptionType);
+    JsErrorCode errorCode = JsDiagGetBreakOnException(
+        jsrt::IsolateShim::GetCurrent()->GetRuntimeHandle(),
+        &breakOnExceptionAttributes);
     CHAKRA_VERIFY(errorCode == JsNoError);
 
     JsValueRef returnRef = JS_INVALID_REFERENCE;
-    errorCode = JsIntToNumber(breakOnExceptionType, &returnRef);
+    errorCode = JsIntToNumber(breakOnExceptionAttributes, &returnRef);
     CHAKRA_VERIFY(errorCode == JsNoError);
 
     return returnRef;
@@ -764,13 +775,13 @@ namespace v8 {
     Debug::InstallHostCallback(chakraDebugObject,
         L"JsDiagGetSource", JsGetSource);
     Debug::InstallHostCallback(chakraDebugObject,
-        L"JsDiagResume", JsResume);
+        L"JsDiagSetStepType", JsSetStepType);
     Debug::InstallHostCallback(chakraDebugObject,
         L"JsDiagSetBreakpoint", JsSetBreakpoint);
     Debug::InstallHostCallback(chakraDebugObject,
         L"JsDiagGetFunctionPosition", JsGetFunctionPosition);
     Debug::InstallHostCallback(chakraDebugObject,
-        L"JsDiagGetStacktrace", JsGetStacktrace);
+        L"JsDiagGetStackTrace", JsGetStackTrace);
     Debug::InstallHostCallback(chakraDebugObject,
         L"JsDiagGetStackProperties", JsGetStackProperties);
     Debug::InstallHostCallback(chakraDebugObject,

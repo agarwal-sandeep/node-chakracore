@@ -459,7 +459,7 @@ bool ContextShim::ExecuteChakraDebugShimJS(JsValueRef * chakraDebugObject) {
   buffer[_countof(chakra_debug_native)] = L'\0';
 
   JsValueRef getInitFunction;
-  if (JsParseScriptWithFlags(buffer,
+  if (JsParseScriptWithAttributes(buffer,
     JS_SOURCE_CONTEXT_NONE,
     L"chakra_debug.js",
     JsParseScriptAttributeLibraryCode,

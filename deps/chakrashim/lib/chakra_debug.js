@@ -29,6 +29,11 @@
     return --nextScopeHandle;
   }
 
+  var nextScriptHandle = 100000;
+  function GetNextScriptHandle() {
+    return --nextScriptHandle;
+  }
+
   var Logger = (function () {
     var logTypes = {
       API : 1,
@@ -81,6 +86,7 @@
     Logger.LogAPI(fn.name + '(' + args + '):' + (end - start));
     return result;
   }
+
   function callHostFunction(fn) {
     var args = [].slice.call(arguments, 1);
     var start = new Date();
@@ -89,6 +95,7 @@
     Logger.LogAPI(fn.name + '(' + args + '):' + (end - start), result);
     return result;
   }
+
   var DebugManager = (function () {
     var eventSeq = 0;
     var responseSeq = 0;
@@ -125,24 +132,49 @@
     };
 
     retObj.ScriptManager = (function () {
-      var scriptIdFileNameArray = [];
+      var scriptObjectArray = [];
+      var scriptIdToHandleObject = {};
       return {
-        GetFileNameFromId : function (scriptId) {
-          if (scriptId in scriptIdFileNameArray) {
-            var scriptName = scriptIdFileNameArray[scriptId];
-            return scriptName;
+        GetFileNameFromId: function (scriptId) {
+          if (scriptId in scriptObjectArray) {
+            return scriptObjectArray[scriptId].fileName;
           } else {
-            var scripts = callHostFunctionNoLog(chakraDebug.JsDiagGetScripts);
+            var scripts = callHostFunction(chakraDebug.JsDiagGetScripts);
             scripts.forEach(function (element, index, array) {
-              scriptIdFileNameArray[element.scriptId] = element.fileName;
+              scriptObjectArray[element.scriptId] = element;
             });
 
-            if (scriptId in scriptIdFileNameArray) {
-              var scriptName = scriptIdFileNameArray[scriptId];
-              return scriptName;
+            if (scriptId in scriptObjectArray) {
+              return scriptObjectArray[scriptId].fileName;
             }
           }
           return '';
+        },
+        AddScriptIdToHandleMapping: function (scriptId, handle) {
+          scriptIdToHandleObject[scriptId] = handle;
+        },
+        HaveHandle: function (scriptId) {
+          return (scriptId in scriptIdToHandleObject);
+        },
+        IsScriptHandle: function (handle) {
+          for (var id in scriptIdToHandleObject) {
+            if (scriptIdToHandleObject[id] == handle) {
+              return true;
+            }
+          }
+          return false;
+        },
+        GetScriptHandle: function (scriptId) {
+          return scriptIdToHandleObject[scriptId];
+        },
+        GetScriptObject: function (handle) {
+          for (var id in scriptIdToHandleObject) {
+            if (scriptIdToHandleObject[id] == handle && id in scriptObjectArray) {
+              var scriptObj = scriptObjectArray[id];
+              scriptObj['handle'] = handle;
+              return scriptObj;
+            }
+          }
         }
       };
     })();
@@ -176,13 +208,13 @@
           if (debugProtoObj.arguments) {
             if (debugProtoObj.arguments.type == 'scriptRegExp' || debugProtoObj.arguments.type == 'script') {
 
-              var scriptsArray = callHostFunctionNoLog(chakraDebug.JsDiagGetScripts);
+              var scriptsArray = callHostFunction(chakraDebug.JsDiagGetScripts);
 
               var targetRegex = new RegExp(debugProtoObj.arguments.target);
 
               for (var i = 0; i < scriptsArray.length; ++i) {
                 if (debugProtoObj.arguments.type == 'scriptRegExp') {
-                  if (scriptsArray[i].fileName.match(targetRegex)) {
+                  if (scriptsArray[i].fileName && scriptsArray[i].fileName.match(targetRegex)) {
                     scriptId = scriptsArray[i].scriptId;
                     bpType = 'scriptRegExp';
                     break;
@@ -191,7 +223,7 @@
                   scriptId = DebugManager.GetBreakScriptId();
                   break;
                 } else if (debugProtoObj.arguments.type == 'script' && debugProtoObj.arguments.target) {
-                  if (scriptsArray[i].fileName.toLowerCase() == debugProtoObj.arguments.target.toLowerCase()) {
+                  if (scriptsArray[i].fileName && scriptsArray[i].fileName.toLowerCase() == debugProtoObj.arguments.target.toLowerCase()) {
                     scriptId = scriptsArray[i].scriptId;
                     bpType = 'scriptName';
                     break;
@@ -210,10 +242,8 @@
             if (debugProtoObj.arguments && debugProtoObj.arguments.column && (typeof debugProtoObj.arguments.column == 'number')) {
               column = debugProtoObj.arguments.column;
             }
-            Logger.LogAPI('Calling JsDiagSetBreakpoint(' + scriptId + ',' + debugProtoObj.arguments.line + ',' + column + ')');
             var bpObject = callHostFunction(chakraDebug.JsDiagSetBreakpoint, scriptId, debugProtoObj.arguments.line, column);
             var bpId = bpObject.breakpointId;
-            Logger.LogAPI('JsDiagSetBreakpoint', bpObject);
 
             if (bpId > 0) {
               response['body'] = debugProtoObj.arguments;
@@ -479,7 +509,7 @@
 
         if (found == true) {
           var scriptObj = {
-            'handle' : element.handle,
+            /*'handle': element.handle,*/
             'type' : 'script',
             'name' : element.fileName,
             'id' : element.scriptId,
@@ -527,21 +557,21 @@
       /* {'command':'continue','arguments':{'stepaction':'in','stepcount':1},'type':'request','seq':1} */
       var success = true;
       if (debugProtoObj.arguments && debugProtoObj.arguments.stepaction) {
-        var jsDiagResumeType = 0;
+        var jsDiagSetStepType = 0;
         if (debugProtoObj.arguments.stepaction == 'in') {
-          /* JsDiagResumeTypeStepIn */
-          jsDiagResumeType = 0;
+          /* JsDiagStepTypeStepIn */
+          jsDiagSetStepType = 0;
         } else if (debugProtoObj.arguments.stepaction == 'out') {
-          /* JsDiagResumeTypeStepOut */
-          jsDiagResumeType = 1;
+          /* JsDiagStepTypeStepOut */
+          jsDiagSetStepType = 1;
         } else if (debugProtoObj.arguments.stepaction == 'next') {
-          /* JsDiagResumeTypeStepOver */
-          jsDiagResumeType = 2;
+          /* JsDiagStepTypeStepOver */
+          jsDiagSetStepType = 2;
         } else {
           throw new Error('Unhandled stepaction: ' + debugProtoObj.arguments.stepaction);
         }
 
-        if (!callHostFunction(chakraDebug.JsDiagResume, jsDiagResumeType)) {
+        if (!callHostFunction(chakraDebug.JsDiagSetStepType, jsDiagSetStepType)) {
           success = false;
         }
       }
@@ -554,16 +584,24 @@
       // {'command':'backtrace','arguments':{'fromFrame':0,'toFrame':1},'type':'request','seq':7}
       var response = DebugManager.MakeResponse(debugProtoObj, true);
       if (frames == null || frames.length == 0) {
-        var stackTrace = callHostFunction(chakraDebug.JsDiagGetStacktrace);
+        var stackTrace = callHostFunction(chakraDebug.JsDiagGetStackTrace);
 
         frames = [];
         stackTrace.forEach(function (element, index, array) {
           var thisObj = callHostFunction(chakraDebug.JsDiagEvaluate, 'this', element.index);
 
+          var scriptHandle = -1;
+          if(DebugManager.ScriptManager.HaveHandle(element.scriptId)) {
+            scriptHandle = DebugManager.ScriptManager.GetScriptHandle(element.scriptId);
+          } else {
+            scriptHandle = GetNextScriptHandle();
+            DebugManager.ScriptManager.AddScriptIdToHandleMapping(element.scriptId, scriptHandle);
+          }
+
           frames.push({
             'type' : 'frame',
             'index' : element.index,
-            'handle' : element.handle,
+            'handle' : GetNextScopeHandle(),/* element.handle,*/
             'constructCall' : false,
             'atReturn' : false,
             'debuggerFrame' : false,
@@ -575,7 +613,7 @@
               'ref' : element.functionHandle
             },
             'script' : {
-              'ref' : element.scriptHandle
+              'ref': scriptHandle
             },
             'receiver' : {
               'ref' : ('handle' in thisObj) ? thisObj['handle'] : element.functionHandle
@@ -617,9 +655,13 @@
       var handlesResult = {};
       for (var handlesLen = 0; handlesLen < debugProtoObj.arguments.handles.length; ++handlesLen) {
         var handle = debugProtoObj.arguments.handles[handlesLen];
-        var handleObject = callHostFunction(chakraDebug.JsDiagGetObjectFromHandle, handle);
-
-        AddChildrens(handleObject);
+        var handleObject = null;
+        if (DebugManager.ScriptManager.IsScriptHandle(handle)) {
+          handleObject = DebugManager.ScriptManager.GetScriptObject(handle);
+        } else {
+          handleObject = callHostFunction(chakraDebug.JsDiagGetObjectFromHandle, handle);
+          AddChildrens(handleObject);
+        }
 
         if ('fileName' in handleObject && !('name' in handleObject)) {
           handleObject['name'] = handleObject['fileName'];
@@ -646,17 +688,19 @@
         // {'command':'evaluate','arguments':{'expression':'x','disable_break':true,'maxStringLength':10000,'frame':0},'type':'request','seq':35}
         // {'seq':37,'request_seq':35,'type':'response','command':'evaluate','success':true,'body':{'handle':13,'type':'number','value':1,'text':'1'},'refs':[],'running':false}
 
-        var tempSelectedFrame = -1;
+        var tempSelectedFrame = 0;
         if (debugProtoObj.arguments && (typeof debugProtoObj.arguments.frame == 'number')) {
           tempSelectedFrame = debugProtoObj.arguments.frame;
         } else if (debugProtoObj.arguments && debugProtoObj.arguments.global == true) {
           if (frames != null && frames.length > 0) {
             tempSelectedFrame = frames.length - 1;
           } else {
-            var stackTrace = callHostFunction(chakraDebug.JsDiagGetStacktrace);
+            var stackTrace = callHostFunction(chakraDebug.JsDiagGetStackTrace);
             tempSelectedFrame = stackTrace[stackTrace.length - 1].index;
           }
         }
+
+        chakraDebug.log('debugProtoObj.arguments.expression ' + debugProtoObj.arguments.expression + ', tempSelectedFrame ' + tempSelectedFrame);
         evalResult = callHostFunction(chakraDebug.JsDiagEvaluate, debugProtoObj.arguments.expression, tempSelectedFrame);
 
         AddChildrens(evalResult);
@@ -692,19 +736,19 @@
         enabled = debugProtoObj.arguments.enabled;
       }
 
-      var breakOnExceptionType = 0; // JsDiagBreakOnExceptionTypeNone
+      var breakOnExceptionAttribute = 0; // JsDiagBreakOnExceptionAttributeNone
 
       if (enabled && debugProtoObj.arguments && debugProtoObj.arguments.type) {
         if (debugProtoObj.arguments.type == 'all') {
-          breakOnExceptionType = 2; // JsDiagBreakOnExceptionTypeAll
+          breakOnExceptionAttribute = 0x1 | 0x2; // JsDiagBreakOnExceptionAttributeUncaught | JsDiagBreakOnExceptionAttributeFirstChance
         } else if (debugProtoObj.arguments.type == 'uncaught') {
-          breakOnExceptionType = 1; // JsDiagBreakOnExceptionTypeUncaught
+          breakOnExceptionAttribute = 0x1; // JsDiagBreakOnExceptionAttributeUncaught
         }
       }
 
-      Logger.LogAPI('breakOnExceptionType', breakOnExceptionType);
+      Logger.LogAPI('breakOnExceptionAttribute', breakOnExceptionAttribute);
 
-      var success = callHostFunction(chakraDebug.JsDiagSetBreakOnException, breakOnExceptionType);
+      var success = callHostFunction(chakraDebug.JsDiagSetBreakOnException, breakOnExceptionAttribute);
 
       var response = DebugManager.MakeResponse(debugProtoObj, success);
 
@@ -900,13 +944,13 @@
       // {'command':'listbreakpoints','type':'request','seq':25}
       var breakpoints = callHostFunction(chakraDebug.JsDiagGetBreakpoints);
 
-      var breakOnExceptionType = callHostFunction(chakraDebug.JsDiagGetBreakOnException);
+      var breakOnExceptionAttribute = callHostFunction(chakraDebug.JsDiagGetBreakOnException);
 
       var response = DebugManager.MakeResponse(debugProtoObj, true);
       response['body'] = {
         'breakpoints' : [],
-        'breakOnExceptions' : breakOnExceptionType == 2,
-        'breakOnUncaughtExceptions' : breakOnExceptionType == 1
+        'breakOnExceptions': breakOnExceptionAttribute != 0,
+        'breakOnUncaughtExceptions': (breakOnExceptionAttribute & 0x1) == 0x1
       };
 
       for (var i = 0; i < breakpoints.length; ++i) {
@@ -1010,8 +1054,8 @@
     var funcInfo = callHostFunction(chakraDebug.JsDiagGetFunctionPosition, compiledWrapper);
 
     if (funcInfo.scriptId >= 0) {
-      var bpLine = funcInfo.stmtStartLine + line;
-      var bpColumn = funcInfo.stmtStartColumn + column;
+      var bpLine = funcInfo.firstStatementLine + line;
+      var bpColumn = funcInfo.firstStatementColumn + column;
       var bpObject = callHostFunction(chakraDebug.JsDiagSetBreakpoint, funcInfo.scriptId, bpLine, bpColumn);
       var bpId = bpObject.breakpointId;
 
