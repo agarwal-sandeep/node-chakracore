@@ -15,8 +15,8 @@
 
 namespace node {
 
-using crypto::SSLWrap;
 using crypto::SecureContext;
+using crypto::SSLWrap;
 using v8::Boolean;
 using v8::Context;
 using v8::EscapableHandleScope;
@@ -24,9 +24,7 @@ using v8::Exception;
 using v8::Function;
 using v8::FunctionCallbackInfo;
 using v8::FunctionTemplate;
-using v8::Integer;
 using v8::Local;
-using v8::Null;
 using v8::Object;
 using v8::String;
 using v8::Value;
@@ -284,8 +282,8 @@ void TLSWrap::EncOut() {
   }
 
   char* data[kSimultaneousBufferCount];
-  size_t size[ARRAY_SIZE(data)];
-  size_t count = ARRAY_SIZE(data);
+  size_t size[arraysize(data)];
+  size_t count = arraysize(data);
   write_size_ = NodeBIO::FromBIO(enc_out_)->PeekMultiple(data, size, &count);
   CHECK(write_size_ != 0 && count != 0);
 
@@ -297,7 +295,7 @@ void TLSWrap::EncOut() {
                                         this,
                                         EncOutCb);
 
-  uv_buf_t buf[ARRAY_SIZE(data)];
+  uv_buf_t buf[arraysize(data)];
   for (size_t i = 0; i < count; i++)
     buf[i] = uv_buf_init(data[i], size[i]);
   int err = stream_->DoWrite(write_req, buf, count, nullptr);

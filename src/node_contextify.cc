@@ -11,7 +11,6 @@
 
 namespace node {
 
-using v8::AccessType;
 using v8::Array;
 using v8::ArrayBuffer;
 using v8::Boolean;
@@ -30,7 +29,6 @@ using v8::Maybe;
 using v8::MaybeLocal;
 using v8::Name;
 using v8::NamedPropertyHandlerConfiguration;
-using v8::None;
 using v8::Object;
 using v8::ObjectTemplate;
 using v8::Persistent;
@@ -162,7 +160,7 @@ class ContextifyContext {
           CHECK(clone_property_method->IsFunction());
         }
         Local<Value> args[] = { global, key, sandbox_obj };
-        clone_property_method->Call(global, ARRAY_SIZE(args), args);
+        clone_property_method->Call(global, arraysize(args), args);
       }
     }
   }

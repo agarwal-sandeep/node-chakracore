@@ -118,6 +118,7 @@ using v8::Locker;
 using v8::MaybeLocal;
 using v8::Message;
 using v8::Name;
+using v8::Null;
 using v8::Number;
 using v8::Object;
 using v8::ObjectTemplate;
@@ -126,8 +127,6 @@ using v8::PromiseRejectMessage;
 using v8::PropertyCallbackInfo;
 using v8::ScriptOrigin;
 using v8::SealHandleScope;
-using v8::StackFrame;
-using v8::StackTrace;
 using v8::String;
 using v8::TryCatch;
 using v8::Uint32;
@@ -703,6 +702,12 @@ const char *signo_string(int signo) {
 # endif
 #endif
 
+#ifdef SIGINFO
+# if !defined(SIGPWR) || SIGINFO != SIGPWR
+  SIGNO_CASE(SIGINFO);
+# endif
+#endif
+
 #ifdef SIGSYS
   SIGNO_CASE(SIGSYS);
 #endif
@@ -1128,7 +1133,7 @@ void PromiseRejectCallback(PromiseRejectMessage message) {
   Local<Value> args[] = { event, promise, value };
   Local<Object> process = env->process_object();
 
-  callback->Call(process, ARRAY_SIZE(args), args);
+  callback->Call(process, arraysize(args), args);
 }
 
 void SetupPromises(const FunctionCallbackInfo<Value>& args) {
@@ -1193,23 +1198,38 @@ Local<Value> MakeCallback(Environment* env,
   }
 
   if (ran_init_callback && !pre_fn.IsEmpty()) {
-    if (pre_fn->Call(object, 0, nullptr).IsEmpty())
-      FatalError("node::MakeCallback", "pre hook threw");
+    TryCatch try_catch(env->isolate());
+    MaybeLocal<Value> ar = pre_fn->Call(env->context(), object, 0, nullptr);
+    if (ar.IsEmpty()) {
+      ClearFatalExceptionHandlers(env);
+      FatalException(env->isolate(), try_catch);
+      return Local<Value>();
+    }
   }
 
   Local<Value> ret = callback->Call(recv, argc, argv);
 
   if (ran_init_callback && !post_fn.IsEmpty()) {
-    if (post_fn->Call(object, 0, nullptr).IsEmpty())
-      FatalError("node::MakeCallback", "post hook threw");
+    Local<Value> did_throw = Boolean::New(env->isolate(), ret.IsEmpty());
+    // Currently there's no way to retrieve an uid from node::MakeCallback().
+    // This needs to be fixed.
+    Local<Value> vals[] =
+        { Undefined(env->isolate()).As<Value>(), did_throw };
+    TryCatch try_catch(env->isolate());
+    MaybeLocal<Value> ar =
+        post_fn->Call(env->context(), object, arraysize(vals), vals);
+    if (ar.IsEmpty()) {
+      ClearFatalExceptionHandlers(env);
+      FatalException(env->isolate(), try_catch);
+      return Local<Value>();
+    }
   }
 
   if (ret.IsEmpty()) {
-    if (callback_scope.in_makecallback())
-      return ret;
-    // NOTE: Undefined() is returned here for backwards compatibility.
-    else
-      return Undefined(env->isolate());
+    // NOTE: For backwards compatibility with public API we return Undefined()
+    // if the top level call threw.
+    return callback_scope.in_makecallback() ?
+        ret : Undefined(env->isolate()).As<Value>();
   }
 
   if (has_domain) {
@@ -1222,7 +1242,23 @@ Local<Value> MakeCallback(Environment* env,
     }
   }
 
-  if (!env->KickNextTick(&callback_scope)) {
+  if (callback_scope.in_makecallback()) {
+    return ret;
+  }
+
+  Environment::TickInfo* tick_info = env->tick_info();
+
+  if (tick_info->length() == 0) {
+    env->isolate()->RunMicrotasks();
+  }
+
+  Local<Object> process = env->process_object();
+
+  if (tick_info->length() == 0) {
+    tick_info->set_index(0);
+  }
+
+  if (env->tick_callback_function()->Call(process, 0, nullptr).IsEmpty()) {
     return Undefined(env->isolate());
   }
 
@@ -1659,7 +1695,7 @@ static void GetActiveRequests(const FunctionCallbackInfo<Value>& args) {
     if (w->persistent().IsEmpty())
       continue;
     argv[idx] = w->object();
-    if (++idx >= ARRAY_SIZE(argv)) {
+    if (++idx >= arraysize(argv)) {
       fn->Call(ctx, ary, idx, argv).ToLocalChecked();
       idx = 0;
     }
@@ -1687,14 +1723,14 @@ void GetActiveHandles(const FunctionCallbackInfo<Value>& args) {
   Local<String> owner_sym = env->owner_string();
 
   for (auto w : *env->handle_wrap_queue()) {
-    if (w->persistent().IsEmpty() || (w->flags_ & HandleWrap::kUnref))
+    if (w->persistent().IsEmpty() || !HandleWrap::HasRef(w))
       continue;
     Local<Object> object = w->object();
     Local<Value> owner = object->Get(owner_sym);
     if (owner->IsUndefined())
       owner = object;
     argv[idx] = owner;
-    if (++idx >= ARRAY_SIZE(argv)) {
+    if (++idx >= arraysize(argv)) {
       fn->Call(ctx, ary, idx, argv).ToLocalChecked();
       idx = 0;
     }
@@ -2384,6 +2420,25 @@ void OnMessage(Local<Message> message, Local<Value> error) {
 }
 
 
+void ClearFatalExceptionHandlers(Environment* env) {
+  Local<Object> process = env->process_object();
+  Local<Value> events =
+      process->Get(env->context(), env->events_string()).ToLocalChecked();
+
+  if (events->IsObject()) {
+    events.As<Object>()->Set(
+        env->context(),
+        OneByteString(env->isolate(), "uncaughtException"),
+        Undefined(env->isolate())).FromJust();
+  }
+
+  process->Set(
+      env->context(),
+      env->domain_string(),
+      Undefined(env->isolate())).FromJust();
+}
+
+
 static void Binding(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
@@ -2513,12 +2568,12 @@ static void EnvGetter(Local<String> property,
   WCHAR buffer[32767];  // The maximum size allowed for environment variables.
   DWORD result = GetEnvironmentVariableW(reinterpret_cast<WCHAR*>(*key),
                                          buffer,
-                                         ARRAY_SIZE(buffer));
+                                         arraysize(buffer));
   // If result >= sizeof buffer the buffer was too small. That should never
   // happen. If result == 0 and result != ERROR_SUCCESS the variable was not
   // not found.
   if ((result > 0 || GetLastError() == ERROR_SUCCESS) &&
-      result < ARRAY_SIZE(buffer)) {
+      result < arraysize(buffer)) {
     const uint16_t* two_byte_buffer = reinterpret_cast<const uint16_t*>(buffer);
     Local<String> rc = String::NewFromTwoByte(isolate, two_byte_buffer);
     return info.GetReturnValue().Set(rc);
@@ -2619,7 +2674,7 @@ static void EnvEnumerator(const PropertyCallbackInfo<Array>& info) {
                                     var,
                                     String::kNormalString,
                                     length);
-    if (++idx >= ARRAY_SIZE(argv)) {
+    if (++idx >= arraysize(argv)) {
       fn->Call(ctx, envarr, idx, argv).ToLocalChecked();
       idx = 0;
     }
@@ -2651,7 +2706,7 @@ static void EnvEnumerator(const PropertyCallbackInfo<Array>& info) {
                                        two_byte_buffer,
                                        String::kNormalString,
                                        two_byte_buffer_len);
-    if (++idx >= ARRAY_SIZE(argv)) {
+    if (++idx >= arraysize(argv)) {
       fn->Call(ctx, envarr, idx, argv).ToLocalChecked();
       idx = 0;
     }
@@ -3176,7 +3231,10 @@ void SetupProcessObject(Environment* env,
   env->SetMethod(process, "_setupDomainUse", SetupDomainUse);
 
   // pre-set _events object for faster emit checks
-  process->Set(env->events_string(), Object::New(env->isolate()));
+  Local<Object> events_obj = Object::New(env->isolate());
+  maybe = events_obj->SetPrototype(env->context(), Null(env->isolate()));
+  CHECK(maybe.FromJust());
+  process->Set(env->events_string(), events_obj);
 }
 
 
@@ -3276,8 +3334,12 @@ void LoadEnvironment(Environment* env) {
 
   env->SetMethod(env->process_object(), "_rawDebug", RawDebug);
 
+  // Expose the global object as a property on itself
+  // (Allows you to set stuff on `global` from anywhere in JavaScript.)
+  global->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "global"), global);
+
   Local<Value> arg = env->process_object();
-  f->Call(global, 1, &arg);
+  f->Call(Null(env->isolate()), 1, &arg);
 }
 
 static void PrintHelp();
@@ -3317,7 +3379,7 @@ static bool ParseDebugOpt(const char* arg) {
 
 static void PrintHelp() {
   // XXX: If you add an option here, please also add it to doc/node.1 and
-  // doc/api/cli.markdown
+  // doc/api/cli.md
   printf("Usage: node [options] [ -e script | script.js ] [arguments] \n"
          "       node debug script.js [arguments] \n"
          "\n"
@@ -3593,7 +3655,7 @@ static void EnableDebug(Environment* env) {
     FIXED_ONE_BYTE_STRING(env->isolate(), "internalMessage"),
     message
   };
-  MakeCallback(env, env->process_object(), "emit", ARRAY_SIZE(argv), argv);
+  MakeCallback(env, env->process_object(), "emit", arraysize(argv), argv);
 
   // Enabled debugger, possibly making it wait on a semaphore
   env->debugger_agent()->Enable();
@@ -3714,7 +3776,7 @@ static int RegisterDebugSignalHandler() {
 
   if (GetDebugSignalHandlerMappingName(pid,
                                        mapping_name,
-                                       ARRAY_SIZE(mapping_name)) < 0) {
+                                       arraysize(mapping_name)) < 0) {
     return -1;
   }
 
@@ -3777,7 +3839,7 @@ static void DebugProcess(const FunctionCallbackInfo<Value>& args) {
 
   if (GetDebugSignalHandlerMappingName(pid,
                                        mapping_name,
-                                       ARRAY_SIZE(mapping_name)) < 0) {
+                                       arraysize(mapping_name)) < 0) {
     env->ThrowErrnoException(errno, "sprintf");
     goto out;
   }
@@ -4054,7 +4116,7 @@ void EmitBeforeExit(Environment* env) {
     FIXED_ONE_BYTE_STRING(env->isolate(), "beforeExit"),
     process_object->Get(exit_code)->ToInteger(env->isolate())
   };
-  MakeCallback(env, process_object, "emit", ARRAY_SIZE(args), args);
+  MakeCallback(env, process_object, "emit", arraysize(args), args);
 }
 
 
@@ -4073,7 +4135,7 @@ int EmitExit(Environment* env) {
     Integer::New(env->isolate(), code)
   };
 
-  MakeCallback(env, process_object, "emit", ARRAY_SIZE(args), args);
+  MakeCallback(env, process_object, "emit", arraysize(args), args);
 
   // Reload exit code, it may be changed by `emit('exit')`
   return process_object->Get(exitCode)->Int32Value();
