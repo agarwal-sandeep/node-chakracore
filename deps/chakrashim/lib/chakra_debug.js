@@ -774,6 +774,10 @@
           var scopes = [];
           var refs = [];
 
+          if ('thisObject' in props) {
+              props['locals'].push(props['thisObject']);
+          }
+
           if ('returnValue' in props) {
               props['locals'].push(props['returnValue']);
           }
@@ -867,6 +871,10 @@
           var props = callHostFunction(chakraDebug.JsDiagGetStackProperties, frames[frameIndex].index);
           var scopes = [];
           var refs = [];
+
+          if ('thisObject' in props) {
+              props['locals'].push(props['thisObject']);
+          }
 
           if ('returnValue' in props) {
             props['locals'].push(props['returnValue']);
