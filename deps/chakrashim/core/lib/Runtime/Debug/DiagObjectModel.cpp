@@ -3718,6 +3718,10 @@ namespace Js
     BOOL RecyclableProxyObjectWalker::Get(int i, ResolvedObject* pResolvedObject)
     {
         JavascriptProxy* proxy = JavascriptProxy::FromVar(instance);
+        if (proxy->GetTarget() == nullptr || proxy->GetHandler() == nullptr)
+        {
+            return FALSE;
+        }
         if (i == 0)
         {
             pResolvedObject->name = _u("[target]");

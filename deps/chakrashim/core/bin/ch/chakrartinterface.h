@@ -265,3 +265,35 @@ public:
         return JsNoError;
     }
 };
+
+class AutoRestoreContext
+{
+public:
+    AutoRestoreContext(JsContextRef newContext)
+    {
+        JsErrorCode errorCode = ChakraRTInterface::JsGetCurrentContext(&oldContext);
+        Assert(errorCode == JsNoError);
+
+        if (oldContext != newContext)
+        {
+            JsErrorCode errorCode = ChakraRTInterface::JsSetCurrentContext(newContext);
+            Assert(errorCode == JsNoError);
+            contextChanged = true;
+        }
+        else
+        {
+            contextChanged = false;
+        }
+    }
+
+    ~AutoRestoreContext()
+    {
+        if (contextChanged && oldContext != JS_INVALID_REFERENCE)
+        {
+            ChakraRTInterface::JsSetCurrentContext(oldContext);
+        }
+    }
+private:
+    JsContextRef oldContext;
+    bool contextChanged;
+};

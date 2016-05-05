@@ -38,6 +38,12 @@
   </test>
   <test>
     <default>
+      <compile-flags>-debuglaunch -dbgbaseline:JsDiagRequestAsyncBreak.js.dbg.baseline</compile-flags>
+      <files>JsDiagRequestAsyncBreak.js</files>
+    </default>
+  </test>
+  <test>
+    <default>
       <compile-flags>-debuglaunch -dbgbaseline:JsrtDebugUtilsAddPropertyType.js.dbg.baseline</compile-flags>
       <files>JsrtDebugUtilsAddPropertyType.js</files>
     </default>

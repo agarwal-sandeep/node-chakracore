@@ -452,7 +452,7 @@ Js::DynamicObject * JsrtDebuggerStackFrame::GetLocalsObject(Js::ScriptContext* s
     return propertiesObject;
 }
 
-Js::DynamicObject* JsrtDebuggerStackFrame::Evaluate(Js::ScriptContext* scriptContext, const char16 * pszSrc, bool isLibraryCode)
+Js::DynamicObject* JsrtDebuggerStackFrame::Evaluate(Js::ScriptContext* scriptContext, const char16 *source, int sourceLength, bool isLibraryCode)
 {
     Js::DynamicObject* evalResult = nullptr;
     if (this->stackFrame != nullptr)
@@ -465,7 +465,7 @@ Js::DynamicObject* JsrtDebuggerStackFrame::Evaluate(Js::ScriptContext* scriptCon
             BEGIN_JS_RUNTIME_CALL_EX_AND_TRANSLATE_EXCEPTION_AND_ERROROBJECT_TO_HRESULT_NESTED(frameScriptContext, false)
             {
                 ENFORCE_ENTRYEXITRECORD_HASCALLER(frameScriptContext);
-                this->stackFrame->EvaluateImmediate(pszSrc, isLibraryCode, &resolvedObject);
+                this->stackFrame->EvaluateImmediate(source, sourceLength, isLibraryCode, &resolvedObject);
             }
             END_JS_RUNTIME_CALL_AND_TRANSLATE_AND_GET_EXCEPTION_AND_ERROROBJECT_TO_HRESULT(hr, frameScriptContext, exceptionObject);
         }
@@ -488,13 +488,13 @@ Js::DynamicObject* JsrtDebuggerStackFrame::Evaluate(Js::ScriptContext* scriptCon
         {
             resolvedObject.scriptContext = scriptContext;
 
-            charcount_t len = Js::JavascriptString::GetBufferLength(pszSrc);
+            charcount_t len = Js::JavascriptString::GetBufferLength(source);
             resolvedObject.name = AnewNoThrowArray(this->debuggerObjectsManager->GetDebugObjectArena(), WCHAR, len + 1);
             if (resolvedObject.name == nullptr)
             {
                 return nullptr;
             }
-            wcscpy_s((WCHAR*)resolvedObject.name, len + 1, pszSrc);
+            wcscpy_s((WCHAR*)resolvedObject.name, len + 1, source);
 
             resolvedObject.typeId = Js::JavascriptOperators::GetTypeId(resolvedObject.obj);
             JsrtDebuggerObjectBase::CreateDebuggerObject<JsrtDebuggerObjectProperty>(this->debuggerObjectsManager, resolvedObject, scriptContext, [&](Js::Var marshaledObj)
@@ -548,7 +548,9 @@ Js::DynamicObject * JsrtDebuggerObjectProperty::GetJSONObject(Js::ScriptContext*
     {
         propertyObject = scriptContext->GetLibrary()->CreateObject();
 
-        JsrtDebugUtils::AddPropertyToObject(propertyObject, JsrtDebugPropertyId::name, objectDisplayRef->Name(), scriptContext);
+        LPCWSTR name = objectDisplayRef->Name();
+
+        JsrtDebugUtils::AddPropertyToObject(propertyObject, JsrtDebugPropertyId::name, name, wcslen(name), scriptContext);
 
         JsrtDebugUtils::AddPropertyType(propertyObject, objectDisplayRef, scriptContext); // Will add type, value, display, className, propertyAttributes
 
@@ -686,8 +688,8 @@ Js::DynamicObject * JsrtDebuggerObjectFunction::GetJSONObject(Js::ScriptContext 
     JsrtDebugUtils::AddScriptIdToObject(functionObject, this->functionBody->GetUtf8SourceInfo());
     JsrtDebugUtils::AddPropertyToObject(functionObject, JsrtDebugPropertyId::line, this->functionBody->GetLineNumber(), scriptContext);
     JsrtDebugUtils::AddPropertyToObject(functionObject, JsrtDebugPropertyId::column, this->functionBody->GetColumnNumber(), scriptContext);
-    JsrtDebugUtils::AddPropertyToObject(functionObject, JsrtDebugPropertyId::name, this->functionBody->GetDisplayName(), scriptContext);
-    JsrtDebugUtils::AddPropertyToObject(functionObject, JsrtDebugPropertyId::type, scriptContext->GetLibrary()->GetFunctionTypeDisplayString()->GetSz(), scriptContext);
+    JsrtDebugUtils::AddPropertyToObject(functionObject, JsrtDebugPropertyId::name, this->functionBody->GetDisplayName(), this->functionBody->GetDisplayNameLength(), scriptContext);
+    JsrtDebugUtils::AddPropertyToObject(functionObject, JsrtDebugPropertyId::type, scriptContext->GetLibrary()->GetFunctionTypeDisplayString(), scriptContext);
     JsrtDebugUtils::AddPropertyToObject(functionObject, JsrtDebugPropertyId::handle, this->GetHandle(), scriptContext);
 
     return functionObject;

@@ -179,10 +179,10 @@ void JsrtDebugManager::ReportScriptCompile(Js::JavascriptFunction* scriptFunctio
         if (scriptFunction == nullptr)
         {
             // Report JsDiagDebugEventCompileError event
-            JsrtDebugUtils::AddPropertyToObject(eventDataObject, JsrtDebugPropertyId::error, compileException->ei.bstrDescription, scriptContext);
+            JsrtDebugUtils::AddPropertyToObject(eventDataObject, JsrtDebugPropertyId::error, compileException->ei.bstrDescription, ::SysStringLen(compileException->ei.bstrDescription), scriptContext);
             JsrtDebugUtils::AddPropertyToObject(eventDataObject, JsrtDebugPropertyId::line, compileException->line, scriptContext);
             JsrtDebugUtils::AddPropertyToObject(eventDataObject, JsrtDebugPropertyId::column, compileException->ichMin - compileException->ichMinLine - 1, scriptContext); // Converted to 0-based
-            JsrtDebugUtils::AddPropertyToObject(eventDataObject, JsrtDebugPropertyId::sourceText, compileException->bstrLine, scriptContext);
+            JsrtDebugUtils::AddPropertyToObject(eventDataObject, JsrtDebugPropertyId::sourceText, compileException->bstrLine, ::SysStringLen(compileException->bstrLine), scriptContext);
         }
         else
         {

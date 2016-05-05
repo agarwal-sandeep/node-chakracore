@@ -536,6 +536,7 @@
     /// <summary>
     ///     Evaluate an expression on given frame.
     /// </summary>
+    /// <param name="expression">Expression to evaluate.</param>
     /// <param name="stackFrameIndex">Index of stack frame on which to evaluate the expression.</param>
     /// <param name="evalResult">Result of evaluation.</param>
     /// <remarks>

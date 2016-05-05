@@ -120,7 +120,7 @@ public:
     ~JsrtDebuggerStackFrame();
     Js::DynamicObject* GetJSONObject(Js::ScriptContext* scriptContext);
     Js::DynamicObject* GetLocalsObject(Js::ScriptContext* scriptContext);
-    Js::DynamicObject* Evaluate(Js::ScriptContext* scriptContext, const char16* pszSrc, bool isLibraryCode);
+    Js::DynamicObject* Evaluate(Js::ScriptContext* scriptContext, const char16 *source, int sourceLength, bool isLibraryCode);
     uint GetIndex() const { return this->frameIndex; }
 
 private:

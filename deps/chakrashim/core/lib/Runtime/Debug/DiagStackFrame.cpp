@@ -155,9 +155,9 @@ namespace Js
         return varThis;
     }
 
-    void DiagStackFrame::TryFetchValueAndAddress(LPCOLESTR pszSource, charcount_t length, Js::ResolvedObject * pOutResolvedObj)
+    void DiagStackFrame::TryFetchValueAndAddress(const char16 *source, int sourceLength, Js::ResolvedObject * pOutResolvedObj)
     {
-        Assert(pszSource);
+        Assert(source);
         Assert(pOutResolvedObj);
 
         Js::ScriptContext* scriptContext = this->GetScriptContext();
@@ -165,7 +165,7 @@ namespace Js
 
         // Do fast path for 'this', fields on slot, TODO : literals (integer,string)
 
-        if (length == 4 && wcsncmp(pszSource, _u("this"), 4) == 0)
+        if (sourceLength == 4 && wcsncmp(source, _u("this"), 4) == 0)
         {
             pOutResolvedObj->obj = this->GetThisFromFrame(&pOutResolvedObj->address);
             if (pOutResolvedObj->obj == nullptr)
@@ -178,7 +178,7 @@ namespace Js
         else
         {
             Js::PropertyRecord const * propRecord;
-            scriptContext->FindPropertyRecord(pszSource, length, &propRecord);
+            scriptContext->FindPropertyRecord(source, sourceLength, &propRecord);
             if (propRecord != nullptr)
             {
                 ArenaAllocator *arena = scriptContext->GetThreadContext()->GetDebugManager()->GetDiagnosticArena()->Arena();
@@ -197,7 +197,7 @@ namespace Js
 
     }
 
-    Js::ScriptFunction* DiagStackFrame::TryGetFunctionForEval(Js::ScriptContext* scriptContext, LPCOLESTR pszSrc, BOOL isLibraryCode /* = FALSE */)
+    Js::ScriptFunction* DiagStackFrame::TryGetFunctionForEval(Js::ScriptContext* scriptContext, const char16 *source, int sourceLength, BOOL isLibraryCode /* = FALSE */)
     {
         // TODO: pass the real length of the source code instead of wcslen
         ulong grfscr = fscrReturnExpression | fscrEval | fscrEvalCode | fscrGlobalCode | fscrConsoleScopeEval;
@@ -209,18 +209,16 @@ namespace Js
         {
             grfscr |= fscrIsLibraryCode;
         }
-        return scriptContext->GetGlobalObject()->EvalHelper(scriptContext, pszSrc, static_cast<int>(wcslen(pszSrc)), kmodGlobal, grfscr, Js::Constants::EvalCode, FALSE, FALSE, this->IsStrictMode());
+        return scriptContext->GetGlobalObject()->EvalHelper(scriptContext, source, sourceLength, kmodGlobal, grfscr, Js::Constants::EvalCode, FALSE, FALSE, this->IsStrictMode());
     }
 
-    void DiagStackFrame::EvaluateImmediate(LPCOLESTR pszSrc, BOOL isLibraryCode, Js::ResolvedObject * resolvedObject)
+    void DiagStackFrame::EvaluateImmediate(const char16 *source, int sourceLength, BOOL isLibraryCode, Js::ResolvedObject * resolvedObject)
     {
-        charcount_t len = Js::JavascriptString::GetBufferLength(pszSrc);
-
-        this->TryFetchValueAndAddress(pszSrc, len, resolvedObject);
+        this->TryFetchValueAndAddress(source, sourceLength, resolvedObject);
 
         if (resolvedObject->obj == nullptr)
         {
-            Js::ScriptFunction* pfuncScript = this->TryGetFunctionForEval(this->GetScriptContext(), pszSrc, isLibraryCode);
+            Js::ScriptFunction* pfuncScript = this->TryGetFunctionForEval(this->GetScriptContext(), source, sourceLength, isLibraryCode);
             if (pfuncScript != nullptr)
             {
                 // Passing the nonuser code state from the enclosing function to the current function.
@@ -235,7 +233,7 @@ namespace Js
                     }
                 }
                 OUTPUT_TRACE(Js::ConsoleScopePhase, _u("EvaluateImmediate strict = %d, libraryCode = %d, source = '%s'\n"),
-                    this->IsStrictMode(), isLibraryCode, pszSrc);
+                    this->IsStrictMode(), isLibraryCode, source);
                 resolvedObject->obj = this->DoEval(pfuncScript);
             }
         }

@@ -22,6 +22,7 @@ var controllerObj = (function () {
     var _eventLog = [];
     var _baseline = undefined;
     var _exceptionCommands = undefined;
+    var _onasyncbreakCommands = undefined;
     var _inspectMaxStringLength = 16;
 
     function internalPrint(str) {
@@ -254,12 +255,13 @@ var controllerObj = (function () {
             // Split the text into lines.  Note this doesn't take into account block comments, but that's probably okay.
             var lines = text.split(/\n/);
 
-            // /**bp        <-- a breakpoint
-            // /**loc       <-- a named source location used for enabling bp at later stage
-            // /**exception <-- set exception handling, catch all or only uncaught exception
+            // /**bp            <-- a breakpoint
+            // /**loc           <-- a named source location used for enabling bp at later stage
+            // /**exception     <-- set exception handling, catch all or only uncaught exception
+            // /**onasyncbreak  <-- set what happens on async break
 
             var bpStartToken = "/**";
-            var bpStartStrings = ["bp", "loc", "exception"];
+            var bpStartStrings = ["bp", "loc", "exception", "onasyncbreak"];
             var bpEnd = "**/";
 
             // Iterate through each source line, setting any breakpoints.
@@ -269,6 +271,8 @@ var controllerObj = (function () {
                     var bpStart = bpStartToken + bpStartStrings[startString];
                     var isLocationBreakpoint = (bpStart.indexOf("loc") != -1);
                     var isExceptionBreakpoint = (bpStart.indexOf("exception") != -1);
+                    var isOnAsyncBreak = (bpStart.indexOf("onasyncbreak") != -1);
+
                     var startIdx = -1;
                     while ((startIdx = line.indexOf(bpStart, startIdx + 1)) != -1) {
                         var endIdx;
@@ -396,7 +400,17 @@ var controllerObj = (function () {
                                 return;
                             }
                             _exceptionCommands = bpExecStr;
-                        } else {
+                        }
+
+                        if (isOnAsyncBreak) {
+                            if (_onasyncbreakCommands != undefined) {
+                                printError("More than one 'onasyncbreak' annotation found");
+                                return;
+                            }
+                            _onasyncbreakCommands = bpExecStr;
+                        }
+
+                        if (!isExceptionBreakpoint && !isOnAsyncBreak) {
                             if (!isLocationBreakpoint) {
                                 bpManager.setBreakpoint(bpName, srcId, bpLine, bpColumnOffset, bpExecStr);
                             } else {
@@ -421,6 +435,11 @@ var controllerObj = (function () {
                     execStr = _exceptionCommands;
                     if (execStr && execStr.toString().search("removeExpr()") != -1) {
                         _exceptionCommands = undefined;
+                    }
+                } else if (id === "asyncbreak") {
+                    execStr = _onasyncbreakCommands;
+                    if (execStr && execStr.toString().search("removeExpr()") != -1) {
+                        _onasyncbreakCommands = undefined;
                     }
                 } else {
                     // Retrieve this breakpoint's execution string
@@ -818,6 +837,7 @@ var controllerObj = (function () {
                     break;
                 case 5:
                     /*JsDiagDebugEventAsyncBreak*/
+                    handleBreakpoint("asyncbreak");
                     break;
                 case 6:
                     /*JsDiagDebugEventRuntimeException*/
