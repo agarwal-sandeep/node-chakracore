@@ -12,13 +12,32 @@
 #define VALIDATE_IS_DEBUGGING(jsrtDebugManager) \
     if (jsrtDebugManager == nullptr || !jsrtDebugManager->IsDebugEventCallbackSet()) \
     { \
-        return JsErrorDiagNotDebugging; \
+        return JsErrorDiagNotInDebugMode; \
     }
 
 #define VALIDATE_RUNTIME_IS_AT_BREAK(runtime) \
     if (runtime->GetThreadContext()->GetDebugManager() == nullptr || !runtime->GetThreadContext()->GetDebugManager()->IsAtDispatchHalt()) \
     { \
         return JsErrorDiagNotAtBreak; \
+    }
+
+#define VALIDATE_RUNTIME_STATE_FOR_START_STOP_DEBUGGING(threadContext) \
+    if (threadContext->GetRecycler() && threadContext->GetRecycler()->IsHeapEnumInProgress()) \
+    { \
+        return JsErrorHeapEnumInProgress; \
+    } \
+    else if (threadContext->IsInThreadServiceCallback()) \
+    { \
+        return JsErrorInThreadServiceCallback; \
+    } \
+    else if (threadContext->IsInScript()) \
+    { \
+        return JsErrorRuntimeInUse; \
+    } \
+    ThreadContextScope scope(threadContext); \
+    if (!scope.IsValid()) \
+    { \
+        return JsErrorWrongThread; \
     }
 
 CHAKRA_API JsDiagStartDebugging(
@@ -35,28 +54,11 @@ CHAKRA_API JsDiagStartDebugging(
         JsrtRuntime * runtime = JsrtRuntime::FromHandle(runtimeHandle);
         ThreadContext * threadContext = runtime->GetThreadContext();
 
-        if (threadContext->GetRecycler() && threadContext->GetRecycler()->IsHeapEnumInProgress())
-        {
-            return JsErrorHeapEnumInProgress;
-        }
-        else if (threadContext->IsInThreadServiceCallback())
-        {
-            return JsErrorInThreadServiceCallback;
-        }
-        else if (threadContext->IsInScript())
-        {
-            return JsErrorRuntimeInUse;
-        }
-        else if (runtime->GetJsrtDebugManager() != nullptr && runtime->GetJsrtDebugManager()->IsDebugEventCallbackSet())
+        VALIDATE_RUNTIME_STATE_FOR_START_STOP_DEBUGGING(threadContext);
+
+        if (runtime->GetJsrtDebugManager() != nullptr && runtime->GetJsrtDebugManager()->IsDebugEventCallbackSet())
         {
             return JsErrorDiagAlreadyInDebugMode;
-        }
-
-        ThreadContextScope scope(threadContext);
-
-        if (!scope.IsValid())
-        {
-            return JsErrorWrongThread;
         }
 
         // Create the debug object to save callback function and data
@@ -86,8 +88,8 @@ CHAKRA_API JsDiagStartDebugging(
 
             if (FAILED(scriptContext->OnDebuggerAttached()))
             {
-                AssertMsg(false, "Failed to start debugging");
-                return JsErrorFatal; // Inconsistent state, we can't continue from here?
+                Debugger_AttachDetach_fatal_error(); // Inconsistent state, we can't continue from here
+                return JsErrorFatal;
             }
 
             Js::ProbeContainer* probeContainer = debugContext->GetProbeContainer();
@@ -114,25 +116,7 @@ CHAKRA_API JsDiagStopDebugging(
         JsrtRuntime * runtime = JsrtRuntime::FromHandle(runtimeHandle);
         ThreadContext * threadContext = runtime->GetThreadContext();
 
-        if (threadContext->GetRecycler() && threadContext->GetRecycler()->IsHeapEnumInProgress())
-        {
-            return JsErrorHeapEnumInProgress;
-        }
-        else if (threadContext->IsInThreadServiceCallback())
-        {
-            return JsErrorInThreadServiceCallback;
-        }
-        else if (threadContext->IsInScript())
-        {
-            return JsErrorRuntimeInUse;
-        }
-
-        ThreadContextScope scope(threadContext);
-
-        if (!scope.IsValid())
-        {
-            return JsErrorWrongThread;
-        }
+        VALIDATE_RUNTIME_STATE_FOR_START_STOP_DEBUGGING(threadContext);
 
         JsrtDebugManager* jsrtDebugManager = runtime->GetJsrtDebugManager();
 
@@ -146,8 +130,8 @@ CHAKRA_API JsDiagStopDebugging(
 
             if (FAILED(scriptContext->OnDebuggerDetached()))
             {
-                AssertMsg(false, "Failed to stop debugging");
-                return JsErrorFatal; // Inconsistent state, we can't continue from here?
+                Debugger_AttachDetach_fatal_error(); // Inconsistent state, we can't continue from here
+                return JsErrorFatal;
             }
 
             Js::DebugContext* debugContext = scriptContext->GetDebugContext();
@@ -287,13 +271,13 @@ CHAKRA_API JsDiagSetBreakpoint(
     _In_ unsigned int scriptId,
     _In_ unsigned int lineNumber,
     _In_ unsigned int columnNumber,
-    _Out_ JsValueRef *breakPoint)
+    _Out_ JsValueRef *breakpoint)
 {
     return GlobalAPIWrapper([&]() -> JsErrorCode {
 
-        PARAM_NOT_NULL(breakPoint);
+        PARAM_NOT_NULL(breakpoint);
 
-        *breakPoint = JS_INVALID_REFERENCE;
+        *breakpoint = JS_INVALID_REFERENCE;
 
         JsrtContext *currentContext = JsrtContext::GetCurrent();
 
@@ -314,10 +298,9 @@ CHAKRA_API JsDiagSetBreakpoint(
         scriptContext != nullptr && utf8SourceInfo == nullptr && !scriptContext->IsClosed();
             scriptContext = scriptContext->next)
         {
-            scriptContext->GetSourceList()->MapUntil([&](int i, RecyclerWeakReference<Js::Utf8SourceInfo>* sourceInfoWeakRef) -> bool
+            scriptContext->MapScript([&](Js::Utf8SourceInfo* sourceInfo) -> bool
             {
-                Js::Utf8SourceInfo* sourceInfo = sourceInfoWeakRef->Get();
-                if (sourceInfo != nullptr && sourceInfo->GetSourceInfoId() == scriptId)
+                if (sourceInfo->GetSourceInfoId() == scriptId)
                 {
                     utf8SourceInfo = sourceInfo;
                     return true;
@@ -334,7 +317,7 @@ CHAKRA_API JsDiagSetBreakpoint(
 
             if(bpObject != nullptr)
             {
-                *breakPoint = bpObject;
+                *breakpoint = bpObject;
                 return JsNoError;
             }
 
@@ -451,14 +434,14 @@ CHAKRA_API JsDiagSetStepType(
 
 CHAKRA_API JsDiagGetFunctionPosition(
     _In_ JsValueRef function,
-    _Out_ JsValueRef *functionInfo)
+    _Out_ JsValueRef *functionPosition)
 {
     return ContextAPIWrapper<false>([&](Js::ScriptContext *scriptContext) -> JsErrorCode {
 
         VALIDATE_INCOMING_REFERENCE(function, scriptContext);
-        PARAM_NOT_NULL(functionInfo);
+        PARAM_NOT_NULL(functionPosition);
 
-        *functionInfo = JS_INVALID_REFERENCE;
+        *functionPosition = JS_INVALID_REFERENCE;
 
         if (!Js::RecyclableObject::Is(function) || !Js::ScriptFunction::Is(function))
         {
@@ -481,18 +464,18 @@ CHAKRA_API JsDiagGetFunctionPosition(
 
                 if (functionBody->GetLineCharOffsetFromStartChar(startOffset, &firstStatementLine, &firstStatementColumn))
                 {
-                    Js::DynamicObject* funcInfoObject = (Js::DynamicObject*)Js::CrossSite::MarshalVar(utf8SourceInfo->GetScriptContext(), scriptContext->GetLibrary()->CreateObject());
+                    Js::DynamicObject* funcPositionObject = (Js::DynamicObject*)Js::CrossSite::MarshalVar(utf8SourceInfo->GetScriptContext(), scriptContext->GetLibrary()->CreateObject());
 
-                    if (funcInfoObject != nullptr)
+                    if (funcPositionObject != nullptr)
                     {
-                        JsrtDebugUtils::AddScriptIdToObject(funcInfoObject, utf8SourceInfo);
-                        JsrtDebugUtils::AddFileNameOrScriptTypeToObject(funcInfoObject, utf8SourceInfo);
-                        JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::line, lineNumber, scriptContext);
-                        JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::column, columnNumber, scriptContext);
-                        JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::firstStatementLine, firstStatementLine, scriptContext);
-                        JsrtDebugUtils::AddPropertyToObject(funcInfoObject, JsrtDebugPropertyId::firstStatementColumn, firstStatementColumn, scriptContext);
+                        JsrtDebugUtils::AddScriptIdToObject(funcPositionObject, utf8SourceInfo);
+                        JsrtDebugUtils::AddFileNameOrScriptTypeToObject(funcPositionObject, utf8SourceInfo);
+                        JsrtDebugUtils::AddPropertyToObject(funcPositionObject, JsrtDebugPropertyId::line, lineNumber, scriptContext);
+                        JsrtDebugUtils::AddPropertyToObject(funcPositionObject, JsrtDebugPropertyId::column, columnNumber, scriptContext);
+                        JsrtDebugUtils::AddPropertyToObject(funcPositionObject, JsrtDebugPropertyId::firstStatementLine, firstStatementLine, scriptContext);
+                        JsrtDebugUtils::AddPropertyToObject(funcPositionObject, JsrtDebugPropertyId::firstStatementColumn, firstStatementColumn, scriptContext);
 
-                        *functionInfo = funcInfoObject;
+                        *functionPosition = funcPositionObject;
 
                         return JsNoError;
                     }
@@ -593,7 +576,7 @@ CHAKRA_API JsDiagGetProperties(
             return JsErrorDiagInvalidHandle;
         }
 
-        Js::DynamicObject* properties = debuggerObject->GetChildrens(scriptContext, fromCount, totalCount);
+        Js::DynamicObject* properties = debuggerObject->GetChildren(scriptContext, fromCount, totalCount);
 
         if (properties != nullptr)
         {
@@ -669,7 +652,13 @@ CHAKRA_API JsDiagEvaluate(
             return JsErrorDiagObjectNotFound;
         }
 
-        Js::DynamicObject* result = debuggerStackFrame->Evaluate(scriptContext, expression, wcslen(expression), false);
+        size_t len = wcslen(expression);
+        if (len != static_cast<int>(len))
+        {
+            return JsErrorInvalidArgument;
+        }
+
+        Js::DynamicObject* result = debuggerStackFrame->Evaluate(scriptContext, expression, static_cast<int>(len), false);
 
         if (result != nullptr)
         {

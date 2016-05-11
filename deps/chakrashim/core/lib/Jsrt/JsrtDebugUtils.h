@@ -31,7 +31,7 @@ public:
     static void AddPropertyToObject(Js::DynamicObject* object, JsrtDebugPropertyId propertyId, UINT value, Js::ScriptContext* scriptContext);
     static void AddPropertyToObject(Js::DynamicObject* object, JsrtDebugPropertyId propertyId, ULONG value, Js::ScriptContext* scriptContext);
     static void AddPropertyToObject(Js::DynamicObject* object, JsrtDebugPropertyId propertyId, LONG value, Js::ScriptContext* scriptContext);
-    static void AddPropertyToObject(Js::DynamicObject* object, JsrtDebugPropertyId propertyId, const char16 * value, charcount_t len, Js::ScriptContext* scriptContext);
+    static void AddPropertyToObject(Js::DynamicObject* object, JsrtDebugPropertyId propertyId, const char16 * value, size_t len, Js::ScriptContext* scriptContext);
     static void AddPropertyToObject(Js::DynamicObject* object, JsrtDebugPropertyId propertyId, Js::JavascriptString* jsString, Js::ScriptContext* scriptContext);
     static void AddPropertyToObject(Js::DynamicObject* object, JsrtDebugPropertyId propertyId, bool value, Js::ScriptContext* scriptContext);
     static void AddPropertyToObject(Js::DynamicObject* object, JsrtDebugPropertyId propertyId, Js::Var value, Js::ScriptContext* scriptContext);

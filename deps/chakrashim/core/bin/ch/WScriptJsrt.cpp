@@ -445,7 +445,7 @@ JsValueRef WScriptJsrt::AttachCallback(JsValueRef callee, bool isConstructCall, 
     {
         goto Error;
     }
-    QueueDebugOperation(arguments[1], [=](WScriptJsrt::CallbackMessage& msg)
+    QueueDebugOperation(arguments[1], [](WScriptJsrt::CallbackMessage& msg)
     {
         JsContextRef currentContext = JS_INVALID_REFERENCE;
         ChakraRTInterface::JsGetCurrentContext(&currentContext);
@@ -486,7 +486,7 @@ JsValueRef WScriptJsrt::DetachCallback(JsValueRef callee, bool isConstructCall, 
     {
         goto Error;
     }
-    QueueDebugOperation(arguments[1], [=](WScriptJsrt::CallbackMessage& msg)
+    QueueDebugOperation(arguments[1], [](WScriptJsrt::CallbackMessage& msg)
     {
         JsContextRef currentContext = JS_INVALID_REFERENCE;
         ChakraRTInterface::JsGetCurrentContext(&currentContext);
@@ -514,21 +514,21 @@ Error:
     return JS_INVALID_REFERENCE;
 }
 
-JsValueRef WScriptJsrt::DumpFunctionInfoCallback(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
+JsValueRef WScriptJsrt::DumpFunctionPositionCallback(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
 {
-    JsValueRef functionInfo = JS_INVALID_REFERENCE;
+    JsValueRef functionPosition = JS_INVALID_REFERENCE;
 
     if (argumentCount > 1)
     {
-        if (ChakraRTInterface::JsDiagGetFunctionPosition(arguments[1], &functionInfo) != JsNoError)
+        if (ChakraRTInterface::JsDiagGetFunctionPosition(arguments[1], &functionPosition) != JsNoError)
         {
-            // If we can't get the functionInfo pass undefined
-            IfJsErrorFailLogAndRet(ChakraRTInterface::JsGetUndefinedValue(&functionInfo));
+            // If we can't get the functionPosition pass undefined
+            IfJsErrorFailLogAndRet(ChakraRTInterface::JsGetUndefinedValue(&functionPosition));
         }
 
         if (Debugger::debugger != nullptr)
         {
-            Debugger::debugger->DumpFunctionInfo(functionInfo);
+            Debugger::debugger->DumpFunctionPosition(functionPosition);
         }
     }
 
@@ -587,10 +587,8 @@ bool WScriptJsrt::Initialize()
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"SetTimeout", SetTimeoutCallback));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"ClearTimeout", ClearTimeoutCallback));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"Attach", AttachCallback));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"SetTimeout", SetTimeoutCallback));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"SetTimeout", SetTimeoutCallback));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"Detach", DetachCallback));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"DumpFunctionInfo", DumpFunctionInfoCallback));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"DumpFunctionPosition", DumpFunctionPositionCallback));
     IfFalseGo(WScriptJsrt::InstallObjectsOnObject(wscript, L"RequestAsyncBreak", RequestAsyncBreakCallback));
 
     // ToDo Remove

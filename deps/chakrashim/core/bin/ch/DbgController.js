@@ -772,15 +772,15 @@ var controllerObj = (function () {
                 internalPrint(baseline);
             }
         },
-        dumpFunctionInfo: function (funcInfo) {
-            if (!funcInfo) {
-                funcInfo = {};
+        dumpFunctionPosition: function (functionPosition) {
+            if (!functionPosition) {
+                functionPosition = {};
             }
             else {
-                funcInfo["fileName"] = filterFileName(funcInfo["fileName"]);
+                functionPosition["fileName"] = filterFileName(functionPosition["fileName"]);
             }
             recordEvent({
-                'functionInfo': funcInfo
+                'functionPosition': functionPosition
             });
         },
         setInspectMaxStringLength: function (value) {
@@ -800,7 +800,7 @@ var controllerObj = (function () {
                     case 1:
                         return "JsDiagDebugEventCompileError";
                     case 2:
-                        return "JsDiagDebugEventBreak";
+                        return "JsDiagDebugEventBreakpoint";
                     case 3:
                         return "JsDiagDebugEventStepComplete";
                     case 4:
@@ -828,7 +828,7 @@ var controllerObj = (function () {
                     var stackTrace = callHostFunction(hostDebugObject.JsDiagGetScripts);
                     break;
                 case 2:
-                    /*JsDiagDebugEventBreak*/
+                    /*JsDiagDebugEventBreakpoint*/
                 case 3:
                     /*JsDiagDebugEventStepComplete*/
                 case 4:
@@ -929,8 +929,8 @@ function SetBaseline() {
 function SetInspectMaxStringLength() {
     return controllerObj.setInspectMaxStringLength.apply(controllerObj, arguments);
 }
-function DumpFunctionInfo() {
-    return controllerObj.dumpFunctionInfo.apply(controllerObj, arguments);
+function DumpFunctionPosition() {
+    return controllerObj.dumpFunctionPosition.apply(controllerObj, arguments);
 }
 
 

@@ -28,7 +28,7 @@ public:
     uint GetHandle() const { return handle; }
     JsrtDebuggerObjectsManager* GetDebuggerObjectsManager();
     virtual Js::DynamicObject* GetJSONObject(Js::ScriptContext* scriptContext) = 0;
-    virtual Js::DynamicObject* GetChildrens(Js::ScriptContext* scriptContext, uint fromCount, uint totalCount);
+    virtual Js::DynamicObject* GetChildren(Js::ScriptContext* scriptContext, uint fromCount, uint totalCount);
 
     template<class JsrtDebuggerObjectType, class PostFunction>
     static void CreateDebuggerObject(JsrtDebuggerObjectsManager* debuggerObjectsManager, Js::ResolvedObject resolvedObject, Js::ScriptContext* scriptContext, PostFunction postFunction)
@@ -47,7 +47,7 @@ public:
     }
 
 protected:
-    Js::DynamicObject* GetChildrens(WeakArenaReference<Js::IDiagObjectModelWalkerBase>* walkerRef, Js::ScriptContext * scriptContext, uint fromCount, uint totalCount);
+    Js::DynamicObject* GetChildren(WeakArenaReference<Js::IDiagObjectModelWalkerBase>* walkerRef, Js::ScriptContext * scriptContext, uint fromCount, uint totalCount);
 
 private:
     JsrtDebuggerObjectType type;
@@ -73,7 +73,7 @@ public:
     static JsrtDebuggerObjectBase* Make(JsrtDebuggerObjectsManager* debuggerObjectsManager, WeakArenaReference<Js::IDiagObjectModelDisplay>* objectDisplay);
 
     Js::DynamicObject* GetJSONObject(Js::ScriptContext* scriptContext);
-    Js::DynamicObject* GetChildrens(Js::ScriptContext* scriptContext, uint fromCount, uint totalCount);
+    Js::DynamicObject* GetChildren(Js::ScriptContext* scriptContext, uint fromCount, uint totalCount);
 
 private:
     JsrtDebuggerObjectProperty(JsrtDebuggerObjectsManager* debuggerObjectsManager, WeakArenaReference<Js::IDiagObjectModelDisplay>* objectDisplay);
@@ -88,7 +88,7 @@ public:
     static JsrtDebuggerObjectBase* Make(JsrtDebuggerObjectsManager* debuggerObjectsManager, WeakArenaReference<Js::IDiagObjectModelDisplay>* objectDisplay);
 
     Js::DynamicObject* GetJSONObject(Js::ScriptContext* scriptContext);
-    Js::DynamicObject* GetChildrens(Js::ScriptContext* scriptContext, uint fromCount, uint totalCount);
+    Js::DynamicObject* GetChildren(Js::ScriptContext* scriptContext, uint fromCount, uint totalCount);
 
 private:
     JsrtDebuggerObjectGlobalsNode(JsrtDebuggerObjectsManager* debuggerObjectsManager, WeakArenaReference<Js::IDiagObjectModelDisplay>* objectDisplay);
@@ -103,7 +103,7 @@ public:
     static JsrtDebuggerObjectBase* Make(JsrtDebuggerObjectsManager* debuggerObjectsManager, WeakArenaReference<Js::IDiagObjectModelDisplay>* objectDisplay, uint index);
 
     Js::DynamicObject* GetJSONObject(Js::ScriptContext* scriptContext);
-    Js::DynamicObject* GetChildrens(Js::ScriptContext* scriptContext, uint fromCount, uint totalCount);
+    Js::DynamicObject* GetChildren(Js::ScriptContext* scriptContext, uint fromCount, uint totalCount);
 
 private:
     JsrtDebuggerObjectScope(JsrtDebuggerObjectsManager* debuggerObjectsManager, WeakArenaReference<Js::IDiagObjectModelDisplay>* objectDisplay, uint index);

@@ -1,9 +1,14 @@
+//-------------------------------------------------------------------------------------------------------
+// Copyright (C) Microsoft. All rights reserved.
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+//-------------------------------------------------------------------------------------------------------
+
 // Global function
 var x = 1;
 function foo() {
   x = 2;
 }
-WScript.DumpFunctionInfo(foo);
+WScript.DumpFunctionPosition(foo);
 
 // Function property
 var obj = {
@@ -11,24 +16,24 @@ var obj = {
     WScript.Echo('');
   }
 };
-WScript.DumpFunctionInfo(obj.func);
+WScript.DumpFunctionPosition(obj.func);
 
 var global = WScript.LoadScript("function foo(){}", "samethread", "dummyFileName.js");
-WScript.DumpFunctionInfo(global.foo);
+WScript.DumpFunctionPosition(global.foo);
 
 var evalFunc = eval('new Function("a", "b", "/*some comments\\r\\n*/    return a + b;")');
-WScript.DumpFunctionInfo(evalFunc);
+WScript.DumpFunctionPosition(evalFunc);
 
 /*some function not at 0 column*/function blah() {
   /* First statement not at 0 */
   var xyz = 1;
 }
-WScript.DumpFunctionInfo(blah);
+WScript.DumpFunctionPosition(blah);
 
-// Shouldn't get functionInfo of built-ins
-WScript.DumpFunctionInfo(JSON.stringify);
-WScript.DumpFunctionInfo(eval);
+// Shouldn't get functionPosition of built-ins
+WScript.DumpFunctionPosition(JSON.stringify);
+WScript.DumpFunctionPosition(eval);
 
-// Shouldn't get functionInfo of library code
-WScript.DumpFunctionInfo(Intl.DateTimeFormat);
+// Shouldn't get functionPosition of library code
+WScript.DumpFunctionPosition(Intl.DateTimeFormat);
 WScript.Echo("pass");

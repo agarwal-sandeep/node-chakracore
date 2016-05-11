@@ -95,7 +95,7 @@ void JsrtDebugManager::DispatchHalt(Js::InterpreterHaltState* haltState)
 {
     switch (haltState->stopType)
     {
-    case Js::STOP_BREAKPOINT: /*JsDiagDebugEventBreak*/
+    case Js::STOP_BREAKPOINT: /*JsDiagDebugEventBreakpoint*/
     case Js::STOP_INLINEBREAKPOINT: /*JsDiagDebugEventDebuggerStatement*/
     case Js::STOP_ASYNCBREAK: /*JsDiagDebugEventAsyncBreak*/
         this->ReportBreak(haltState);
@@ -224,7 +224,7 @@ void JsrtDebugManager::ReportBreak(Js::InterpreterHaltState* haltState)
 
         Js::ProbeContainer* probeContainer = scriptContext->GetDebugContext()->GetProbeContainer();
 
-        if (jsDiagDebugEvent == JsDiagDebugEventBreak)
+        if (jsDiagDebugEvent == JsDiagDebugEventBreakpoint)
         {
             UINT bpId = 0;
             probeContainer->MapProbesUntil([&](int i, Js::Probe* pProbe)
@@ -238,7 +238,7 @@ void JsrtDebugManager::ReportBreak(Js::InterpreterHaltState* haltState)
                 return false;
             });
 
-            AssertMsg(bpId != 0, "How come we don't have a breakpoint id for JsDiagDebugEventBreak");
+            AssertMsg(bpId != 0, "How come we don't have a breakpoint id for JsDiagDebugEventBreakpoint");
 
             JsrtDebugUtils::AddPropertyToObject(eventDataObject, JsrtDebugPropertyId::breakpointId, bpId, scriptContext);
         }
@@ -300,20 +300,11 @@ void JsrtDebugManager::ReportExceptionBreak(Js::InterpreterHaltState* haltState)
 
 void JsrtDebugManager::HandleResume(Js::InterpreterHaltState* haltState, BREAKRESUMEACTION resumeAction)
 {
+    Assert(resumeAction != BREAKRESUMEACTION_ABORT);
+
     Js::ScriptContext* scriptContext = haltState->framePointers->Peek()->GetScriptContext();
 
-    if (resumeAction == BREAKRESUMEACTION_ABORT)
-    {
-        // In this case we need to abort script execution entirely and also stop working on any breakpoint for this engine.
-        scriptContext->GetDebugContext()->GetProbeContainer()->RemoveAllProbes();
-        scriptContext->GetDebugContext()->GetProbeContainer()->UninstallInlineBreakpointProbe(NULL);
-        scriptContext->GetDebugContext()->GetProbeContainer()->UninstallDebuggerScriptOptionCallback();
-        throw Js::ScriptAbortException();
-    }
-    else
-    {
-        scriptContext->GetThreadContext()->GetDebugManager()->stepController.HandleResumeAction(haltState, resumeAction);
-    }
+    scriptContext->GetThreadContext()->GetDebugManager()->stepController.HandleResumeAction(haltState, resumeAction);
 }
 
 void JsrtDebugManager::SetResumeType(BREAKRESUMEACTION resumeAction)
@@ -437,10 +428,9 @@ Js::JavascriptArray* JsrtDebugManager::GetScripts(Js::ScriptContext* scriptConte
     tempScriptContext != nullptr && !tempScriptContext->IsClosed();
         tempScriptContext = tempScriptContext->next)
     {
-        tempScriptContext->GetSourceList()->Map([&](int i, RecyclerWeakReference<Js::Utf8SourceInfo>* utf8SourceInfoWeakRef)
+        tempScriptContext->MapScript([&](Js::Utf8SourceInfo* utf8SourceInfo)
         {
-            Js::Utf8SourceInfo* utf8SourceInfo = utf8SourceInfoWeakRef->Get();
-            if (utf8SourceInfo != nullptr && !utf8SourceInfo->GetIsLibraryCode() && utf8SourceInfo->HasDebugDocument())
+            if (!utf8SourceInfo->GetIsLibraryCode() && utf8SourceInfo->HasDebugDocument())
             {
                 bool isCallerLibraryCode = false;
 
@@ -465,7 +455,7 @@ Js::JavascriptArray* JsrtDebugManager::GetScripts(Js::ScriptContext* scriptConte
                     if (sourceObj != nullptr)
                     {
                         Js::Var marshaledObj = Js::CrossSite::MarshalVar(scriptContext, sourceObj);
-                        Js::JavascriptOperators::OP_SetElementI((Js::Var)scriptsArray, Js::JavascriptNumber::ToVar(index, scriptContext), marshaledObj, scriptContext);
+                        scriptsArray->DirectSetItemAt(index, marshaledObj);
                         index++;
                     }
                 }
@@ -484,10 +474,9 @@ Js::DynamicObject* JsrtDebugManager::GetSource(Js::ScriptContext* scriptContext,
     tempScriptContext != nullptr && utf8SourceInfo == nullptr && !tempScriptContext->IsClosed();
         tempScriptContext = tempScriptContext->next)
     {
-        tempScriptContext->GetSourceList()->MapUntil([&](int i, RecyclerWeakReference<Js::Utf8SourceInfo>* sourceInfoWeakRef) -> bool
+        tempScriptContext->MapScript([&](Js::Utf8SourceInfo* sourceInfo) -> bool
         {
-            Js::Utf8SourceInfo* sourceInfo = sourceInfoWeakRef->Get();
-            if (sourceInfo != nullptr && sourceInfo->IsInDebugMode() && sourceInfo->GetSourceInfoId() == scriptId)
+            if (sourceInfo->IsInDebugMode() && sourceInfo->GetSourceInfoId() == scriptId)
             {
                 utf8SourceInfo = sourceInfo;
                 return true;
@@ -537,8 +526,8 @@ Js::DynamicObject* JsrtDebugManager::SetBreakPoint(Js::ScriptContext* scriptCont
     Js::DebugDocument* debugDocument = utf8SourceInfo->GetDebugDocument();
     if (debugDocument != nullptr && SUCCEEDED(utf8SourceInfo->EnsureLineOffsetCacheNoThrow()) && lineNumber < utf8SourceInfo->GetLineCount())
     {
-        charcount_t charPosition;
-        charcount_t byteOffset;
+        charcount_t charPosition = 0;
+        charcount_t byteOffset = 0;
         utf8SourceInfo->GetCharPositionForLineInfo((charcount_t)lineNumber, &charPosition, &byteOffset);
         long ibos = charPosition + columnNumber + 1;
 
@@ -550,7 +539,7 @@ Js::DynamicObject* JsrtDebugManager::SetBreakPoint(Js::ScriptContext* scriptCont
 
         // Don't see a use case for supporting multiple breakpoints at same location.
         // If a breakpoint already exists, just return that
-        Js::BreakpointProbe* probe = debugDocument->FindBreakpointId(statement);
+        Js::BreakpointProbe* probe = debugDocument->FindBreakpoint(statement);
         if (probe == nullptr)
         {
             probe = debugDocument->SetBreakPoint(statement, BREAKPOINT_ENABLED);
@@ -677,7 +666,7 @@ JsDiagDebugEvent JsrtDebugManager::GetDebugEventFromStopType(Js::StopType stopTy
 {
     switch (stopType)
     {
-    case Js::STOP_BREAKPOINT: return JsDiagDebugEventBreak;
+    case Js::STOP_BREAKPOINT: return JsDiagDebugEventBreakpoint;
     case Js::STOP_INLINEBREAKPOINT: return JsDiagDebugEventDebuggerStatement;
     case Js::STOP_STEPCOMPLETE: return JsDiagDebugEventStepComplete;
     case Js::STOP_EXCEPTIONTHROW: return JsDiagDebugEventRuntimeException;
@@ -689,5 +678,5 @@ JsDiagDebugEvent JsrtDebugManager::GetDebugEventFromStopType(Js::StopType stopTy
         break;
     }
 
-    return JsDiagDebugEventBreak;
+    return JsDiagDebugEventBreakpoint;
 }

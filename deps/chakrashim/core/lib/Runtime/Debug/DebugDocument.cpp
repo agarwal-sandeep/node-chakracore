@@ -128,7 +128,9 @@ namespace Js
             }
             case BREAKPOINT_ENABLED:
             {
-                BreakpointProbe* pProbe = Anew(scriptContext->AllocatorForDiagnostics(), BreakpointProbe, this, statement);
+                BreakpointProbe* pProbe = Anew(scriptContext->AllocatorForDiagnostics(), BreakpointProbe, this, statement,
+                    scriptContext->GetThreadContext()->GetDebugManager()->GetNextBreakpointId());
+
                 scriptContext->GetDebugContext()->GetProbeContainer()->AddProbe(pProbe);
                 BreakpointProbeList* pBreakpointList = this->GetBreakpointList();
                 pBreakpointList->Add(pProbe);
@@ -157,7 +159,7 @@ namespace Js
         }
     }
 
-    Js::BreakpointProbe* DebugDocument::FindBreakpointId(StatementLocation statement)
+    Js::BreakpointProbe* DebugDocument::FindBreakpoint(StatementLocation statement)
     {
         Js::BreakpointProbe* probe = nullptr;
         if (m_breakpointList != nullptr)

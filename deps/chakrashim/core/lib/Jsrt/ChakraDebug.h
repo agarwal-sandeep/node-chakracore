@@ -32,7 +32,7 @@
         /// <summary>
         ///     Indicates a new script being compiled, this includes script, eval, new function.
         /// </summary>
-        JsDiagDebugEventSourceCompile= 0,
+        JsDiagDebugEventSourceCompile = 0,
         /// <summary>
         ///     Indicates compile error for a script.
         /// </summary>
@@ -40,7 +40,7 @@
         /// <summary>
         ///     Indicates a break due to a breakpoint.
         /// </summary>
-        JsDiagDebugEventBreak = 2,
+        JsDiagDebugEventBreakpoint = 2,
         /// <summary>
         ///     Indicates a break after completion of step action.
         /// </summary>
@@ -118,7 +118,7 @@
     ///     The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.
     /// </returns>
     /// <remarks>
-    ///     The runtime should be active on the current thread and should not be in debug state
+    ///     The runtime should be active on the current thread and should not be in debug state.
     /// </remarks>
     CHAKRA_API
         JsDiagStartDebugging(
@@ -186,7 +186,7 @@
     /// <param name="scriptId">Id of script from JsDiagGetScripts or JsDiagGetSource to put breakpoint.</param>
     /// <param name="lineNumber">0 based line number to put breakpoint.</param>
     /// <param name="columnNumber">0 based column number to put breakpoint.</param>
-    /// <param name="breakPoint">Breakpoint object with id, line and column if success.</param>
+    /// <param name="breakpoint">Breakpoint object with id, line and column if success.</param>
     /// <remarks>
     ///     <para>
     ///     {
@@ -207,7 +207,7 @@
             _In_ unsigned int scriptId,
             _In_ unsigned int lineNumber,
             _In_ unsigned int columnNumber,
-            _Out_ JsValueRef *breakPoint);
+            _Out_ JsValueRef *breakpoint);
 
     /// <summary>
     ///     Remove a breakpoint.
@@ -338,7 +338,7 @@
     ///     Gets the source information for a function object.
     /// </summary>
     /// <param name="function">JavaScript function.</param>
-    /// <param name="functionInfo">Function info, scriptId, start line, start column, line number of first statement, column number of first statement.</param>
+    /// <param name="functionPosition">Function position - scriptId, start line, start column, line number of first statement, column number of first statement.</param>
     /// <remarks>
     ///     <para>
     ///     {
@@ -360,7 +360,7 @@
     CHAKRA_API
         JsDiagGetFunctionPosition(
             _In_ JsValueRef function,
-            _Out_ JsValueRef *functionInfo);
+            _Out_ JsValueRef *functionPosition);
 
     /// <summary>
     ///     Gets the stack trace information.
@@ -459,10 +459,10 @@
             _Out_ JsValueRef *properties);
 
     /// <summary>
-    ///     Gets the list of childrens of a handle.
+    ///     Gets the list of children of a handle.
     /// </summary>
     /// <param name="objectHandle">Handle of object.</param>
-    /// <param name="fromCount">0-based from count of properties, ideally 0.</param>
+    /// <param name="fromCount">0-based from count of properties, usually 0.</param>
     /// <param name="totalCount">Number of properties to return.</param>
     /// <param name="propertiesObject">Array of properties.</param>
     /// <remarks>Handle should be from objects returned from call to JsDiagGetStackProperties.</remarks>
@@ -505,7 +505,7 @@
             _Out_ JsValueRef *propertiesObject);
 
     /// <summary>
-    ///     Get the object corresponding to handle.
+    ///     Gets the object corresponding to handle.
     /// </summary>
     /// <param name="objectHandle">Handle of object.</param>
     /// <param name="handleObject">Object corresponding to the handle.</param>
@@ -534,7 +534,7 @@
 
 #ifdef _WIN32
     /// <summary>
-    ///     Evaluate an expression on given frame.
+    ///     Evaluates an expression on given frame.
     /// </summary>
     /// <param name="expression">Expression to evaluate.</param>
     /// <param name="stackFrameIndex">Index of stack frame on which to evaluate the expression.</param>

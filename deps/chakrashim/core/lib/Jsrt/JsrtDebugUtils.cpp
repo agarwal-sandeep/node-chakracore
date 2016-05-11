@@ -363,9 +363,16 @@ void JsrtDebugUtils::AddPropertyToObject(Js::DynamicObject * object, JsrtDebugPr
     JsrtDebugUtils::AddVarPropertyToObject(object, propertyId, Js::JavascriptNumber::ToVarNoCheck(value, scriptContext), scriptContext);
 }
 
-void JsrtDebugUtils::AddPropertyToObject(Js::DynamicObject * object, JsrtDebugPropertyId propertyId, const char16 * value, charcount_t len, Js::ScriptContext * scriptContext)
+void JsrtDebugUtils::AddPropertyToObject(Js::DynamicObject * object, JsrtDebugPropertyId propertyId, const char16 * value, size_t len, Js::ScriptContext * scriptContext)
 {
-    JsrtDebugUtils::AddVarPropertyToObject(object, propertyId, Js::JavascriptString::NewCopyBuffer(value, len, scriptContext), scriptContext);
+    charcount_t charCount = static_cast<charcount_t>(len);
+
+    Assert(charCount == len);
+
+    if (charCount == len)
+    {
+        JsrtDebugUtils::AddVarPropertyToObject(object, propertyId, Js::JavascriptString::NewCopyBuffer(value, charCount, scriptContext), scriptContext);
+    }
 }
 
 void JsrtDebugUtils::AddPropertyToObject(Js::DynamicObject * object, JsrtDebugPropertyId propertyId, Js::JavascriptString* jsString, Js::ScriptContext * scriptContext)

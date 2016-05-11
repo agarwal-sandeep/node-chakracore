@@ -298,7 +298,7 @@ HRESULT ExecuteTest(LPCWSTR fileName)
     }
     IfJsErrorFailLog(ChakraRTInterface::JsCreateRuntime(jsrtAttributes, nullptr, &runtime));
 
-    if (HostConfigFlags::flags.DebugLaunchIsEnabled)
+    if (HostConfigFlags::flags.DebugLaunch)
     {
         Debugger* debugger = Debugger::GetDebugger(runtime);
         debugger->StartDebugging(runtime);

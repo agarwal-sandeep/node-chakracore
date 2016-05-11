@@ -1,3 +1,8 @@
+//-------------------------------------------------------------------------------------------------------
+// Copyright (C) Microsoft. All rights reserved.
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+//-------------------------------------------------------------------------------------------------------
+
 var obj = {
   a1 : undefined,
   a2 : null,
@@ -49,4 +54,5 @@ var obj2 = {
 };
 
 obj2; /**bp:evaluate('obj2.a1', 2);**/
+obj2; /**bp:evaluate('obj2.a2 = 1');**/
 WScript.Echo("pass");

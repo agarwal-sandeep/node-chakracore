@@ -6,13 +6,13 @@
 
 #define MAX_BASELINE_SIZE       (1024*1024*200)
 
-void CHAKRA_CALLBACK Debugger::JsDiagDebugEventHandler(_In_ JsDiagDebugEvent debugEvent, _In_ JsValueRef eventData, _In_opt_ void* callbackState)
+void CHAKRA_CALLBACK Debugger::DebugEventHandler(_In_ JsDiagDebugEvent debugEvent, _In_ JsValueRef eventData, _In_opt_ void* callbackState)
 {
     Debugger* debugger = (Debugger*)callbackState;
     debugger->HandleDebugEvent(debugEvent, eventData);
 }
 
-JsValueRef Debugger::JsDiagGetSource(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
+JsValueRef Debugger::GetSource(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
 {
     int scriptId;
     JsValueRef source = JS_INVALID_REFERENCE;
@@ -26,7 +26,7 @@ JsValueRef Debugger::JsDiagGetSource(JsValueRef callee, bool isConstructCall, Js
     return source;
 }
 
-JsValueRef Debugger::JsDiagSetBreakpoint(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
+JsValueRef Debugger::SetBreakpoint(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
 {
     int scriptId;
     int line;
@@ -45,21 +45,21 @@ JsValueRef Debugger::JsDiagSetBreakpoint(JsValueRef callee, bool isConstructCall
     return bpObject;
 }
 
-JsValueRef Debugger::JsDiagGetStackTrace(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
+JsValueRef Debugger::GetStackTrace(JsValueRef callee, bool isConstructCall, JsValueRef * arguments, unsigned short argumentCount, void * callbackState)
 {
     JsValueRef stackInfo = JS_INVALID_REFERENCE;
     IfJsErrorFailLogAndRet(ChakraRTInterface::JsDiagGetStackTrace(&stackInfo));
     return stackInfo;
 }
 
-JsValueRef Debugger::JsDiagGetBreakpoints(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::GetBreakpoints(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     JsValueRef breakpoints = JS_INVALID_REFERENCE;
     IfJsErrorFailLogAndRet(ChakraRTInterface::JsDiagGetBreakpoints(&breakpoints));
     return breakpoints;
 }
 
-JsValueRef Debugger::JsDiagRemoveBreakpoint(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::RemoveBreakpoint(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     int bpId;
     if (argumentCount > 1)
@@ -74,7 +74,7 @@ JsValueRef Debugger::JsDiagRemoveBreakpoint(JsValueRef callee, bool isConstructC
     return JS_INVALID_REFERENCE;
 }
 
-JsValueRef Debugger::JsDiagSetBreakOnException(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::SetBreakOnException(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     int exceptionAttributes;
 
@@ -90,7 +90,7 @@ JsValueRef Debugger::JsDiagSetBreakOnException(JsValueRef callee, bool isConstru
     return JS_INVALID_REFERENCE;
 }
 
-JsValueRef Debugger::JsDiagGetBreakOnException(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::GetBreakOnException(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     JsDiagBreakOnExceptionAttributes exceptionAttributes;
     IfJsErrorFailLogAndRet(ChakraRTInterface::JsDiagGetBreakOnException(Debugger::GetRuntime(), &exceptionAttributes));
@@ -100,7 +100,7 @@ JsValueRef Debugger::JsDiagGetBreakOnException(JsValueRef callee, bool isConstru
     return exceptionAttributesRef;
 }
 
-JsValueRef Debugger::JsDiagSetStepType(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::SetStepType(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     int stepType;
 
@@ -113,14 +113,14 @@ JsValueRef Debugger::JsDiagSetStepType(JsValueRef callee, bool isConstructCall, 
     return JS_INVALID_REFERENCE;
 }
 
-JsValueRef Debugger::JsDiagGetScripts(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::GetScripts(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     JsValueRef sourcesList = JS_INVALID_REFERENCE;
     IfJsErrorFailLogAndRet(ChakraRTInterface::JsDiagGetScripts(&sourcesList));
     return sourcesList;
 }
 
-JsValueRef Debugger::JsDiagGetStackProperties(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::GetStackProperties(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     JsValueRef properties = JS_INVALID_REFERENCE;
     int stackFrameIndex;
@@ -134,7 +134,7 @@ JsValueRef Debugger::JsDiagGetStackProperties(JsValueRef callee, bool isConstruc
     return properties;
 }
 
-JsValueRef Debugger::JsDiagGetProperties(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::GetProperties(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     JsValueRef properties = JS_INVALID_REFERENCE;
     int objectHandle;
@@ -152,7 +152,7 @@ JsValueRef Debugger::JsDiagGetProperties(JsValueRef callee, bool isConstructCall
     return properties;
 }
 
-JsValueRef Debugger::JsDiagGetObjectFromHandle(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::GetObjectFromHandle(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     JsValueRef properties = JS_INVALID_REFERENCE;
     int objectHandle;
@@ -166,7 +166,7 @@ JsValueRef Debugger::JsDiagGetObjectFromHandle(JsValueRef callee, bool isConstru
     return properties;
 }
 
-JsValueRef Debugger::JsDiagEvaluate(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+JsValueRef Debugger::Evaluate(JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 {
     int stackFrameIndex;
     JsValueRef result = JS_INVALID_REFERENCE;
@@ -188,7 +188,7 @@ Debugger::Debugger(JsRuntimeHandle runtime)
 {
     this->m_runtime = runtime;
     this->m_context = JS_INVALID_REFERENCE;
-    this->isDetached = true;
+    this->m_isDetached = true;
 }
 
 Debugger::~Debugger()
@@ -273,19 +273,19 @@ bool Debugger::Initialize()
 bool Debugger::InstallDebugCallbacks(JsValueRef hostDebugObject)
 {
     HRESULT hr = S_OK;
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetSource"), Debugger::JsDiagGetSource));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagSetBreakpoint"), Debugger::JsDiagSetBreakpoint));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetStackTrace"), Debugger::JsDiagGetStackTrace));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetBreakpoints"), Debugger::JsDiagGetBreakpoints));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagRemoveBreakpoint"), Debugger::JsDiagRemoveBreakpoint));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagSetBreakOnException"), Debugger::JsDiagSetBreakOnException));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetBreakOnException"), Debugger::JsDiagGetBreakOnException));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagSetStepType"), Debugger::JsDiagSetStepType));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetScripts"), Debugger::JsDiagGetScripts));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetStackProperties"), Debugger::JsDiagGetStackProperties));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetProperties"), Debugger::JsDiagGetProperties));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetObjectFromHandle"), Debugger::JsDiagGetObjectFromHandle));
-    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagEvaluate"), Debugger::JsDiagEvaluate));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetSource"), Debugger::GetSource));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagSetBreakpoint"), Debugger::SetBreakpoint));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetStackTrace"), Debugger::GetStackTrace));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetBreakpoints"), Debugger::GetBreakpoints));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagRemoveBreakpoint"), Debugger::RemoveBreakpoint));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagSetBreakOnException"), Debugger::SetBreakOnException));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetBreakOnException"), Debugger::GetBreakOnException));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagSetStepType"), Debugger::SetStepType));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetScripts"), Debugger::GetScripts));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetStackProperties"), Debugger::GetStackProperties));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetProperties"), Debugger::GetProperties));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagGetObjectFromHandle"), Debugger::GetObjectFromHandle));
+    IfFalseGo(WScriptJsrt::InstallObjectsOnObject(hostDebugObject, _u("JsDiagEvaluate"), Debugger::Evaluate));
 Error:
     return hr != S_OK;
 }
@@ -302,7 +302,8 @@ bool Debugger::SetBaseline()
     {
         Helpers::LogError(_u("opening baseline file '%s'"), HostConfigFlags::flags.dbgbaseline);
     }
-    else
+
+    if(file != nullptr)
     {
         int fileSize = _filelength(_fileno(file));
         if (fileSize <= MAX_BASELINE_SIZE)
@@ -341,11 +342,20 @@ bool Debugger::SetBaseline()
     }
 Error:
     if (script)
+    {
         delete[] script;
+    }
+
     if (wideScript)
+    {
         delete[] wideScript;
+    }
+
     if (file)
+    {
         fclose(file);
+    }
+
     return hr == S_OK;
 }
 
@@ -407,16 +417,16 @@ bool Debugger::CallFunctionNoResult(char16 const * functionName, JsValueRef arg1
     return this->CallFunction(functionName, &result, arg1, arg2);
 }
 
-bool Debugger::DumpFunctionInfo(JsValueRef functionInfo)
+bool Debugger::DumpFunctionPosition(JsValueRef functionPosition)
 {
-    return this->CallFunctionNoResult(_u("DumpFunctionInfo"), functionInfo);
+    return this->CallFunctionNoResult(_u("DumpFunctionPosition"), functionPosition);
 }
 
 bool Debugger::StartDebugging(JsRuntimeHandle runtime)
 {
-    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsDiagStartDebugging(runtime, Debugger::JsDiagDebugEventHandler, this));
+    IfJsrtErrorFailLogAndRetFalse(ChakraRTInterface::JsDiagStartDebugging(runtime, Debugger::DebugEventHandler, this));
 
-    this->isDetached = false;
+    this->m_isDetached = false;
 
     return true;
 }
@@ -428,7 +438,7 @@ bool Debugger::StopDebugging(JsRuntimeHandle runtime)
 
     Assert(callbackState == this);
 
-    this->isDetached = true;
+    this->m_isDetached = true;
 
     return true;
 }
@@ -489,14 +499,17 @@ bool Debugger::CompareOrWriteBaselineFile(LPCWSTR fileName)
             return false;
         }
 
-        int countWritten = static_cast<int>(fwrite(baselineDataANSI, sizeof(baselineDataANSI[0]), strlen(baselineDataANSI), file));
-        if (countWritten != (int)strlen(baselineDataANSI))
+        if (file != nullptr)
         {
-            Assert(false);
-            return false;
-        }
+            int countWritten = static_cast<int>(fwrite(baselineDataANSI, sizeof(baselineDataANSI[0]), strlen(baselineDataANSI), file));
+            if (countWritten != (int)strlen(baselineDataANSI))
+            {
+                Assert(false);
+                return false;
+            }
 
-        fclose(file);
+            fclose(file);
+        }
 
         if (!HostConfigFlags::flags.dbgbaselineIsEnabled)
         {

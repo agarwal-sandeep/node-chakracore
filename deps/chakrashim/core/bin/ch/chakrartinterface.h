@@ -243,7 +243,7 @@ public:
     static JsErrorCode WINAPI JsDiagStartDebugging(JsRuntimeHandle runtimeHandle, JsDiagDebugEventCallback debugEventCallback, void* callbackState) { return m_jsApiHooks.pfJsrtDiagStartDebugging(runtimeHandle, debugEventCallback, callbackState); }
     static JsErrorCode WINAPI JsDiagStopDebugging(JsRuntimeHandle runtimeHandle, void** callbackState) { return m_jsApiHooks.pfJsrtDiagStopDebugging(runtimeHandle, callbackState); }
     static JsErrorCode WINAPI JsDiagGetSource(unsigned int scriptId, JsValueRef *source) { return m_jsApiHooks.pfJsrtDiagGetSource(scriptId, source); }
-    static JsErrorCode WINAPI JsDiagSetBreakpoint(unsigned int scriptId, unsigned int lineNumber, unsigned int columnNumber, JsValueRef *breakPoint) { return m_jsApiHooks.pfJsrtDiagSetBreakpoint(scriptId, lineNumber, columnNumber, breakPoint); }
+    static JsErrorCode WINAPI JsDiagSetBreakpoint(unsigned int scriptId, unsigned int lineNumber, unsigned int columnNumber, JsValueRef *breakpoint) { return m_jsApiHooks.pfJsrtDiagSetBreakpoint(scriptId, lineNumber, columnNumber, breakpoint); }
     static JsErrorCode WINAPI JsDiagGetStackTrace(JsValueRef *stackTrace) { return m_jsApiHooks.pfJsrtDiagGetStackTrace(stackTrace); }
     static JsErrorCode WINAPI JsDiagRequestAsyncBreak(JsRuntimeHandle runtimeHandle) { return m_jsApiHooks.pfJsrtDiagRequestAsyncBreak(runtimeHandle); }
     static JsErrorCode WINAPI JsDiagGetBreakpoints(JsValueRef * breakpoints) { return m_jsApiHooks.pfJsrtDiagGetBreakpoints(breakpoints); }
@@ -252,7 +252,7 @@ public:
     static JsErrorCode WINAPI JsDiagGetBreakOnException(JsRuntimeHandle runtimeHandle, JsDiagBreakOnExceptionAttributes * exceptionAttributes) { return m_jsApiHooks.pfJsrtDiagGetBreakOnException(runtimeHandle, exceptionAttributes); }
     static JsErrorCode WINAPI JsDiagSetStepType(JsDiagStepType stepType) { return m_jsApiHooks.pfJsrtDiagSetStepType(stepType); }
     static JsErrorCode WINAPI JsDiagGetScripts(JsValueRef * scriptsArray) { return m_jsApiHooks.pfJsrtDiagGetScripts(scriptsArray); }
-    static JsErrorCode WINAPI JsDiagGetFunctionPosition(JsValueRef value, JsValueRef * functionInfo) { return m_jsApiHooks.pfJsrtDiagGetFunctionPosition(value, functionInfo); }
+    static JsErrorCode WINAPI JsDiagGetFunctionPosition(JsValueRef value, JsValueRef * functionPosition) { return m_jsApiHooks.pfJsrtDiagGetFunctionPosition(value, functionPosition); }
     static JsErrorCode WINAPI JsDiagGetStackProperties(unsigned int stackFrameIndex, JsValueRef * properties) { return m_jsApiHooks.pfJsrtDiagGetStackProperties(stackFrameIndex, properties); }
     static JsErrorCode WINAPI JsDiagGetProperties(unsigned int objectHandle, unsigned int fromCount, unsigned int totalCount, JsValueRef * propertiesObject) { return m_jsApiHooks.pfJsrtDiagGetProperties(objectHandle, fromCount, totalCount, propertiesObject); }
     static JsErrorCode WINAPI JsDiagGetObjectFromHandle(unsigned int handle, JsValueRef * handleObject) { return m_jsApiHooks.pfJsrtDiagGetObjectFromHandle(handle, handleObject); }
@@ -276,7 +276,7 @@ public:
 
         if (oldContext != newContext)
         {
-            JsErrorCode errorCode = ChakraRTInterface::JsSetCurrentContext(newContext);
+            errorCode = ChakraRTInterface::JsSetCurrentContext(newContext);
             Assert(errorCode == JsNoError);
             contextChanged = true;
         }

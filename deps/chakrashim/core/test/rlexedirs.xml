@@ -374,7 +374,7 @@
 <dir>
   <default>
     <files>Debugger</files>
-    <tags>exclude_serialized,exclude_jshost</tags>
+    <tags>exclude_serialized,exclude_jshost,exclude_snap</tags>
   </default>
 </dir>
 </regress-exe>
