@@ -347,7 +347,7 @@
       /* JsDiagDebugEventCompileError */
       break;
     case 2:
-      /* JsDiagDebugEventBreak */
+      /* JsDiagDebugEventBreakpoint */
     case 3:
       /* JsDiagDebugEventStepComplete */
     case 4:
@@ -1081,7 +1081,7 @@
     case 1:
       return 'JsDiagDebugEventCompileError';
     case 2:
-      return 'JsDiagDebugEventBreak';
+      return 'JsDiagDebugEventBreakpoint';
     case 3:
       return 'JsDiagDebugEventStepComplete';
     case 4:
