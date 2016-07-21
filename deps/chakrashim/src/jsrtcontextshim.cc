@@ -454,6 +454,36 @@ bool ContextShim::ExecuteChakraShimJS() {
                         &result) == JsNoError;
 }
 
+bool ContextShim::ExecuteChakraDebugShimJS(JsValueRef * chakraDebugObject) {
+  char buffer[_countof(chakra_debug_native) + 1];
+  memmove(buffer, chakra_debug_native, _countof(chakra_debug_native));
+  buffer[_countof(chakra_debug_native)] = L'\0';
+
+  JsValueRef getInitFunction;
+  if (JsParseScriptWithAttributesUtf8(buffer,
+    JS_SOURCE_CONTEXT_NONE,
+    "chakra_debug.js",
+    JsParseScriptAttributeNone,
+    //JsParseScriptAttributeLibraryCode,
+    &getInitFunction) != JsNoError) {
+    return false;
+  }
+
+  JsValueRef initFunction;
+  if (CallFunction(getInitFunction, &initFunction) != JsNoError) {
+    return false;
+  }
+
+  JsValueRef arguments[] = { this->globalObject, this->globalObject,
+      this->keepAliveObject };
+  JsErrorCode errorCode = JsCallFunction(initFunction, arguments,
+      _countof(arguments), chakraDebugObject);
+
+  CHAKRA_VERIFY_NOERROR(errorCode);
+
+  return errorCode == JsNoError;
+}
+
 void ContextShim::SetAlignedPointerInEmbedderData(int index, void * value) {
   if (index < 0) {
     return;

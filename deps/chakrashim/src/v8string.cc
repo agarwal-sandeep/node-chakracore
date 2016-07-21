@@ -53,7 +53,7 @@ String::Value::Value(Handle<v8::Value> obj) : _str(nullptr), _length(0) {
 
   _length = str->Length();
   _str = new uint16_t[_length + 1];
-  str->Write(_str);
+  str->Write(_str, 0, _length);
 }
 
 String::Value::~Value() {

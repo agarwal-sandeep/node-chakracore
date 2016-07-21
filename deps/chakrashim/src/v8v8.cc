@@ -34,7 +34,6 @@ bool g_disposed = false;
 bool g_exposeGC = false;
 bool g_useStrict = false;
 bool g_disableIdleGc = false;
-ArrayBuffer::Allocator* g_arrayBufferAllocator = nullptr;
 
 const char *V8::GetVersion() {
   static char versionStr[32] = {};
@@ -122,7 +121,8 @@ void V8::SetFlagsFromCommandLine(int *argc, char **argv, bool remove_flags) {
                (startsWith(
                  arg, "--debug")  // Ignore some flags to reduce unit test noise
                 || startsWith(arg, "--harmony")
-                || startsWith(arg, "--stack-size="))) {
+                || startsWith(arg, "--stack-size=")
+                || startsWith(arg, "--nolazy"))) {
       argv[i] = nullptr;
     } else if (equals("--help", arg)) {
         printf(
@@ -164,8 +164,8 @@ void V8::SetEntropySource(EntropySource entropy_source) {
 }
 
 void V8::SetArrayBufferAllocator(ArrayBuffer::Allocator* allocator) {
-  CHAKRA_VERIFY(!g_arrayBufferAllocator);
-  g_arrayBufferAllocator = allocator;
+  // CHAKRA_VERIFY(!g_arrayBufferAllocator);
+  // g_arrayBufferAllocator = allocator;
 }
 
 bool V8::IsDead() {
