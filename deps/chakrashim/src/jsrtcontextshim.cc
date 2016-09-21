@@ -33,12 +33,12 @@ ContextShim::Scope::~Scope() {
   this->contextShim->GetIsolateShim()->PopScope(this);
 }
 
-ContextShim * ContextShim::New(IsolateShim * isolateShim, bool exposeGC, bool runUnderTT,
+ContextShim * ContextShim::New(IsolateShim * isolateShim, bool exposeGC, bool useGlobalTTState,
                                JsValueRef globalObjectTemplateInstance) {
   JsContextRef context;
-  if(runUnderTT)
+  if(useGlobalTTState)
   {
-    if(JsTTDCreateContext(isolateShim->GetRuntimeHandle(), &context) != JsNoError) {
+    if(JsTTDCreateContext(isolateShim->GetRuntimeHandle(), useGlobalTTState, &context) != JsNoError) {
       return nullptr;
     }
   }

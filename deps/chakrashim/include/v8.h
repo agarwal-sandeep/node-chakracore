@@ -2200,7 +2200,7 @@ class V8_EXPORT Isolate {
     kMinorGarbageCollection
   };
 
-  static Isolate* New(const CreateParams& params, const char* uri, bool doRecord, bool doReplay, uint32_t snapInterval, uint32_t snapHistoryLength);
+  static Isolate* New(const CreateParams& params, const char* uri, bool doRecord, bool doReplay, bool doDebug, uint32_t snapInterval, uint32_t snapHistoryLength);
   static Isolate* New();
   static Isolate* GetCurrent();
   typedef bool(*AbortOnUncaughtExceptionCallback)(Isolate*);
@@ -2408,7 +2408,7 @@ class V8_EXPORT Context {
 
   static Local<Context> New(
     Isolate* isolate,
-    bool runUnderTT = false,
+    bool useGlobalTTState = false,
     ExtensionConfiguration* extensions = NULL,
     Handle<ObjectTemplate> global_template = Handle<ObjectTemplate>(),
     Handle<Value> global_object = Handle<Value>());

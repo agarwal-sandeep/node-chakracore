@@ -635,7 +635,6 @@ void Fill(const FunctionCallbackInfo<Value>& args) {
   size_t str_length;
   enum encoding enc;
   CHECK(fill_length + start <= ts_obj_length);
-  TTD_NATIVE_BUFFER_ACCESS_NOTIFY("Fill");
 
   // First check if Buffer has been passed.
   if (Buffer::HasInstance(args[1])) {
@@ -649,6 +648,14 @@ void Fill(const FunctionCallbackInfo<Value>& args) {
   if (!args[1]->IsString()) {
     int value = args[1]->Uint32Value() & 255;
     memset(ts_obj_data + start, value, fill_length);
+
+#if ENABLE_TTD_NODE
+    //
+    //TODO: We could improve performance since this is a constant value fill by just logging constant (instead of copying modified contents range).
+    //
+    ts_obj->Buffer()->TTDRawBufferModifyNotifySync(start, fill_length);
+#endif
+
     return;
   }
 
@@ -688,15 +695,24 @@ void Fill(const FunctionCallbackInfo<Value>& args) {
     // be written.
     // TODO(trevnorris): Should this throw? Because of the string length was
     // greater than 0 but couldn't be written then the string was invalid.
-    if (str_length == 0)
-      return;
+    if (str_length == 0) {
+#if ENABLE_TTD_NODE
+        TTD_NATIVE_BUFFER_ACCESS_NOTIFY("Fill Questionable Case");
+#endif
+
+        return;
+    }
   }
 
  start_fill:
 
-  if (str_length >= fill_length)
-    return;
+  if (str_length >= fill_length) {
+#if ENABLE_TTD_NODE
+      TTD_NATIVE_BUFFER_ACCESS_NOTIFY("Fill Early Return");
+#endif
 
+      return;
+  }
 
   size_t in_there = str_length;
   char* ptr = ts_obj_data + start + str_length;
@@ -710,6 +726,10 @@ void Fill(const FunctionCallbackInfo<Value>& args) {
   if (in_there < fill_length) {
     memcpy(ptr, ts_obj_data + start, fill_length - in_there);
   }
+
+#if ENABLE_TTD_NODE
+  TTD_NATIVE_BUFFER_ACCESS_NOTIFY("Fill Final");
+#endif
 }
 
 

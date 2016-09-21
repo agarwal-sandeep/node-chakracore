@@ -297,6 +297,7 @@ error:
 //#if ENABLE_TTD_NODE
     JsTTDPauseTimeTravelBeforeRuntimeOperation();
 //#endif
+
     Debug::messageQueue.debugEventProcessCount++;
     bool isMsgToProcess = !Debug::messageQueue.IsEmpty();
     bool shouldContinue = true;
@@ -325,6 +326,7 @@ error:
       !Debug::messageQueue.isProcessingDebuggerMsg && !shouldContinue);
 
     Debug::messageQueue.debugEventProcessCount--;
+
 //#if ENABLE_TTD_NODE
     JsTTDReStartTimeTravelAfterRuntimeOperation();
 //#endif

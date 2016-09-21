@@ -46,13 +46,13 @@ enum CachedSymbolPropertyIdRef {
 class IsolateShim {
  public:
   v8::ArrayBuffer::Allocator* g_arrayBufferAllocator;
-  bool IsolateShim::NewContext(JsContextRef * context, bool exposeGC, bool runUnderTT,
+  bool IsolateShim::NewContext(JsContextRef * context, bool exposeGC, bool useGlobalTTState,
                                JsValueRef globalObjectTemplateInstance);
   bool GetMemoryUsage(size_t * memoryUsage);
   bool Dispose();
   bool IsDisposing();
 
-  static v8::Isolate * New(const char* uri, bool doRecord, bool doReplay, uint32_t snapInterval, uint32_t snapHistoryLength);
+  static v8::Isolate * New(const char* uri, bool doRecord, bool doReplay, bool doDebug, uint32_t snapInterval, uint32_t snapHistoryLength);
   static v8::Isolate * GetCurrentAsIsolate();
   static IsolateShim * GetCurrent();
   static IsolateShim * FromIsolate(v8::Isolate * isolate);

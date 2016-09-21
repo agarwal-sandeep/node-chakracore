@@ -25,221 +25,323 @@
 #include <algorithm>
 #include "v8-debug.h"
 
+/////////////////////////////////////////////////
+
+//TODO: x-plat definitions
+#ifdef _WIN32
+#include <io.h>
+
+typedef wchar_t TTDHostCharType;
+typedef struct _wfinddata_t TTDHostFileInfo;
+typedef intptr_t TTDHostFindHandle;
+typedef struct _stat TTDHostStatType;
+
+#define TTDHostPathSeparator L"\\"
+#define TTDHostPathSeparatorChar L'\\'
+#define TTDHostFindInvalid -1
+
+size_t TTDHostStringLength(const TTDHostCharType* str)
+{
+    return wcslen(str);
+}
+
+void TTDHostInitEmpty(TTDHostCharType* dst)
+{
+    dst[0] = L'\0';
+}
+
+void TTDHostInitFromUriBytes(TTDHostCharType* dst, const byte* uriBytes, size_t uriBytesLength)
+{
+    memcpy_s(dst, MAX_PATH * sizeof(TTDHostCharType), uriBytes, uriBytesLength);
+    dst[uriBytesLength / sizeof(TTDHostCharType)] = L'\0';
+}
+
+void TTDHostAppend(TTDHostCharType* dst, const TTDHostCharType* src)
+{
+    size_t dpos = TTDHostStringLength(dst);
+    size_t srcLength = TTDHostStringLength(src);
+    size_t srcByteLength = srcLength * sizeof(TTDHostCharType);
+
+    memcpy_s(dst + dpos, srcByteLength, src, srcByteLength);
+    dst[dpos + srcLength] = L'\0';
+}
+
+void TTDHostAppendWChar(TTDHostCharType* dst, const wchar_t* src)
+{
+    size_t dpos = TTDHostStringLength(dst);
+    size_t srcLength = wcslen(src);
+
+    for(size_t i = 0; i < srcLength; ++i)
+    {
+        dst[dpos + i] = (wchar_t)src[i];
+    }
+    dst[dpos + srcLength] = L'\0';
+}
+
+void TTDHostAppendAscii(TTDHostCharType* dst, const char* src)
+{
+    size_t dpos = TTDHostStringLength(dst);
+    size_t srcLength = strlen(src);
+    for(size_t i = 0; i < srcLength; ++i)
+    {
+        dst[dpos + i] = (wchar_t)src[i];
+    }
+    dst[dpos + srcLength] = L'\0';
+}
+
+void TTDHostBuildCurrentExeDirectory(TTDHostCharType* path, size_t pathBufferLength)
+{
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(NULL, exePath, MAX_PATH);
+
+    size_t i = wcslen(exePath) - 1;
+    while(exePath[i] != TTDHostPathSeparatorChar)
+    {
+        --i;
+    }
+    exePath[i + 1] = L'\0';
+
+    TTDHostAppendWChar(path, exePath);
+}
+
+JsTTDStreamHandle TTDHostOpen(const TTDHostCharType* path, bool isWrite)
+{
+    FILE* res = nullptr;
+    _wfopen_s(&res, path, isWrite ? L"w+b" : L"r+b");
+
+    return (JsTTDStreamHandle)res;
+}
+
+#define TTDHostCWD(dst) _wgetcwd(dst, MAX_PATH)
+#define TTDDoPathInit(dst)
+#define TTDHostTok(opath, TTDHostPathSeparator, context) wcstok_s(opath, TTDHostPathSeparator, context)
+#define TTDHostStat(cpath, statVal) _wstat(cpath, statVal)
+
+#define TTDHostMKDir(cpath) _wmkdir(cpath)
+#define TTDHostCHMod(cpath, flags) _wchmod(cpath, flags)
+#define TTDHostRMFile(cpath) _wremove(cpath)
+
+#define TTDHostFindFirst(strPattern, FileInformation) _wfindfirst(strPattern, FileInformation)
+#define TTDHostFindNext(hFile, FileInformation) _wfindnext(hFile, FileInformation)
+#define TTDHostFindClose(hFile) _findclose(hFile)
+
+#define TTDHostDirInfoName(FileInformation) FileInformation.name
+
+#define TTDHostRead(buff, size, handle) fread_s(buff, size, 1, size, (FILE*)handle);
+#define TTDHostWrite(buff, size, handle) fwrite(buff, 1, size, (FILE*)handle)
+#endif
+
+void TTReportLastIOErrorAsNeeded(BOOL ok, const char* msg)
+{
+    if(!ok)
+    {
+#ifdef _WIN32
+        DWORD lastError = GetLastError();
+        LPTSTR pTemp = NULL;
+        FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL, lastError, 0, (LPTSTR)&pTemp, 0, NULL);
+        fprintf(stderr, "Error is: %i %s\n", lastError, pTemp);
+#else
+        fprintf(stderr, "Error is: %i %s\n", errno, strerror(errno));
+#endif
+        fprintf(stderr, "Message is: %s\n", msg);
+    }
+}
+
+void CreateDirectoryIfNeeded(size_t uriByteLength, const byte* uriBytes)
+{
+    TTDHostCharType opath[MAX_PATH];
+    TTDHostInitFromUriBytes(opath, uriBytes, uriByteLength);
+
+    TTDHostCharType cpath[MAX_PATH];
+    TTDHostInitEmpty(cpath);
+    TTDDoPathInit(cpath);
+
+    TTDHostStatType statVal;
+    TTDHostCharType* context = nullptr;
+    TTDHostCharType* token = TTDHostTok(opath, TTDHostPathSeparator, &context);
+    TTDHostAppend(cpath, token);
+
+    //At least 1 part of the path must exist so iterate until we find it
+    while(TTDHostStat(cpath, &statVal) == -1)
+    {
+        token = TTDHostTok(nullptr, TTDHostPathSeparator, &context);
+        TTDHostAppend(cpath, TTDHostPathSeparator);
+        TTDHostAppend(cpath, token);
+    }
+
+    //Now continue until we hit the part that doesn't exist (or the end of the path)
+    while(token != nullptr && TTDHostStat(cpath, &statVal) != -1)
+    {
+        token = TTDHostTok(nullptr, TTDHostPathSeparator, &context);
+        if(token != nullptr)
+        {
+            TTDHostAppend(cpath, TTDHostPathSeparator);
+            TTDHostAppend(cpath, token);
+        }
+    }
+
+    //Now if there is path left then continue build up the directory tree as we go
+    while(token != nullptr)
+    {
+        TTDHostMKDir(cpath);
+
+        token = TTDHostTok(nullptr, TTDHostPathSeparator, &context);
+        if(token != nullptr)
+        {
+            TTDHostAppend(cpath, TTDHostPathSeparator);
+            TTDHostAppend(cpath, token);
+        }
+    }
+}
+
+void CleanDirectory(size_t uriByteLength, const byte* uriBytes)
+{
+    TTDHostFindHandle hFile;
+    TTDHostFileInfo FileInformation;
+
+    TTDHostCharType strPattern[MAX_PATH];
+    TTDHostInitFromUriBytes(strPattern, uriBytes, uriByteLength);
+    TTDHostAppendAscii(strPattern, "*.*");
+
+    hFile = TTDHostFindFirst(strPattern, &FileInformation);
+    if(hFile != TTDHostFindInvalid)
+    {
+        do
+        {
+            if(TTDHostDirInfoName(FileInformation)[0] != '.')
+            {
+                TTDHostCharType strFilePath[MAX_PATH];
+                TTDHostInitFromUriBytes(strFilePath, uriBytes, uriByteLength);
+                TTDHostAppend(strFilePath, TTDHostDirInfoName(FileInformation));
+
+                // Set file attributes
+                TTDHostCHMod(strFilePath, S_IREAD | S_IWRITE);
+                TTDHostRMFile(strFilePath);
+            }
+        } while(TTDHostFindNext(hFile, &FileInformation) != TTDHostFindInvalid);
+
+        // Close handle
+        TTDHostFindClose(hFile);
+    }
+}
+
+void GetTTDDirectory(const char* curi, size_t* uriByteLength, byte* uriBytes)
+{
+    TTDHostCharType turi[MAX_PATH];
+    TTDHostInitEmpty(turi);
+
+    TTDHostCharType wcuri[MAX_PATH];
+    mbstowcs(wcuri, curi, MAX_PATH);
+
+    if(curi[0] != '~')
+    {
+        TTDHostCWD(turi);
+        TTDHostAppend(turi, TTDHostPathSeparator);
+
+        TTDHostAppendWChar(turi, wcuri);
+    }
+    else
+    {
+        TTDHostBuildCurrentExeDirectory(turi, MAX_PATH);
+
+        TTDHostAppendAscii(turi, "_ttdlog");
+        TTDHostAppend(turi, TTDHostPathSeparator);
+
+        TTDHostAppendWChar(turi, wcuri + 1);
+    }
+
+    //add a path separator if one is not already present
+    if(curi[strlen(curi) - 1] != (char)TTDHostPathSeparatorChar)
+    {
+        TTDHostAppend(turi, TTDHostPathSeparator);
+    }
+
+    size_t turiLength = TTDHostStringLength(turi);
+
+    size_t byteLengthWNull = (turiLength + 1) * sizeof(TTDHostCharType);
+    memcpy_s(uriBytes, byteLengthWNull, turi, byteLengthWNull);
+
+    *uriByteLength = turiLength * sizeof(TTDHostCharType);
+}
+
+void CALLBACK TTInitializeForWriteLogStreamCallback(size_t uriByteLength, const byte* uriBytes)
+{
+    //If the directory does not exist then we want to create it
+    CreateDirectoryIfNeeded(uriByteLength, uriBytes);
+
+    //Clear the logging directory so it is ready for us to write into
+    CleanDirectory(uriByteLength, uriBytes);
+}
+
+JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const byte* uriBytes, const char* asciiResourceName, bool read, bool write)
+{
+    void* res = nullptr;
+    TTDHostCharType path[MAX_PATH];
+    TTDHostInitFromUriBytes(path, uriBytes, uriByteLength);
+    TTDHostAppendAscii(path, asciiResourceName);
+
+    res = TTDHostOpen(path, write);
+    if(res == nullptr)
+    {
+#if _WIN32
+        fwprintf(stderr, L"Filename: %ls\n", (wchar_t*)path);
+#else
+        fprintf(stderr, "Filename: %s\n", (char*)path);
+#endif
+    }
+
+    TTReportLastIOErrorAsNeeded(res != nullptr, "Failed File Open");
+    return res;
+}
+
+bool CALLBACK TTReadBytesFromStreamCallback(JsTTDStreamHandle handle, byte* buff, size_t size, size_t* readCount)
+{
+    if(size > MAXDWORD)
+    {
+        *readCount = 0;
+        return false;
+    }
+
+    BOOL ok = FALSE;
+    *readCount = TTDHostRead(buff, size, (FILE*)handle);
+    ok = (*readCount != 0);
+
+    TTReportLastIOErrorAsNeeded(ok, "Failed Read!!!");
+
+    return ok ? true : false;
+}
+
+bool CALLBACK TTWriteBytesToStreamCallback(JsTTDStreamHandle handle, const byte* buff, size_t size, size_t* writtenCount)
+{
+    if(size > MAXDWORD)
+    {
+        *writtenCount = 0;
+        return false;
+    }
+
+    BOOL ok = FALSE;
+    *writtenCount = TTDHostWrite(buff, size, (FILE*)handle);
+    ok = (*writtenCount == size);
+
+    TTReportLastIOErrorAsNeeded(ok, "Failed Read!!!");
+
+    return ok ? true : false;
+}
+
+void CALLBACK TTFlushAndCloseStreamCallback(JsTTDStreamHandle handle, bool read, bool write)
+{
+    fflush((FILE*)handle);
+    fclose((FILE*)handle);
+}
+
+/////////////////////////////////////////////////
+
 namespace v8 {
 extern bool g_disableIdleGc;
 }
 namespace jsrt {
 
-    void ConvertToStdString(const wchar_t* src, std::string& dest)
-    {
-        size_t strlen = wcslen(src);
-        for(size_t i = 0; i < strlen; ++i)
-        {
-            dest.push_back((char)src[i]);
-        }
-    }
-    void CreateDirectoryIfNeeded(const char* path)
-    {
-        bool isPathDirName = (path[strlen(path) - 1] == L'\\');
-        std::string fullpath(path);
-        if(!isPathDirName)
-        {
-            fullpath.append("\\");
-        }
-        DWORD dwAttrib = GetFileAttributes(fullpath.c_str());
-        if((dwAttrib != INVALID_FILE_ATTRIBUTES) && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY))
-        {
-            return;
-        }
-        BOOL success = CreateDirectory(fullpath.c_str(), NULL);
-        if(!success)
-        {
-            DWORD lastError = GetLastError();
-            LPTSTR pTemp = NULL;
-            FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL, lastError, LANG_NEUTRAL, (LPTSTR)&pTemp, 0, NULL);
-            fprintf(stderr, ": %s", pTemp);
-        }
-    }
-    void DeleteDirectory(const char* path)
-    {
-        HANDLE hFile;
-        WIN32_FIND_DATA FileInformation;
-        bool isPathDirName = (path[strlen(path) - 1] == L'\\');
-        std::string strPattern(path);
-        if(!isPathDirName)
-        {
-            strPattern.append("\\");
-        }
-        strPattern.append("*.*");
-        hFile = ::FindFirstFile(strPattern.c_str(), &FileInformation);
-        if(hFile != INVALID_HANDLE_VALUE)
-        {
-            do
-            {
-                if(FileInformation.cFileName[0] != '.')
-                {
-                    std::string strFilePath(path);
-                    if(!isPathDirName)
-                    {
-                        strFilePath.append("\\");
-                    }
-                    strFilePath.append(FileInformation.cFileName);
-                    if(FileInformation.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-                    {
-                        DeleteDirectory(strFilePath.c_str());
-                        ::RemoveDirectory(strFilePath.c_str());
-                    }
-                    else
-                    {
-                        ::SetFileAttributes(strFilePath.c_str(), FILE_ATTRIBUTE_NORMAL);
-                        ::DeleteFile(strFilePath.c_str());
-                    }
-                }
-            } while(::FindNextFile(hFile, &FileInformation) == TRUE);
-            ::FindClose(hFile);
-        }
-    }
-    void GetFileFromURI(const char* uri, std::string& res)
-    {
-        int urilen = (int)strlen(uri);
-        int fpos = 0;
-        for(int spos = urilen - 1; spos >= 0; --spos)
-        {
-            if(uri[spos] == L'\\' || uri[spos] == L'/')
-            {
-                fpos = spos + 1;
-                break;
-            }
-        }
-        res.append(uri + fpos);
-    }
-    void GetDefaultTTDDirectory(std::string& res, const char* optExtraDir)
-    {
-        char* path = (char*)CoTaskMemAlloc(MAX_PATH * sizeof(char));
-        path[0] = '\0';
-        GetModuleFileName(NULL, path, MAX_PATH);
-        char* spos = path + strlen(path);
-        while(spos != path && *spos != '\\')
-        {
-            spos--;
-        }
-        int ccount = (int)((((byte*)spos) - ((byte*)path)) / sizeof(char));
-        res.append(path, 0, ccount);
-        if(res.back() != '\\')
-        {
-            res.append("\\");
-        }
-        res.append(optExtraDir);
-        if(res.back() != '\\')
-        {
-            res.append("\\");
-        }
-        CoTaskMemFree(path);
-    }
-    void CALLBACK GetTTDDirectory(const wchar_t* uri, wchar_t** fullTTDUri)
-    {
-        std::string logDir;
-        std::string uriStr;
-        ConvertToStdString(uri, uriStr);
-        GetDefaultTTDDirectory(logDir, uriStr.c_str());
-        if(logDir.back() != '\\')
-        {
-            logDir.push_back('\\');
-        }
-        const char* sstr = logDir.c_str();
-        int uriLength = (int)(strlen(sstr) + 1);
-        *fullTTDUri = (wchar_t*)CoTaskMemAlloc(uriLength * sizeof(wchar_t));
-        for(int i = 0; i < uriLength; ++i)
-        {
-            (*fullTTDUri)[i] = (wchar_t)sstr[i];
-        }
-    }
-    void CALLBACK TTInitializeForWriteLogStreamCallback(const wchar_t* uri)
-    {
-        std::string uriStr;
-        ConvertToStdString(uri, uriStr);
-        CreateDirectoryIfNeeded(uriStr.c_str());
-        DeleteDirectory(uriStr.c_str());
-    }
-    static HANDLE TTOpenStream_Helper(const char* uri, bool read, bool write)
-    {
-        HANDLE res = INVALID_HANDLE_VALUE;
-        if(read)
-        {
-            res = CreateFile(uri, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        }
-        else
-        {
-            res = CreateFile(uri, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-        }
-        if(res == INVALID_HANDLE_VALUE)
-        {
-            DWORD lastError = GetLastError();
-            LPTSTR pTemp = NULL;
-            FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL, lastError, LANG_NEUTRAL, (LPTSTR)&pTemp, 0, NULL);
-            fprintf(stderr, ": %s\n", pTemp);
-            fprintf(stderr, "Failed on file: %s\n", uri);
-        }
-        return res;
-    }
-    HANDLE CALLBACK TTGetLogStreamCallback(const wchar_t* uri, bool read, bool write)
-    {
-        std::string uriString;
-        ConvertToStdString(uri, uriString);
-        std::string logFile(uriString);
-        logFile.append("ttdlog.log");
-        return TTOpenStream_Helper(logFile.c_str(), read, write);
-    }
-    HANDLE CALLBACK TTGetSnapshotStreamCallback(const wchar_t* uri, const wchar_t* snapId, bool read, bool write)
-    {
-        std::string uriStr;
-        ConvertToStdString(uri, uriStr);
-        std::string snapIdStr;
-        ConvertToStdString(snapId, snapIdStr);
-        std::string snapFile(uriStr);
-        snapFile.append("\\snap_");
-        snapFile.append(snapIdStr);
-        snapFile.append(".snp");
-        return TTOpenStream_Helper(snapFile.c_str(), read, write);
-    }
-    HANDLE CALLBACK TTGetSrcCodeStreamCallback(const wchar_t* snapContainerUri, const wchar_t* documentid, const wchar_t* srcFileName, bool read, bool write)
-    {
-        std::string snapContainerUriStr;
-        ConvertToStdString(snapContainerUri, snapContainerUriStr);
-        std::string documentidStr;
-        ConvertToStdString(documentid, documentidStr);
-        std::string srcFileNameStr;
-        ConvertToStdString(srcFileName, srcFileNameStr);
-        std::string sFile;
-        GetFileFromURI(srcFileNameStr.c_str(), sFile);
-        std::string srcPath(snapContainerUriStr);
-        srcPath.append(documentidStr);
-        srcPath.append("_");
-        srcPath.append(sFile);
-        return TTOpenStream_Helper(srcPath.c_str(), read, write);
-    }
-    bool CALLBACK TTReadBytesFromStreamCallback(HANDLE strm, BYTE* buff, DWORD size, DWORD* readCount)
-    {
-        *readCount = 0;
-        BOOL ok = ReadFile(strm, buff, size, readCount, NULL);
-        return ok ? true : false;
-    }
-    bool CALLBACK TTWriteBytesToStreamCallback(HANDLE strm, BYTE* buff, DWORD size, DWORD* writtenCount)
-    {
-        BOOL ok = WriteFile(strm, buff, size, writtenCount, NULL);
-        return ok ? true : false;
-    }
-    void CALLBACK TTFlushAndCloseStreamCallback(HANDLE strm, bool read, bool write)
-    {
-        if(strm != INVALID_HANDLE_VALUE)
-        {
-            if(write)
-            {
-                FlushFileBuffers(strm);
-            }
-            CloseHandle(strm);
-        }
-    }
+
 /* static */ __declspec(thread) IsolateShim * IsolateShim::s_currentIsolate;
 /* static */ __declspec(thread) IsolateShim * IsolateShim::s_previousIsolate;
 /* static */ IsolateShim * IsolateShim::s_isolateList = nullptr;
@@ -272,7 +374,7 @@ IsolateShim::~IsolateShim() {
   }
 }
 
-/* static */ v8::Isolate * IsolateShim::New(const char* uri, bool doRecord, bool doReplay, uint32_t snapInterval, uint32_t snapHistoryLength) {
+/* static */ v8::Isolate * IsolateShim::New(const char* uri, bool doRecord, bool doReplay, bool doDebug, uint32_t snapInterval, uint32_t snapHistoryLength) {
   // CHAKRA-TODO: Disable multiple isolate for now until it is fully implemented
   /*
   if (s_isolateList != nullptr) {
@@ -293,14 +395,16 @@ IsolateShim::~IsolateShim() {
   }
   else
   {
+      byte ttUri[MAX_PATH * sizeof(wchar_t)];
+      size_t ttUriByteLength = 0;
+      GetTTDDirectory(uri, &ttUriByteLength, ttUri);
+
+      JsRuntimeAttributes attributes = static_cast<JsRuntimeAttributes>(JsRuntimeAttributeAllowScriptInterrupt | JsRuntimeAttributeEnableExperimentalFeatures);
       if(doRecord) {
-          error = JsTTDCreateRecordRuntime(static_cast<JsRuntimeAttributes>(JsRuntimeAttributeAllowScriptInterrupt | JsRuntimeAttributeEnableExperimentalFeatures), const_cast<char*>(uri), strlen(uri), snapInterval, snapHistoryLength, nullptr, &runtime);
+          error = JsTTDCreateRecordRuntime(attributes, ttUri, ttUriByteLength, snapInterval, snapHistoryLength, &TTInitializeForWriteLogStreamCallback, &TTCreateStreamCallback, &TTReadBytesFromStreamCallback, &TTWriteBytesToStreamCallback, &TTFlushAndCloseStreamCallback, nullptr, &runtime);
       }
       else {
-          error = JsTTDCreateDebugRuntime(static_cast<JsRuntimeAttributes>(JsRuntimeAttributeAllowScriptInterrupt | JsRuntimeAttributeEnableExperimentalFeatures), const_cast<char*>(uri), strlen(uri), nullptr, &runtime);
-      }
-      if(error == JsNoError) {
-          JsTTDSetIOCallbacks(runtime, &GetTTDDirectory, &TTInitializeForWriteLogStreamCallback, &TTGetLogStreamCallback, &TTGetSnapshotStreamCallback, &TTGetSrcCodeStreamCallback, &TTReadBytesFromStreamCallback, &TTWriteBytesToStreamCallback, &TTFlushAndCloseStreamCallback);
+          error = JsTTDCreateReplayRuntime(attributes, ttUri, ttUriByteLength, doDebug, &TTInitializeForWriteLogStreamCallback, &TTCreateStreamCallback, &TTReadBytesFromStreamCallback, &TTWriteBytesToStreamCallback, &TTFlushAndCloseStreamCallback, nullptr, &runtime);
       }
   }
   if (error != JsNoError) {
@@ -398,13 +502,18 @@ void CALLBACK IsolateShim::JsContextBeforeCollectCallback(JsRef contextRef,
                                                           void *data) {
   IsolateShim * isolateShim = reinterpret_cast<IsolateShim *>(data);
   ContextShim * contextShim = isolateShim->GetContextShim(contextRef);
+
+//#if ENABLE_TTD
+  JsTTDNotifyContextDestroy(contextRef);
+//#endif
+
   delete contextShim;
 }
 
-bool IsolateShim::NewContext(JsContextRef * context, bool exposeGC, bool runUnderTT,
+bool IsolateShim::NewContext(JsContextRef * context, bool exposeGC, bool useGlobalTTState,
                              JsValueRef globalObjectTemplateInstance) {
   ContextShim * contextShim =
-    ContextShim::New(this, exposeGC, runUnderTT, globalObjectTemplateInstance);
+    ContextShim::New(this, exposeGC, useGlobalTTState, globalObjectTemplateInstance);
   if (contextShim == nullptr) {
     return false;
   }
@@ -610,8 +719,8 @@ void* IsolateShim::GetData(uint32_t slot) {
     int64_t origNETime = *nextEventTime;
     JsTTDMoveMode _moveMode = (JsTTDMoveMode)(*moveMode);
     JsRuntimeHandle rHandle = jsrt::IsolateShim::FromIsolate(isolate)->GetRuntimeHandle();
-    bool needFreshCtxs = false;
-    JsErrorCode error = JsTTDGetSnapTimeTopLevelEventMove(rHandle, _moveMode, nextEventTime, &needFreshCtxs, &snapEventTime, &snapEventEndTime);
+
+    JsErrorCode error = JsTTDGetSnapTimeTopLevelEventMove(rHandle, _moveMode, nextEventTime, &snapEventTime, &snapEventEndTime);
     if(error != JsNoError)
     {
         if(error == JsErrorCategoryUsage)
@@ -625,12 +734,12 @@ void* IsolateShim::GetData(uint32_t slot) {
             ExitProcess(1);
         }
     }
-    JsTTDPrepContextsForTopLevelEventMove(rHandle, needFreshCtxs);
+
     if((*moveMode & JsTTDMoveMode::JsTTDMoveScanIntervalBeforeDebugExecute) == JsTTDMoveMode::JsTTDMoveScanIntervalBeforeDebugExecute)
     {
         JsTTDPreExecuteSnapShotInterval(snapEventTime, snapEventEndTime, ((JsTTDMoveMode)(*moveMode)));
         _moveMode = (JsTTDMoveMode)(_moveMode & ~JsTTDMoveMode::JsTTDMoveScanIntervalBeforeDebugExecute); //did scan so no longer needed
-        error = JsTTDGetSnapTimeTopLevelEventMove(rHandle, _moveMode, nextEventTime, &needFreshCtxs, &snapEventTime, nullptr);
+        error = JsTTDGetSnapTimeTopLevelEventMove(rHandle, _moveMode, nextEventTime, &snapEventTime, nullptr);
         if(error != JsNoError)
         {
             if(error == JsErrorCategoryUsage)
@@ -644,10 +753,11 @@ void* IsolateShim::GetData(uint32_t slot) {
                 ExitProcess(1);
             }
         }
-        JsTTDPrepContextsForTopLevelEventMove(rHandle, needFreshCtxs);
     }
+
     JsTTDMoveToTopLevelEvent(_moveMode, snapEventTime, *nextEventTime);
     JsErrorCode res = JsTTDReplayExecution(&_moveMode, nextEventTime);
+
     //update before we return
     *moveMode = (uint64_t)_moveMode;
     if(*nextEventTime == -1)

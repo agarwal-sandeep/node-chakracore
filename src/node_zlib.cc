@@ -400,7 +400,7 @@ class ZCtx : public AsyncWrap {
       message = ctx->strm_.msg;
     }
 #if ENABLE_TTD_NODE
-    TTD_NATIVE_BUFFER_ACCESS_NOTIFY("After Error");
+    Buffer::TTDAsyncModNotify(ctx->strm_.next_out);
 #endif
 
     HandleScope scope(env->isolate());

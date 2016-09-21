@@ -27,8 +27,8 @@ namespace v8 {
 HeapProfiler dummyHeapProfiler;
 CpuProfiler dummyCpuProfiler;
 
-Isolate* Isolate::New(const CreateParams& params, const char* uri, bool doRecord, bool doReplay, uint32_t snapInterval, uint32_t snapHistoryLength) {
-  Isolate* iso = jsrt::IsolateShim::New(uri, doRecord, doReplay, snapInterval, snapHistoryLength);
+Isolate* Isolate::New(const CreateParams& params, const char* uri, bool doRecord, bool doReplay, bool doDebug, uint32_t snapInterval, uint32_t snapHistoryLength) {
+  Isolate* iso = jsrt::IsolateShim::New(uri, doRecord, doReplay, doDebug, snapInterval, snapHistoryLength);
   if (params.array_buffer_allocator) {
     CHAKRA_VERIFY(!jsrt::IsolateShim::FromIsolate(iso)->g_arrayBufferAllocator);
     jsrt::IsolateShim::FromIsolate(iso)->g_arrayBufferAllocator =
@@ -38,7 +38,7 @@ Isolate* Isolate::New(const CreateParams& params, const char* uri, bool doRecord
 }
 
 Isolate* Isolate::New() {
-  return jsrt::IsolateShim::New(nullptr, false, false, UINT32_MAX, UINT32_MAX);
+  return jsrt::IsolateShim::New(nullptr, false, false, false, UINT32_MAX, UINT32_MAX);
 }
 
 Isolate *Isolate::GetCurrent() {

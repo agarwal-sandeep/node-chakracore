@@ -96,6 +96,7 @@ extern char **environ;
 #if ENABLE_TTD_NODE
 bool s_doTTRecord = false;
 bool s_doTTReplay = false;
+bool s_doTTDebug = false;
 const char* s_ttUri = nullptr;
 uint32_t s_ttdSnapInterval = 2000;
 uint32_t s_ttdSnapHistoryLength = 2;
@@ -1664,7 +1665,7 @@ static void ReportException(Environment* env,
 #if ENABLE_TTD_NODE
   //If TTD recording is enable then we want to emit the log info
   if(s_doTTRecord) {
-      JsTTDEmitTimeTravelRecording();
+      JsTTDEmitRecording();
   }
 #endif
 }
@@ -2221,7 +2222,8 @@ void Exit(const FunctionCallbackInfo<Value>& args) {
 #if ENABLE_TTD_NODE
     //If TTD recording is enable then we want to emit the log info
     if(s_doTTRecord) {
-        JsTTDEmitTimeTravelRecording();
+        JsTTDHostExit(args[0]->Int32Value());
+        JsTTDEmitRecording();
     }
 #endif
   WaitForInspectorDisconnect(Environment::GetCurrent(args));
@@ -4234,6 +4236,12 @@ void Init(int* argc,
           s_doTTReplay = true;
           s_ttUri = argv[i] + wcslen(L"-TTReplay:");
       }
+      else if(strstr(argv[i], "-TTDebug:") == argv[i])
+      {
+          s_doTTReplay = true;
+          s_doTTDebug = true;
+          s_ttUri = argv[i] + wcslen(L"-TTDebug:");
+      }
       else if(strstr(argv[i], "-TTBreakFirst") == argv[i])
       {
           s_ttdStartupMode = (0x100 | 0x1);
@@ -4444,7 +4452,7 @@ static void StartNodeInstance(void* arg) {
 #endif
 
 #if ENABLE_TTD_NODE
-  Isolate* isolate = Isolate::New(params, s_ttUri, s_doTTRecord, false, s_ttdSnapInterval, s_ttdSnapHistoryLength);
+  Isolate* isolate = Isolate::New(params, s_ttUri, s_doTTRecord, false, false, s_ttdSnapInterval, s_ttdSnapHistoryLength);
 #else
   Isolate* isolate = Isolate::New(params, nullptr, false, false, UINT32_MAX, UINT32_MAX);
 #endif
@@ -4471,6 +4479,7 @@ static void StartNodeInstance(void* arg) {
 #endif
 
 #if ENABLE_TTD_NODE
+    //Make sure first context takes TT state from global config. Others created from it in runtime will inherit the TT config.
     Local<Context> context = Context::New(isolate, s_doTTRecord);
 #else
     Local<Context> context = Context::New(isolate);
@@ -4512,7 +4521,7 @@ static void StartNodeInstance(void* arg) {
 #if ENABLE_TTD_NODE
     //Start time travel after environment is loaded
     if(s_doTTRecord) {
-        JsTTDStartTimeTravelRecording();
+        JsTTDStart();
     }
 #endif
 
@@ -4551,7 +4560,8 @@ static void StartNodeInstance(void* arg) {
 
 #if ENABLE_TTD_NODE
     if(s_doTTRecord) {
-        JsTTDStopTimeTravelRecording();
+        JsTTDEmitRecording();
+        JsTTDStop();
     }
 #endif
 
@@ -4587,7 +4597,7 @@ static void StartNodeInstance_TTDReplay(void* arg) {
     params.code_event_handler = vTune::GetVtuneCodeEventHandler();
 #endif
 
-    Isolate* isolate = Isolate::New(params, s_ttUri, false, true, UINT32_MAX, UINT32_MAX);
+    Isolate* isolate = Isolate::New(params, s_ttUri, false, true, s_doTTDebug, UINT32_MAX, UINT32_MAX);
 
     {
         Mutex::ScopedLock scoped_lock(node_isolate_mutex);
@@ -4609,7 +4619,7 @@ static void StartNodeInstance_TTDReplay(void* arg) {
         array_buffer_allocator.zero_fill_field());
 #endif
 
-    Local<Context> context = Context::New(isolate, false);
+    Local<Context> context = Context::New(isolate, true);
 
     Context::Scope context_scope(context);
     // CHAKRA-TODO : fix this to create isolate_data before setting context
@@ -4630,7 +4640,7 @@ static void StartNodeInstance_TTDReplay(void* arg) {
 
     // Start debug agent when argv has --debug
     if(instance_data->use_debug_agent())
-        StartDebug(&env, debug_wait_connect);
+        StartDebug(&env, nullptr, debug_wait_connect);
 
     {
         Environment::AsyncCallbackScope callback_scope(&env);
@@ -4644,7 +4654,7 @@ static void StartNodeInstance_TTDReplay(void* arg) {
         EnableDebug(&env);
 
     ////
-    JsTTDStartTimeTravelDebugging();
+    JsTTDStart();
 
     try
     {

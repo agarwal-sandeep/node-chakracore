@@ -49,7 +49,7 @@ Local<Object> Context::Global() {
 extern bool g_exposeGC;
 
 Local<Context> Context::New(Isolate* external_isolate,
-                            bool runUnderTT,
+                            bool useGlobalTTState,
                             ExtensionConfiguration* extensions,
                             Handle<ObjectTemplate> global_template,
                             Handle<Value> global_object) {
@@ -70,7 +70,7 @@ Local<Context> Context::New(Isolate* external_isolate,
 
   JsContextRef context;
   jsrt::IsolateShim* isoShim = jsrt::IsolateShim::FromIsolate(external_isolate);
-  if (!isoShim->NewContext(&context, g_exposeGC, runUnderTT, *glob)) {
+  if (!isoShim->NewContext(&context, g_exposeGC, useGlobalTTState, *glob)) {
     return Local<Context>();
   }
 

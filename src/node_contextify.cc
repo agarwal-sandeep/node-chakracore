@@ -201,6 +201,7 @@ class ContextifyContext {
                                              CreateDataWrapper(env));
     object_template->SetHandler(config);
 
+    //Don't use TT global state -- this will inherit TT mode from calling script context
     Local<Context> ctx = Context::New(env->isolate(), false, nullptr, object_template);
 
     if (ctx.IsEmpty()) {
