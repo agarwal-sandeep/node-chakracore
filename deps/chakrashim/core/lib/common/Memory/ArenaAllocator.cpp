@@ -456,7 +456,11 @@ ReleaseHeapMemory()
 }
 
 template _ALWAYSINLINE char *ArenaAllocatorBase<InPlaceFreeListPolicy, 0, 0, 0>::AllocInternal(size_t requestedBytes);
+
+#if !(defined(__clang__) && defined(_M_IX86))
+// otherwise duplicate instantination of AllocInternal Error
 template _ALWAYSINLINE char *ArenaAllocatorBase<InPlaceFreeListPolicy, 3, 0, 0>::AllocInternal(size_t requestedBytes);
+#endif
 
 template <class TFreeListPolicy, size_t ObjectAlignmentBitShiftArg, bool RequireObjectAlignment, size_t MaxObjectSize>
 char *
@@ -1443,7 +1447,7 @@ void InlineCacheAllocator::ZeroAll()
 #endif
 
 #if DBG
-bool IsInstInlineCacheAllocator::IsAllZero()
+bool CacheAllocator::IsAllZero()
 {
     UpdateCacheBlock();
     BigBlock *blockp = this->bigBlocks;
@@ -1489,7 +1493,7 @@ bool IsInstInlineCacheAllocator::IsAllZero()
 }
 #endif
 
-void IsInstInlineCacheAllocator::ZeroAll()
+void CacheAllocator::ZeroAll()
 {
     UpdateCacheBlock();
     BigBlock *blockp = this->bigBlocks;

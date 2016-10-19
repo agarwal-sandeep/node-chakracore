@@ -76,6 +76,7 @@ bool ChakraRTInterface::LoadChakraDll(ArgInfo* argInfo, HINSTANCE *outLibrary)
 
     m_jsApiHooks.pfJsrtCreateRuntime = (JsAPIHooks::JsrtCreateRuntimePtr)GetChakraCoreSymbol(library, "JsCreateRuntime");
     m_jsApiHooks.pfJsrtCreateContext = (JsAPIHooks::JsrtCreateContextPtr)GetChakraCoreSymbol(library, "JsCreateContext");
+    m_jsApiHooks.pfJsrtSetObjectBeforeCollectCallback = (JsAPIHooks::JsrtSetObjectBeforeCollectCallbackPtr)GetChakraCoreSymbol(library, "JsSetObjectBeforeCollectCallback");
     m_jsApiHooks.pfJsrtSetRuntimeMemoryLimit = (JsAPIHooks::JsrtSetRuntimeMemoryLimitPtr)GetChakraCoreSymbol(library, "JsSetRuntimeMemoryLimit");
     m_jsApiHooks.pfJsrtSetCurrentContext = (JsAPIHooks::JsrtSetCurrentContextPtr)GetChakraCoreSymbol(library, "JsSetCurrentContext");
     m_jsApiHooks.pfJsrtGetCurrentContext = (JsAPIHooks::JsrtGetCurrentContextPtr)GetChakraCoreSymbol(library, "JsGetCurrentContext");
@@ -103,6 +104,8 @@ bool ChakraRTInterface::LoadChakraDll(ArgInfo* argInfo, HINSTANCE *outLibrary)
     m_jsApiHooks.pfJsrtDoubleToNumber = (JsAPIHooks::JsrtDoubleToNumberPtr)GetChakraCoreSymbol(library, "JsDoubleToNumber");
     m_jsApiHooks.pfJsrtGetExternalData = (JsAPIHooks::JsrtGetExternalDataPtr)GetChakraCoreSymbol(library, "JsGetExternalData");
     m_jsApiHooks.pfJsrtCreateArray = (JsAPIHooks::JsrtCreateArrayPtr)GetChakraCoreSymbol(library, "JsCreateArray");
+    m_jsApiHooks.pfJsrtCreateArrayBuffer = (JsAPIHooks::JsrtCreateArrayBufferPtr)GetChakraCoreSymbol(library, "JsCreateArrayBuffer");
+    m_jsApiHooks.pfJsrtGetArrayBufferStorage = (JsAPIHooks::JsrtGetArrayBufferStoragePtr)GetChakraCoreSymbol(library, "JsGetArrayBufferStorage");
     m_jsApiHooks.pfJsrtHasException = (JsAPIHooks::JsrtHasExceptionPtr)GetChakraCoreSymbol(library, "JsHasException");
     m_jsApiHooks.pfJsrtSetException = (JsAPIHooks::JsrtSetExceptionPtr)GetChakraCoreSymbol(library, "JsSetException");
     m_jsApiHooks.pfJsrtGetAndClearException = (JsAPIHooks::JsrtGetAndClearExceptiopnPtr)GetChakraCoreSymbol(library, "JsGetAndClearException");
@@ -144,24 +147,18 @@ bool ChakraRTInterface::LoadChakraDll(ArgInfo* argInfo, HINSTANCE *outLibrary)
     m_jsApiHooks.pfJsrtStringFree = (JsAPIHooks::JsrtStringFreePtr)GetChakraCoreSymbol(library, "JsStringFree");
 
     m_jsApiHooks.pfJsrtTTDCreateRecordRuntime = (JsAPIHooks::JsrtTTDCreateRecordRuntimePtr)GetChakraCoreSymbol(library, "JsTTDCreateRecordRuntime");
-    m_jsApiHooks.pfJsrtTTDCreateDebugRuntime = (JsAPIHooks::JsrtTTDCreateDebugRuntimePtr)GetChakraCoreSymbol(library, "JsTTDCreateDebugRuntime");
+    m_jsApiHooks.pfJsrtTTDCreateReplayRuntime = (JsAPIHooks::JsrtTTDCreateReplayRuntimePtr)GetChakraCoreSymbol(library, "JsTTDCreateReplayRuntime");
     m_jsApiHooks.pfJsrtTTDCreateContext = (JsAPIHooks::JsrtTTDCreateContextPtr)GetChakraCoreSymbol(library, "JsTTDCreateContext");
+    m_jsApiHooks.pfJsrtTTDNotifyContextDestroy = (JsAPIHooks::JsrtTTDNotifyContextDestroyPtr)GetChakraCoreSymbol(library, "JsTTDNotifyContextDestroy");
 
-    m_jsApiHooks.pfJsrtTTDSetIOCallbacks = (JsAPIHooks::JsrtTTDSetIOCallbacksPtr)GetChakraCoreSymbol(library, "JsTTDSetIOCallbacks");
-
-    m_jsApiHooks.pfJsrtTTDStartTimeTravelRecording = (JsAPIHooks::JsrtTTDStartTimeTravelRecordingPtr)GetChakraCoreSymbol(library, "JsTTDStartTimeTravelRecording");
-    m_jsApiHooks.pfJsrtTTDStopTimeTravelRecording = (JsAPIHooks::JsrtTTDStopTimeTravelRecordingPtr)GetChakraCoreSymbol(library, "JsTTDStopTimeTravelRecording");
-    m_jsApiHooks.pfJsrtTTDEmitTimeTravelRecording = (JsAPIHooks::JsrtTTDEmitTimeTravelRecordingPtr)GetChakraCoreSymbol(library, "JsTTDEmitTimeTravelRecording");
-
-    m_jsApiHooks.pfJsrtTTDStartTimeTravelDebugging = (JsAPIHooks::JsrtTTDStartTimeTravelDebuggingPtr)GetChakraCoreSymbol(library, "JsTTDStartTimeTravelDebugging");
-    m_jsApiHooks.pfJsrtTTDPauseTimeTravelBeforeRuntimeOperation = (JsAPIHooks::JsrtTTDPauseTimeTravelBeforeRuntimeOperationPtr)GetChakraCoreSymbol(library, "JsTTDPauseTimeTravelBeforeRuntimeOperation");
-    m_jsApiHooks.pfJsrtTTDReStartTimeTravelAfterRuntimeOperation = (JsAPIHooks::JsrtTTDReStartTimeTravelAfterRuntimeOperationPtr)GetChakraCoreSymbol(library, "JsTTDReStartTimeTravelAfterRuntimeOperation");
+    m_jsApiHooks.pfJsrtTTDStart = (JsAPIHooks::JsrtTTDStartPtr)GetChakraCoreSymbol(library, "JsTTDStart");
+    m_jsApiHooks.pfJsrtTTDStop = (JsAPIHooks::JsrtTTDStopPtr)GetChakraCoreSymbol(library, "JsTTDStop");
+    m_jsApiHooks.pfJsrtTTDEmitRecording = (JsAPIHooks::JsrtTTDEmitRecordingPtr)GetChakraCoreSymbol(library, "JsTTDEmitRecording");
 
     m_jsApiHooks.pfJsrtTTDNotifyYield = (JsAPIHooks::JsrtTTDNotifyYieldPtr)GetChakraCoreSymbol(library, "JsTTDNotifyYield");
     m_jsApiHooks.pfJsrtTTDHostExit = (JsAPIHooks::JsrtTTDHostExitPtr)GetChakraCoreSymbol(library, "JsTTDHostExit");
 
     m_jsApiHooks.pfJsrtTTDGetSnapTimeTopLevelEventMove = (JsAPIHooks::JsrtTTDGetSnapTimeTopLevelEventMovePtr)GetChakraCoreSymbol(library, "JsTTDGetSnapTimeTopLevelEventMove");
-    m_jsApiHooks.pfJsrtTTDPrepContextsForTopLevelEventMove = (JsAPIHooks::JsrtTTDPrepContextsForTopLevelEventMovePtr)GetChakraCoreSymbol(library, "JsTTDPrepContextsForTopLevelEventMove");
     m_jsApiHooks.pfJsrtTTDPreExecuteSnapShotInterval = (JsAPIHooks::JsrtTTDPreExecuteSnapShotIntervalPtr)GetChakraCoreSymbol(library, "JsTTDPreExecuteSnapShotInterval");
     m_jsApiHooks.pfJsrtTTDMoveToTopLevelEvent = (JsAPIHooks::JsrtTTDMoveToTopLevelEventPtr)GetChakraCoreSymbol(library, "JsTTDMoveToTopLevelEvent");
     m_jsApiHooks.pfJsrtTTDReplayExecution = (JsAPIHooks::JsrtTTDReplayExecutionPtr)GetChakraCoreSymbol(library, "JsTTDReplayExecution");
@@ -180,7 +177,18 @@ void ChakraRTInterface::UnloadChakraDll(HINSTANCE library)
     {
         pDllCanUnloadNow();
     }
+#ifdef _WIN32
     UnloadChakraCore(library);
+#else  // !_WIN32
+    // PAL thread shutdown needs more time after execution completion.
+    // Do not FreeLibrary. Invoke DllMain(DLL_PROCESS_DETACH) directly.
+    typedef BOOL (__stdcall *PDLLMAIN)(HINSTANCE, DWORD, LPVOID);
+    PDLLMAIN pDllMain = (PDLLMAIN) GetChakraCoreSymbol(library, "DllMain");
+    if (pDllMain)
+    {
+        pDllMain(library, DLL_PROCESS_DETACH, NULL);
+    }
+#endif
 #endif
 }
 

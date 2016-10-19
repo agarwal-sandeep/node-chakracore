@@ -27,13 +27,13 @@ namespace Js
 
     ScriptFunction::ScriptFunction(DynamicType * type) :
         ScriptFunctionBase(type), environment((FrameDisplay*)&NullFrameDisplay),
-        cachedScopeObj(nullptr), hasInlineCaches(false), hasSuperReference(false),
+        cachedScopeObj(nullptr), hasInlineCaches(false), hasSuperReference(false), homeObj(nullptr),
         isActiveScript(false)
     {}
 
     ScriptFunction::ScriptFunction(FunctionProxy * proxy, ScriptFunctionType* deferredPrototypeType)
         : ScriptFunctionBase(deferredPrototypeType, proxy),
-        environment((FrameDisplay*)&NullFrameDisplay), cachedScopeObj(nullptr),
+        environment((FrameDisplay*)&NullFrameDisplay), cachedScopeObj(nullptr), homeObj(nullptr),
         hasInlineCaches(false), hasSuperReference(false), isActiveScript(false)
     {
         Assert(proxy->GetFunctionProxy() == proxy);
@@ -512,6 +512,11 @@ namespace Js
             extractor->MarkScriptFunctionScopeInfo(environment);
         }
 
+        if(this->cachedScopeObj != nullptr)
+        {
+            extractor->MarkVisitVar(this->cachedScopeObj);
+        }
+
         if(this->homeObj != nullptr)
         {
             extractor->MarkVisitVar(this->homeObj);
@@ -580,6 +585,11 @@ namespace Js
             }
         }
 
+        if(this->cachedScopeObj != nullptr)
+        {
+            this->GetScriptContext()->TTDWellKnownInfo->EnqueueNewPathVarAsNeeded(this, this->cachedScopeObj, _u("_cachedScopeObj"));
+        }
+
         if(this->homeObj != nullptr)
         {
             this->GetScriptContext()->TTDWellKnownInfo->EnqueueNewPathVarAsNeeded(this, this->homeObj, _u("_homeObj"));
@@ -609,13 +619,19 @@ namespace Js
             ssfi->ScopeId = TTD_CONVERT_SCOPE_TO_PTR_ID(environment);
         }
 
+        ssfi->CachedScopeObjId = TTD_INVALID_PTR_ID;
+        if(this->cachedScopeObj != nullptr)
+        {
+            ssfi->CachedScopeObjId = TTD_CONVERT_VAR_TO_PTR_ID(this->cachedScopeObj);
+        }
+
         ssfi->HomeObjId = TTD_INVALID_PTR_ID;
         if(this->homeObj != nullptr)
         {
             ssfi->HomeObjId = TTD_CONVERT_VAR_TO_PTR_ID(this->homeObj);
         }
 
-        ssfi->ComputedNameInfo = this->computedNameVar;
+        ssfi->ComputedNameInfo = TTD_CONVERT_JSVAR_TO_TTDVAR(this->computedNameVar);
 
         ssfi->HasInlineCaches = this->hasInlineCaches;
         ssfi->HasSuperReference = this->hasSuperReference;
@@ -626,11 +642,11 @@ namespace Js
 #endif
 
     AsmJsScriptFunction::AsmJsScriptFunction(FunctionProxy * proxy, ScriptFunctionType* deferredPrototypeType) :
-        ScriptFunction(proxy, deferredPrototypeType), m_moduleMemory(nullptr)
+        ScriptFunction(proxy, deferredPrototypeType), m_moduleMemory(nullptr), m_lazyError(nullptr)
     {}
 
     AsmJsScriptFunction::AsmJsScriptFunction(DynamicType * type) :
-        ScriptFunction(type), m_moduleMemory(nullptr)
+        ScriptFunction(type), m_moduleMemory(nullptr), m_lazyError(nullptr)
     {}
 
     ScriptFunctionWithInlineCache::ScriptFunctionWithInlineCache(FunctionProxy * proxy, ScriptFunctionType* deferredPrototypeType) :
@@ -747,14 +763,15 @@ namespace Js
                     }
                     else if (!scriptContext->IsClosed())
                     {
-                        AllocatorDelete(IsInstInlineCacheAllocator, scriptContext->GetIsInstInlineCacheAllocator(), (IsInstInlineCache*)this->m_inlineCaches[i]);
+                        AllocatorDelete(CacheAllocator, scriptContext->GetIsInstInlineCacheAllocator(), (IsInstInlineCache*)this->m_inlineCaches[i]);
                     }
                     this->m_inlineCaches[i] = nullptr;
                 }
             }
 
-            if (!isShutdown && unregisteredInlineCacheCount > 0 && !scriptContext->IsClosed())
+            if (unregisteredInlineCacheCount > 0)
             {
+                AssertMsg(!isShutdown && !scriptContext->IsClosed(), "Unregistration of inlineCache should only be done if this is not shutdown or scriptContext closing.");
                 scriptContext->GetThreadContext()->NotifyInlineCacheBatchUnregistered(unregisteredInlineCacheCount);
             }
         }
@@ -811,7 +828,7 @@ namespace Js
             }
             for (; i < totalCacheCount; i++)
             {
-                inlineCaches[i] = AllocatorNewStructZ(IsInstInlineCacheAllocator,
+                inlineCaches[i] = AllocatorNewStructZ(CacheAllocator,
                     functionBody->GetScriptContext()->GetIsInstInlineCacheAllocator(), IsInstInlineCache);
             }
 #if DBG

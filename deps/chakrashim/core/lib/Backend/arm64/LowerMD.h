@@ -59,14 +59,14 @@ public:
             void            Init(Lowerer *lowerer) { __debugbreak(); }
             void            FinalLower(){ __debugbreak(); }
             bool            FinalLowerAssign(IR::Instr* instr){ __debugbreak(); return 0;  };
-            IR::Opnd *      GenerateMemRef(void *addr, IRType type, IR::Instr *instr, bool dontEncode = false) { __debugbreak(); return 0; }
+            IR::Opnd *      GenerateMemRef(intptr_t addr, IRType type, IR::Instr *instr, bool dontEncode = false) { __debugbreak(); return 0; }
             IR::Instr *     ChangeToHelperCall(IR::Instr * instr, IR::JnHelperMethod helperMethod, IR::LabelInstr *labelBailOut = NULL,
                             IR::Opnd *opndInstance = NULL, IR::PropertySymOpnd * propSymOpnd = nullptr, bool isHelperContinuation = false) { __debugbreak(); return 0; }
             IR::Instr *     ChangeToHelperCallMem(IR::Instr * instr, IR::JnHelperMethod helperMethod) { __debugbreak(); return 0; }
     static  IR::Instr *     CreateAssign(IR::Opnd *dst, IR::Opnd *src, IR::Instr *instrInsertPt) { __debugbreak(); return 0; }
     static  IR::Instr *     ChangeToAssign(IR::Instr * instr) { __debugbreak(); return 0; }
     static  IR::Instr *     ChangeToAssign(IR::Instr * instr, IRType type) { __debugbreak(); return 0; }
-    static  IR::Instr *     ChangeToLea(IR::Instr *const instr) { __debugbreak(); return 0; }
+    static  IR::Instr *     ChangeToLea(IR::Instr *const instr, bool postRegAlloc = false) { __debugbreak(); return 0; }
     static  IR::Instr *     ForceDstToReg(IR::Instr *instr) { __debugbreak(); return 0; }
     static  void            ImmedSrcToReg(IR::Instr * instr, IR::Opnd * newOpnd, int srcNum) { __debugbreak(); }
 
@@ -87,15 +87,18 @@ public:
               void            GenerateTaggedZeroTest( IR::Opnd * opndSrc, IR::Instr * instrInsert, IR::LabelInstr * labelHelper = NULL) { __debugbreak(); }
               void            GenerateObjectPairTest(IR::Opnd * opndSrc1, IR::Opnd * opndSrc2, IR::Instr * insertInstr, IR::LabelInstr * labelTarget) { __debugbreak(); }
               bool            GenerateObjectTest(IR::Opnd * opndSrc, IR::Instr * insertInstr, IR::LabelInstr * labelTarget, bool fContinueLabel = false) { __debugbreak(); return false; }
-              bool            GenerateFastBrString(IR::BranchInstr* instr) { __debugbreak(); return 0; }
+              bool            GenerateFastBrOrCmString(IR::Instr* instr) { __debugbreak(); return 0; }
+              bool            GenerateFastStringCheck(IR::Instr* instr, IR::RegOpnd *srcReg1, IR::RegOpnd *srcReg2, bool isEqual, bool isStrict, IR::LabelInstr *labelHelper, IR::LabelInstr *labelBranchSuccess, IR::LabelInstr *labelBranchFail) { __debugbreak(); return 0; }
               bool            GenerateFastCmSrEqConst(IR::Instr *instr) { __debugbreak(); return 0; }
               bool            GenerateFastCmXxI4(IR::Instr *instr) { __debugbreak(); return 0; }
               bool            GenerateFastCmXxR8(IR::Instr *instr) { Assert(UNREACHED); return NULL; }
               bool            GenerateFastCmXxTaggedInt(IR::Instr *instr) { __debugbreak(); return 0; }
               IR::Instr *     GenerateConvBool(IR::Instr *instr) { __debugbreak(); return 0; }
 
-
               void            GenerateClz(IR::Instr * instr) { __debugbreak(); }
+              void            GenerateCtz(IR::Instr * instr) { __debugbreak(); }
+              void            GeneratePopCnt32(IR::Instr * instr) { __debugbreak(); }
+              void            GenerateThrowUnreachable(IR::Instr * instr) { __debugbreak(); }
               void            GenerateFastDivByPow2(IR::Instr *instr) { __debugbreak(); }
               bool            GenerateFastAdd(IR::Instr * instrAdd) { __debugbreak(); return 0; }
               bool            GenerateFastSub(IR::Instr * instrSub) { __debugbreak(); return 0; }
@@ -121,7 +124,6 @@ public:
               IR::Instr *     GenerateFastScopedLdFld(IR::Instr * instrLdFld) { __debugbreak(); return 0; }
               IR::Instr *     GenerateFastScopedStFld(IR::Instr * instrStFld) { __debugbreak(); return 0; }
               bool            GenerateJSBooleanTest(IR::RegOpnd * regSrc, IR::Instr * insertInstr, IR::LabelInstr * labelTarget, bool fContinueLabel = false) { __debugbreak(); return 0; }
-              void            GenerateFastBrBReturn(IR::Instr *instr) { __debugbreak(); }
               bool            TryGenerateFastFloatOp(IR::Instr * instr, IR::Instr ** pInsertHelper, bool *pfNoLower) { __debugbreak(); return 0; }
               bool            GenerateFastFloatCall(IR::Instr * instr, IR::Instr ** pInsertHelper, bool noFieldFastPath, bool *pfNoLower, IR::Instr **pInstrPrev) { __debugbreak(); return 0; }
               bool            GenerateFastFloatBranch(IR::BranchInstr * instr, IR::Instr ** pInsertHelper, bool *pfNoLower) { __debugbreak(); return 0; }
@@ -190,6 +192,7 @@ public:
               IR::Instr *         LoadDoubleHelperArgument(IR::Instr * instr, IR::Opnd * opndArg) { __debugbreak(); return 0; }
               IR::Instr *         LoadFloatHelperArgument(IR::Instr * instr, IR::Opnd * opndArg) { __debugbreak(); return 0; }
               IR::Instr *         LowerToFloat(IR::Instr *instr) { __debugbreak(); return 0; }
+              IR::Instr *         LowerReinterpretPrimitive(IR::Instr* instr) { __debugbreak(); return 0; }
        static IR::BranchInstr *   LowerFloatCondBranch(IR::BranchInstr *instrBranch, bool ignoreNaN = false) { __debugbreak(); return 0; }
               void                ConvertFloatToInt32(IR::Opnd* intOpnd, IR::Opnd* floatOpnd, IR::LabelInstr * labelHelper, IR::LabelInstr * labelDone, IR::Instr * instInsert) { __debugbreak(); }
               void                CheckOverflowOnFloatToInt32(IR::Instr* instr, IR::Opnd* intOpnd, IR::LabelInstr * labelHelper, IR::LabelInstr * labelDone) { __debugbreak(); }

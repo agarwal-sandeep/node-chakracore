@@ -1731,14 +1731,6 @@ CorUnix::InitializeGlobalThreadData(
         }
     }
 
-#if !HAVE_MACH_EXCEPTIONS
-    //
-    // Initialize the thread suspension signal sets.
-    //
-    
-    CThreadSuspensionInfo::InitializeSignalSets();
-#endif // !HAVE_MACH_EXCEPTIONS
-
     return palError;
 }
 
@@ -2590,12 +2582,13 @@ CPalThread::GetStackBase()
 
 #if HAVE_PTHREAD_ATTR_GET_NP
         status = pthread_attr_get_np(thread, &attr);
+        _ASSERT_MSG(status != 0, "pthread_attr_get_np call failed");
 #elif HAVE_PTHREAD_GETATTR_NP
         status = pthread_getattr_np(thread, &attr);
+        _ASSERT_MSG(status == 0, "pthread_getattr_np call failed");
 #else
 #error Dont know how to get thread attributes on this platform!
 #endif
-        _ASSERT_MSG(status == 0, "pthread_getattr_np call failed");
 
         status = pthread_attr_getstack(&attr, &stackAddr, &stackSize);
         _ASSERT_MSG(status == 0, "pthread_attr_getstack call failed");
@@ -2635,12 +2628,13 @@ CPalThread::GetStackLimit()
 
 #if HAVE_PTHREAD_ATTR_GET_NP
         status = pthread_attr_get_np(thread, &attr);
+        _ASSERT_MSG(status != 0, "pthread_attr_get_np call failed");
 #elif HAVE_PTHREAD_GETATTR_NP
         status = pthread_getattr_np(thread, &attr);
+        _ASSERT_MSG(status == 0, "pthread_getattr_np call failed");
 #else
 #error Dont know how to get thread attributes on this platform!
 #endif
-        _ASSERT_MSG(status == 0, "pthread_getattr_np call failed");
 
         status = pthread_attr_getstack(&attr, &m_stackLimit, &stackSize);
         _ASSERT_MSG(status == 0, "pthread_attr_getstack call failed");
@@ -2860,12 +2854,13 @@ void GetCurrentThreadStackLimits(ULONG_PTR* lowLimit, ULONG_PTR* highLimit)
 
 #if HAVE_PTHREAD_ATTR_GET_NP
     status = pthread_attr_get_np(currentThreadHandle, &attr);
+    _ASSERT_MSG(status != 0, "pthread_attr_get_np call failed");
 #elif HAVE_PTHREAD_GETATTR_NP
     status = pthread_getattr_np(currentThreadHandle, &attr);
+    _ASSERT_MSG(status == 0, "pthread_getattr_np call failed");
 #else
 #   error "Dont know how to get thread attributes on this platform!"
 #endif
-    _ASSERT_MSG(status == 0, "pthread_getattr_np call failed");
     
     status = pthread_attr_getstack(&attr, &stackend, &stacksize);
     _ASSERT_MSG(status == 0, "pthread_attr_getstack call failed");
@@ -2903,7 +2898,13 @@ bool IsAddressOnStack(ULONG_PTR address)
 
     ULONG_PTR currentStackPtr = 0;
 
+#ifdef _AMD64_
     asm("mov %%rsp, %0;":"=r"(currentStackPtr));
+#elif defined(__i686__)
+    asm("mov %%esp, %0;":"=r"(currentStackPtr));
+#else
+#error "Implement this!!"
+#endif
 
     if (currentStackPtr <= address && address < s_cachedThreadStackHighLimit)
     {

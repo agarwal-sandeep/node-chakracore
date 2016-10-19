@@ -636,7 +636,7 @@ namespace Js
         //
         //TODO: We may (probably?) want to use the debugger source rundown functionality here instead
         //
-        if(!isLibraryCode && (scriptContext->ShouldPerformRecordTopLevelFunction() | scriptContext->ShouldPerformDebugAction()))
+        if(!isLibraryCode && (scriptContext->IsTTDRecordModeEnabled() || scriptContext->ShouldPerformReplayAction()))
         {
             //Make sure we have the body and text information available
             FunctionBody* globalBody = TTD::JsSupport::ForceAndGetFunctionBody(pfuncScript->GetParseableFunctionInfo());
@@ -644,7 +644,7 @@ namespace Js
             {
                 uint64 bodyIdCtr = 0;
 
-                if(scriptContext->ShouldPerformRecordTopLevelFunction())
+                if(scriptContext->IsTTDRecordModeEnabled())
                 {
                     const TTD::NSSnapValues::TopLevelEvalFunctionBodyResolveInfo* tbfi = scriptContext->GetThreadContext()->TTDLog->AddEvalFunction(globalBody, moduleID, sourceString, sourceLen, additionalGrfscr, registerDocument, isIndirect, strictMode);
 
@@ -657,7 +657,7 @@ namespace Js
                     bodyIdCtr = tbfi->TopLevelBase.TopLevelBodyCtr;
                 }
 
-                if(scriptContext->ShouldPerformDebugAction())
+                if(scriptContext->ShouldPerformReplayAction())
                 {
                     bodyIdCtr = scriptContext->GetThreadContext()->TTDLog->ReplayTopLevelCodeAction();
                 }
@@ -995,7 +995,7 @@ namespace Js
                 funcBody = funcBody->GetParseableFunctionInfo(); // RegisterFunction may parse and update function body
             }
 
-            ScriptFunction* pfuncScript = funcBody->IsGenerator() ?
+            ScriptFunction* pfuncScript = funcBody->IsCoroutine() ?
                 scriptContext->GetLibrary()->CreateGeneratorVirtualScriptFunction(funcBody) :
                 scriptContext->GetLibrary()->CreateScriptFunction(funcBody);
 
@@ -1576,7 +1576,6 @@ LHexError:
         Assert(!(callInfo.Flags & CallFlags_New));
 
         ScriptContext* scriptContext = function->GetScriptContext();
-
         if (!scriptContext->GetConfig()->IsCollectGarbageEnabled()
 #ifdef ENABLE_PROJECTION
             && scriptContext->GetConfig()->GetHostType() != HostType::HostTypeApplication
@@ -1623,7 +1622,7 @@ LHexError:
         return scriptContext->GetLibrary()->GetUndefined();
     }
 
-#if ENABLE_TTD && ENABLE_DEBUG_CONFIG_OPTIONS
+#if ENABLE_TTD
     //Log a string in the telemetry system (and print to the console)
     Var GlobalObject::EntryTelemetryLog(RecyclableObject* function, CallInfo callInfo, ...)
     {
@@ -1635,7 +1634,7 @@ LHexError:
         Js::JavascriptString* jsString = Js::JavascriptString::FromVar(args[1]);
         bool doPrint = (args.Info.Count == 3) && Js::JavascriptBoolean::Is(args[2]) && (Js::JavascriptBoolean::FromVar(args[2])->GetValue());
 
-        if(function->GetScriptContext()->ShouldPerformDebugAction())
+        if(function->GetScriptContext()->ShouldPerformReplayAction())
         {
             function->GetScriptContext()->GetThreadContext()->TTDLog->ReplayTelemetryLogEvent(jsString);
         }
@@ -2115,6 +2114,18 @@ LHexError:
         }
 
         // Non-existent property
+        return TRUE;
+    }
+
+    BOOL GlobalObject::DeleteProperty(JavascriptString *propertyNameString, PropertyOperationFlags flags)
+    {
+        PropertyRecord const *propertyRecord = nullptr;
+        if (JavascriptOperators::ShouldTryDeleteProperty(this, propertyNameString, &propertyRecord))
+        {
+            Assert(propertyRecord);
+            return DeleteProperty(propertyRecord->GetPropertyId(), flags);
+        }
+
         return TRUE;
     }
 
