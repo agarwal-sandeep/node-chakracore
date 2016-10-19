@@ -243,7 +243,7 @@ namespace Js
         {
             // Get the latest proxy
             FunctionProxy * proxy = pfuncBodyCache->GetFunctionProxy();
-            if (proxy->IsGenerator())
+            if (proxy->IsCoroutine())
             {
                 pfuncScript = scriptContext->GetLibrary()->CreateGeneratorVirtualScriptFunction(proxy);
             }
@@ -257,7 +257,7 @@ namespace Js
         //
         //TODO: We may (probably?) want to use the debugger source rundown functionality here instead
         //
-        if(scriptContext->ShouldPerformRecordTopLevelFunction() | scriptContext->ShouldPerformDebugAction())
+        if(scriptContext->IsTTDRecordModeEnabled() || scriptContext->ShouldPerformReplayAction())
         {
             //Make sure we have the body and text information available
             FunctionBody* globalBody = TTD::JsSupport::ForceAndGetFunctionBody(pfuncScript->GetParseableFunctionInfo());
@@ -265,7 +265,7 @@ namespace Js
             {
                 uint64 bodyIdCtr = 0;
 
-                if(scriptContext->ShouldPerformRecordTopLevelFunction())
+                if(scriptContext->IsTTDRecordModeEnabled())
                 {
                     const TTD::NSSnapValues::TopLevelNewFunctionBodyResolveInfo* tbfi = scriptContext->GetThreadContext()->TTDLog->AddNewFunction(globalBody, moduleID, sourceString, sourceLen);
 
@@ -278,7 +278,7 @@ namespace Js
                     bodyIdCtr = tbfi->TopLevelBase.TopLevelBodyCtr;
                 }
 
-                if(scriptContext->ShouldPerformDebugAction())
+                if(scriptContext->ShouldPerformReplayAction())
                 {
                     bodyIdCtr = scriptContext->GetThreadContext()->TTDLog->ReplayTopLevelCodeAction();
                 }
@@ -371,18 +371,6 @@ namespace Js
         }
 
         return library->GetUndefined();
-    }
-
-    BOOL JavascriptFunction::IsThrowTypeErrorFunction()
-    {
-        ScriptContext* scriptContext = this->GetScriptContext();
-        Assert(scriptContext);
-
-        return
-            this == scriptContext->GetLibrary()->GetThrowTypeErrorAccessorFunction() ||
-            this == scriptContext->GetLibrary()->GetThrowTypeErrorCalleeAccessorFunction() ||
-            this == scriptContext->GetLibrary()->GetThrowTypeErrorCallerAccessorFunction() ||
-            this == scriptContext->GetLibrary()->GetThrowTypeErrorArgumentsAccessorFunction();
     }
 
     enum : unsigned { STACK_ARGS_ALLOCA_THRESHOLD = 8 }; // Number of stack args we allow before using _alloca
@@ -767,18 +755,17 @@ namespace Js
                 // A recent compiler bug 150148 can incorrectly eliminate catch block, temporary workaround
                 if (threadContext == NULL)
                 {
-                    throw (JavascriptExceptionObject*)NULL;
+                    throw JavascriptException(nullptr);
                 }
             }
-            catch (JavascriptExceptionObject* exceptionObject)
+            catch (const JavascriptException& err)
             {
-                pExceptionObject = exceptionObject;
+                pExceptionObject = err.GetAndClear();
             }
 
             if (pExceptionObject)
             {
-                pExceptionObject = pExceptionObject->CloneIfStaticExceptionObject(scriptContext);
-                throw pExceptionObject;
+                JavascriptExceptionOperators::DoThrowCheckClone(pExceptionObject, scriptContext);
             }
         }
         END_JS_RUNTIME_CALL(scriptContext);
@@ -956,7 +943,7 @@ namespace Js
     {
         PROBE_STACK(function->GetScriptContext(), Js::Constants::MinStackDefault);
 
-        RUNTIME_ARGUMENTS(args, callInfo);
+        RUNTIME_ARGUMENTS(args, spreadIndices, function, callInfo);
 
         return JavascriptFunction::CallSpreadFunction(function, function->GetEntryPoint(), args, spreadIndices);
     }
@@ -1138,8 +1125,25 @@ namespace Js
     template Var JavascriptFunction::CallFunction<false>(RecyclableObject* function, JavascriptMethod entryPoint, Arguments args);
 
 #ifdef _M_IX86
-    template <bool doStackProbe>
-    Var JavascriptFunction::CallFunction(RecyclableObject* function, JavascriptMethod entryPoint, Arguments args)
+#ifdef __clang__
+void __cdecl _alloca_probe_16()
+{
+    // todo: fix this!!!
+    abort();
+    __asm
+    {
+        push    ecx
+        lea     ecx, [esp + 8]
+        sub     ecx, eax
+        and     ecx, (16 - 1)
+        add     eax, ecx
+        ret
+    }
+}
+#endif
+
+    static Var LocalCallFunction(RecyclableObject* function,
+        JavascriptMethod entryPoint, Arguments args, bool doStackProbe)
     {
         Js::Var varResult;
 
@@ -1159,8 +1163,7 @@ namespace Js
 
         void *data;
         void *savedEsp;
-        __asm
-        {
+        __asm {
             // Save ESP
             mov savedEsp, esp
             mov eax, argsSize
@@ -1213,6 +1216,15 @@ dbl_align:
         }
 
         return varResult;
+    }
+
+    // clang fails to create the labels,
+    // when __asm op is under a template function
+    template <bool doStackProbe>
+    Var JavascriptFunction::CallFunction(RecyclableObject* function,
+        JavascriptMethod entryPoint, Arguments args)
+    {
+        return LocalCallFunction(function, entryPoint, args, doStackProbe);
     }
 
 #elif _M_X64
@@ -1713,7 +1725,7 @@ LABEL1:
 
     */
 #if ENABLE_NATIVE_CODEGEN && defined(_M_X64)
-    ArrayAccessDecoder::InstructionData ArrayAccessDecoder::CheckValidInstr(BYTE* &pc, PEXCEPTION_POINTERS exceptionInfo, FunctionBody* funcBody) // get the reg operand and isLoad and
+    ArrayAccessDecoder::InstructionData ArrayAccessDecoder::CheckValidInstr(BYTE* &pc, PEXCEPTION_POINTERS exceptionInfo) // get the reg operand and isLoad and
     {
         InstructionData instrData;
         uint prefixValue = 0;
@@ -2109,7 +2121,7 @@ LABEL1:
         }
 
         BYTE* pc = (BYTE*)exceptionInfo->ExceptionRecord->ExceptionAddress;
-        ArrayAccessDecoder::InstructionData instrData = ArrayAccessDecoder::CheckValidInstr(pc, exceptionInfo, funcBody);
+        ArrayAccessDecoder::InstructionData instrData = ArrayAccessDecoder::CheckValidInstr(pc, exceptionInfo);
         // Check If the instruction is valid
         if (instrData.isInvalidInstr)
         {
@@ -2257,17 +2269,10 @@ LABEL1:
             switch (propertyId)
             {
             case PropertyIds::caller:
-                if (this->GetEntryPoint() == JavascriptFunction::PrototypeEntryPoint)
-                {
-                    *setter = *getter = requestContext->GetLibrary()->GetThrowTypeErrorCallerAccessorFunction();
-                    return true;
-                }
-                break;
-
             case PropertyIds::arguments:
                 if (this->GetEntryPoint() == JavascriptFunction::PrototypeEntryPoint)
                 {
-                    *setter = *getter = requestContext->GetLibrary()->GetThrowTypeErrorArgumentsAccessorFunction();
+                    *setter = *getter = requestContext->GetLibrary()->GetThrowTypeErrorRestrictedPropertyAccessorFunction();
                     return true;
                 }
                 break;
@@ -2311,27 +2316,12 @@ LABEL1:
         switch (propertyId)
         {
         case PropertyIds::caller:
-            if (this->HasRestrictedProperties()) {
-                PropertyValueInfo::SetNoCache(info, this);
-                if (this->GetEntryPoint() == JavascriptFunction::PrototypeEntryPoint)
-                {
-                    *setterValue = requestContext->GetLibrary()->GetThrowTypeErrorCallerAccessorFunction();
-                    *descriptorFlags = Accessor;
-                }
-                else
-                {
-                    *descriptorFlags = Data;
-                }
-                return true;
-            }
-            break;
-
         case PropertyIds::arguments:
             if (this->HasRestrictedProperties()) {
                 PropertyValueInfo::SetNoCache(info, this);
                 if (this->GetEntryPoint() == JavascriptFunction::PrototypeEntryPoint)
                 {
-                    *setterValue = requestContext->GetLibrary()->GetThrowTypeErrorArgumentsAccessorFunction();
+                    *setterValue = requestContext->GetLibrary()->GetThrowTypeErrorRestrictedPropertyAccessorFunction();
                     *descriptorFlags = Accessor;
                 }
                 else
@@ -2509,7 +2499,7 @@ LABEL1:
         {
             if (scriptContext->GetThreadContext()->RecordImplicitException())
             {
-                JavascriptFunction* accessor = requestContext->GetLibrary()->GetThrowTypeErrorCallerAccessorFunction();
+                JavascriptFunction* accessor = requestContext->GetLibrary()->GetThrowTypeErrorRestrictedPropertyAccessorFunction();
                 *value = CALL_FUNCTION(accessor, CallInfo(1), originalInstance);
             }
             return true;
@@ -2564,7 +2554,7 @@ LABEL1:
                 // Note that for caller coming from remote context (see the check right above) we can't call IsStrictMode()
                 // unless CheckCrossDomainScriptContext succeeds. If it fails we don't know whether caller is strict mode
                 // function or not and throw if it's not, so just return Null.
-                JavascriptError::ThrowTypeError(scriptContext, JSERR_AccessCallerRestricted);
+                JavascriptError::ThrowTypeError(scriptContext, JSERR_AccessRestrictedProperty);
             }
         }
 
@@ -2584,7 +2574,7 @@ LABEL1:
         {
             if (scriptContext->GetThreadContext()->RecordImplicitException())
             {
-                JavascriptFunction* accessor = requestContext->GetLibrary()->GetThrowTypeErrorArgumentsAccessorFunction();
+                JavascriptFunction* accessor = requestContext->GetLibrary()->GetThrowTypeErrorRestrictedPropertyAccessorFunction();
                 *value = CALL_FUNCTION(accessor, CallInfo(1), originalInstance);
             }
             return true;
@@ -2613,7 +2603,7 @@ LABEL1:
             {
                 Var args = nullptr;
                 //Create a copy of the arguments and return it.
-                
+
                 CallInfo const *callInfo = walker.GetCallInfo();
                 args = JavascriptOperators::LoadHeapArguments(
                     this, callInfo->Count - 1,
@@ -2804,6 +2794,37 @@ LABEL1:
         BOOL result = DynamicObject::DeleteProperty(propertyId, flags);
 
         if (result && (propertyId == PropertyIds::prototype || propertyId == PropertyIds::_symbolHasInstance))
+        {
+            InvalidateConstructorCacheOnPrototypeChange();
+            this->GetScriptContext()->GetThreadContext()->InvalidateIsInstInlineCachesForFunction(this);
+        }
+
+        return result;
+    }
+
+    BOOL JavascriptFunction::DeleteProperty(JavascriptString *propertyNameString, PropertyOperationFlags flags)
+    {
+        JsUtil::CharacterBuffer<WCHAR> propertyName(propertyNameString->GetString(), propertyNameString->GetLength());
+        if (BuiltInPropertyRecords::caller.Equals(propertyName) || BuiltInPropertyRecords::arguments.Equals(propertyName))
+        {
+            if (this->HasRestrictedProperties())
+            {
+                JavascriptError::ThrowCantDeleteIfStrictMode(flags, this->GetScriptContext(), propertyNameString->GetString());
+                return false;
+            }
+        }
+        else if (BuiltInPropertyRecords::length.Equals(propertyName))
+        {
+            if (this->IsScriptFunction())
+            {
+                JavascriptError::ThrowCantDeleteIfStrictMode(flags, this->GetScriptContext(), propertyNameString->GetString());
+                return false;
+            }
+        }
+
+        BOOL result = DynamicObject::DeleteProperty(propertyNameString, flags);
+
+        if (result && (BuiltInPropertyRecords::prototype.Equals(propertyName) || BuiltInPropertyRecords::_symbolHasInstance.Equals(propertyName)))
         {
             InvalidateConstructorCacheOnPrototypeChange();
             this->GetScriptContext()->GetThreadContext()->InvalidateIsInstInlineCachesForFunction(this);

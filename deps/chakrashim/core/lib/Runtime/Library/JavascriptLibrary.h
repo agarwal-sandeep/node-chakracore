@@ -30,6 +30,8 @@ namespace Js
 {
     class MissingPropertyTypeHandler;
     class SourceTextModuleRecord;
+    class ArrayBufferBase;
+    class SharedContents;
     typedef RecyclerFastAllocator<JavascriptNumber, LeafBit> RecyclerJavascriptNumberAllocator;
     typedef JsUtil::List<Var, Recycler> ListForListIterator;
 
@@ -194,6 +196,7 @@ namespace Js
 #endif
         DynamicType * nativeFloatArrayType;
         DynamicType * arrayBufferType;
+        DynamicType * sharedArrayBufferType;
         DynamicType * dataViewType;
         DynamicType * typedArrayType;
         DynamicType * int8ArrayType;
@@ -221,13 +224,9 @@ namespace Js
         DynamicType * setIteratorType;
         DynamicType * stringIteratorType;
         DynamicType * promiseType;
-        DynamicType * javascriptEnumeratorIteratorType;
         DynamicType * listIteratorType;
 
         JavascriptFunction* builtinFunctions[BuiltinFunction::Count];
-
-        typedef JsUtil::BaseDictionary<FunctionInfo *, BuiltinFunction, ArenaAllocator > FuncInfoToBuiltinIdMap;
-        FuncInfoToBuiltinIdMap * funcInfoToBuiltinIdMap;
 
         INT_PTR vtableAddresses[VTableValue::Count];
         ConstructorCache *constructorCacheDefaultInstance;
@@ -355,10 +354,7 @@ namespace Js
 
         StaticType* throwErrorObjectType;
 
-        NullEnumerator *nullEnumerator;
-
         PropertyStringCacheMap* propertyStringMap;
-        RecyclerWeakReference<ForInObjectEnumerator>*  cachedForInEnumerator;
 
         ConstructorCache* builtInConstructorCache;
 
@@ -382,6 +378,9 @@ namespace Js
         JavascriptFunction* objectValueOfFunction;
         JavascriptFunction* objectToStringFunction;
 
+#ifdef ENABLE_WASM
+        DynamicObject* wasmObject;
+#endif
 
         // SIMD_JS
         JavascriptFunction* simdFloat32x4ToStringFunction;
@@ -409,6 +408,10 @@ namespace Js
         JavascriptFunction* regexGlobalGetterFunction;
         JavascriptFunction* regexStickyGetterFunction;
         JavascriptFunction* regexUnicodeGetterFunction;
+
+        RuntimeFunction* sharedArrayBufferConstructor;
+        DynamicObject* sharedArrayBufferPrototype;
+        DynamicObject* atomicsObject;
 
         int regexConstructorSlotIndex;
         int regexExecSlotIndex;
@@ -516,7 +519,6 @@ namespace Js
                               jsrtContextObject(nullptr),
                               scriptContextCache(nullptr),
                               externalLibraryList(nullptr),
-                              cachedForInEnumerator(nullptr),
 #if ENABLE_COPYONACCESS_ARRAY
                               cacheForCopyOnAccessArraySegments(nullptr),
 #endif
@@ -637,6 +639,9 @@ namespace Js
         const PropertyDescriptor* GetDefaultPropertyDescriptor() const { return &defaultPropertyDescriptor; }
         DynamicObject* GetMissingPropertyHolder() const { return missingPropertyHolder; }
 
+        JavascriptFunction* GetSharedArrayBufferConstructor() { return sharedArrayBufferConstructor; }
+        DynamicObject* GetAtomicsObject() { return atomicsObject; }
+
 #if ENABLE_TTD
         Js::PropertyId ExtractPrimitveSymbolId_TTD(Var value);
         Js::RecyclableObject* CreatePrimitveSymbol_TTD(Js::PropertyId pid);
@@ -650,6 +655,7 @@ namespace Js
         Js::RecyclableObject* CreateError_TTD();
 
         Js::RecyclableObject* CreateES5Array_TTD();
+        static void SetLengthWritableES5Array_TTD(Js::RecyclableObject* es5Array, bool isLengthWritable);
 
         Js::RecyclableObject* CreateSet_TTD();
         Js::RecyclableObject* CreateWeakSet_TTD();
@@ -695,6 +701,7 @@ namespace Js
         DynamicType * GetDebugFuncExecutorInDisposeObjectType() { return debugFuncExecutorInDisposeObjectType; }
 #endif
 
+        DynamicType* GetErrorType(ErrorTypeEnum typeToCreate) const;
         StaticType  * GetBooleanTypeStatic() const { return booleanTypeStatic; }
         DynamicType * GetBooleanTypeDynamic() const { return booleanTypeDynamic; }
         DynamicType * GetDateType() const { return dateType; }
@@ -747,7 +754,6 @@ namespace Js
         StaticType  * GetSymbolTypeStatic() const { return symbolTypeStatic; }
         DynamicType * GetSymbolTypeDynamic() const { return symbolTypeDynamic; }
         DynamicType * GetProxyType() const { return proxyType; }
-        DynamicType * GetJavascriptEnumeratorIteratorType() const { return javascriptEnumeratorIteratorType; }
         DynamicType * GetHeapArgumentsObjectType() const { return heapArgumentsType; }
         DynamicType * GetActivationObjectType() const { return activationObjectType; }
         DynamicType * GetModuleNamespaceType() const { return moduleNamespaceType; }
@@ -777,10 +783,7 @@ namespace Js
         DynamicType * GetListIteratorType() const { return listIteratorType; }
         JavascriptFunction* GetDefaultAccessorFunction() const { return defaultAccessorFunction; }
         JavascriptFunction* GetStackTraceAccessorFunction() const { return stackTraceAccessorFunction; }
-        JavascriptFunction* GetThrowTypeErrorAccessorFunction() const { return throwTypeErrorAccessorFunction; }
-        JavascriptFunction* GetThrowTypeErrorCallerAccessorFunction() const { return throwTypeErrorCallerAccessorFunction; }
-        JavascriptFunction* GetThrowTypeErrorCalleeAccessorFunction() const { return throwTypeErrorCalleeAccessorFunction; }
-        JavascriptFunction* GetThrowTypeErrorArgumentsAccessorFunction() const { return throwTypeErrorArgumentsAccessorFunction; }
+        JavascriptFunction* GetThrowTypeErrorRestrictedPropertyAccessorFunction() const { return throwTypeErrorRestrictedPropertyAccessorFunction; }
         JavascriptFunction* Get__proto__getterFunction() const { return __proto__getterFunction; }
         JavascriptFunction* Get__proto__setterFunction() const { return __proto__setterFunction; }
 
@@ -861,9 +864,11 @@ namespace Js
         JavascriptArray* CreateArray(uint32 length, uint32 size);
         ArrayBuffer* CreateArrayBuffer(uint32 length);
         ArrayBuffer* CreateArrayBuffer(byte* buffer, uint32 length);
+        SharedArrayBuffer* CreateSharedArrayBuffer(uint32 length);
+        SharedArrayBuffer* CreateSharedArrayBuffer(SharedContents *contents);
         ArrayBuffer* CreateProjectionArraybuffer(uint32 length);
         ArrayBuffer* CreateProjectionArraybuffer(byte* buffer, uint32 length);
-        DataView* CreateDataView(ArrayBuffer* arrayBuffer, uint32 offSet, uint32 mappedLength);
+        DataView* CreateDataView(ArrayBufferBase* arrayBuffer, uint32 offSet, uint32 mappedLength);
 
         template <typename TypeName, bool clamped>
         inline DynamicType* GetTypedArrayType(TypeName);
@@ -960,7 +965,6 @@ namespace Js
         GeneratorVirtualScriptFunction * CreateGeneratorVirtualScriptFunction(FunctionProxy* proxy);
         DynamicType * CreateGeneratorType(RecyclableObject* prototype);
 
-        JavascriptEnumerator * GetNullEnumerator() const;
 #if 0
         JavascriptNumber* CreateNumber(double value);
 #endif
@@ -981,7 +985,9 @@ namespace Js
         JavascriptExternalFunction* CreateWrappedExternalFunction(JavascriptExternalFunction* wrappedFunction);
 
 #if ENABLE_NATIVE_CODEGEN
+#if !FLOATVAR
         JavascriptNumber* CreateCodeGenNumber(CodeGenNumberAllocator *alloc, double value);
+#endif
 #endif
 
         DynamicObject* CreateGeneratorConstructorPrototypeObject();
@@ -1037,7 +1043,7 @@ namespace Js
         bool IsPRNGSeeded() { return isPRNGSeeded; }
         uint64 GetRandSeed0() { return randSeed0; }
         uint64 GetRandSeed1() { return randSeed1; }
-        void SetIsPRNGSeeded(bool val) { isPRNGSeeded = val; }
+        void SetIsPRNGSeeded(bool val);
         void SetRandSeed0(uint64 rs) { randSeed0 = rs;}
         void SetRandSeed1(uint64 rs) { randSeed1 = rs; }
 
@@ -1066,17 +1072,9 @@ namespace Js
         JavascriptFunction** GetBuiltinFunctions();
         INT_PTR* GetVTableAddresses();
         static BuiltinFunction GetBuiltinFunctionForPropId(PropertyId id);
-        static BuiltinFunction GetBuiltInForFuncInfo(FunctionInfo* funcInfo, ScriptContext *scriptContext);
+        static BuiltinFunction GetBuiltInForFuncInfo(intptr_t funcInfoAddr, ThreadContextInfo *context);
 #if DBG
-        static void CheckRegisteredBuiltIns(JavascriptFunction** builtInFuncs, ScriptContext *scriptContext)
-        {
-            byte count = BuiltinFunction::Count;
-            for(byte index = 0; index < count; index++)
-            {
-                Assert(!builtInFuncs[index] || (index == GetBuiltInForFuncInfo(builtInFuncs[index]->GetFunctionInfo(), scriptContext)));
-            }
-
-        }
+        static void CheckRegisteredBuiltIns(JavascriptFunction** builtInFuncs, ScriptContext *scriptContext);
 #endif
         static BOOL CanFloatPreferenceFunc(BuiltinFunction index);
         static BOOL IsFltFunc(BuiltinFunction index);
@@ -1108,9 +1106,6 @@ namespace Js
 
         PropertyStringCacheMap* EnsurePropertyStringMap();
         PropertyStringCacheMap* GetPropertyStringMap() { return this->propertyStringMap; }
-
-        ForInObjectEnumerator* JavascriptLibrary::GetAndClearForInEnumeratorCache();
-        void SetForInEnumeratorCache(ForInObjectEnumerator* enumerator);
 
         void TypeAndPrototypesAreEnsuredToHaveOnlyWritableDataProperties(Type *const type);
         void NoPrototypeChainsAreEnsuredToHaveOnlyWritableDataProperties();
@@ -1144,6 +1139,11 @@ namespace Js
 
         static void __cdecl InitializeArrayConstructor(DynamicObject* arrayConstructor, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
         static void __cdecl InitializeArrayPrototype(DynamicObject* arrayPrototype, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
+
+        static void __cdecl InitializeSharedArrayBufferConstructor(DynamicObject* sharedArrayBufferConstructor, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
+        static void __cdecl InitializeSharedArrayBufferPrototype(DynamicObject* sharedArrayBufferPrototype, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
+
+        static void __cdecl InitializeAtomicsObject(DynamicObject* atomicsObject, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
 
         static void __cdecl InitializeArrayBufferConstructor(DynamicObject* arrayBufferConstructor, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
         static void __cdecl InitializeArrayBufferPrototype(DynamicObject* arrayBufferPrototype, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
@@ -1204,6 +1204,9 @@ namespace Js
         void InitializeComplexThings();
         void InitializeStaticValues();
         static void __cdecl InitializeMathObject(DynamicObject* mathObject, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
+#ifdef ENABLE_WASM
+        static void __cdecl InitializeWasmObject(DynamicObject* WasmObject, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
+#endif
         // SIMD_JS
         static void __cdecl InitializeSIMDObject(DynamicObject* simdObject, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
         static void __cdecl InitializeSIMDOpCodeMaps();
@@ -1254,7 +1257,6 @@ namespace Js
         static void __cdecl InitializeMapIteratorPrototype(DynamicObject* mapIteratorPrototype, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
         static void __cdecl InitializeSetIteratorPrototype(DynamicObject* setIteratorPrototype, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
         static void __cdecl InitializeStringIteratorPrototype(DynamicObject* stringIteratorPrototype, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
-        static void __cdecl InitializeJavascriptEnumeratorIteratorPrototype(DynamicObject* javascriptEnumeratorIteratorPrototype, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
 
         static void __cdecl InitializePromiseConstructor(DynamicObject* promiseConstructor, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
         static void __cdecl InitializePromisePrototype(DynamicObject* promisePrototype, DeferredTypeHandlerBase * typeHandler, DeferredInitializeMode mode);
@@ -1342,13 +1344,13 @@ namespace Js
         HRESULT ProfilerRegisterMapIterator();
         HRESULT ProfilerRegisterSetIterator();
         HRESULT ProfilerRegisterStringIterator();
-        HRESULT ProfilerRegisterEnumeratorIterator();
         HRESULT ProfilerRegisterTypedArray();
         HRESULT ProfilerRegisterPromise();
         HRESULT ProfilerRegisterProxy();
         HRESULT ProfilerRegisterReflect();
         HRESULT ProfilerRegisterGenerator();
         HRESULT ProfilerRegisterSIMD();
+        HRESULT ProfilerRegisterAtomics();
 
 #ifdef IR_VIEWER
         HRESULT ProfilerRegisterIRViewer();

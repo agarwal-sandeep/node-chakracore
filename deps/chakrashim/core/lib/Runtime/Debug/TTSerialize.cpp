@@ -15,10 +15,8 @@ namespace TTD
             const char16** nameArray = TT_HEAP_ALLOC_ARRAY(const char16*, (uint32)Key::Count);
             size_t* lengthArray = TT_HEAP_ALLOC_ARRAY(size_t, (uint32)Key::Count);
 
-#define __STEXT(X) ((const char16*)__TEXT(X))
-#define ENTRY_SERIALIZE_ENUM(K) { nameArray[(uint32)Key::##K] = __STEXT(#K); lengthArray[(uint32)Key::##K] = wcslen(__STEXT(#K)); }
+#define ENTRY_SERIALIZE_ENUM(K) { nameArray[(uint32)Key::##K] = _u(#K); lengthArray[(uint32)Key::##K] = wcslen(_u(#K)); }
 #include "TTSerializeEnum.h"
-#undef __STEXT
 
             *names = nameArray;
             *lengths = lengthArray;
@@ -404,7 +402,7 @@ namespace TTD
         this->WriteRawChar(_u('~'));
     }
 
-    void TextFormatWriter::WriteInlineCode(char16* code, uint32 length, NSTokens::Separator separator)
+    void TextFormatWriter::WriteInlineCode(_In_reads_(length) char16* code, uint32 length, NSTokens::Separator separator)
     {
         this->WriteSeperator(separator);
 
@@ -564,7 +562,7 @@ namespace TTD
         this->WriteRawByteBuff((const byte*)val, charLen * sizeof(char16));
     }
 
-    void BinaryFormatWriter::WriteInlineCode(char16* code, uint32 length, NSTokens::Separator separator)
+    void BinaryFormatWriter::WriteInlineCode(_In_reads_(length) char16* code, uint32 length, NSTokens::Separator separator)
     {
         this->WriteSeperator(separator);
 
@@ -1443,7 +1441,7 @@ namespace TTD
         return alloc.CopyRawNullTerminatedStringInto(this->m_charListOpt.GetBuffer() + 1);
     }
 
-    void TextFormatReader::ReadInlineCode(char16* code, uint32 length, bool readSeparator)
+    void TextFormatReader::ReadInlineCode(_Out_writes_(length) char16* code, uint32 length, bool readSeparator)
     {
         this->ReadSeperator(readSeparator);
 
@@ -1548,7 +1546,7 @@ namespace TTD
         byte b;
         this->ReadBytesInto_Fixed<byte>(b);
 
-        return b ? true : false;
+        return !!b;
     }
 
     int32 BinaryFormatReader::ReadNakedInt32(bool readSeparator)
@@ -1695,7 +1693,7 @@ namespace TTD
         return cbuff;
     }
 
-    void BinaryFormatReader::ReadInlineCode(char16* code, uint32 length, bool readSeparator)
+    void BinaryFormatReader::ReadInlineCode(_Out_writes_(length) char16* code, uint32 length, bool readSeparator)
     {
         uint32 wlen = 0;
         this->ReadBytesInto_Fixed<uint32>(wlen);
@@ -1873,11 +1871,11 @@ namespace TTD
         this->AppendInteger(returnCode);
         this->AppendLiteral(", pid: ");
         this->AppendInteger(pid);
-        this->AppendLiteral(", attrib: ");
-        this->AppendInteger(attrib);
 
-        if(pname != nullptr)
+        if(returnCode)
         {
+            this->AppendLiteral(", attrib: ");
+            this->AppendInteger(attrib);
             this->AppendLiteral(", name: ");
             this->AppendText(pname->GetSz(), (uint32)pname->GetLength());
         }
@@ -1903,7 +1901,7 @@ namespace TTD
                 this->AppendLiteral("null");
                 break;
             case Js::TypeIds_Boolean:
-                this->AppendBool(Js::JavascriptBoolean::FromVar(var)->GetValue() ? true : false);
+                this->AppendBool(!!Js::JavascriptBoolean::FromVar(var)->GetValue());
                 break;
             case Js::TypeIds_Integer:
                 this->AppendInteger(Js::TaggedInt::ToInt64(var));
@@ -1959,11 +1957,6 @@ namespace TTD
                         this->AppendLiteral(", ");
                         this->AppendInteger((int64)dynObj->TTDDiagOriginInfo.TimeHash);
                         this->AppendLiteral(")");
-
-                        if(dynObj->TTDDiagOriginInfo.SourceLine == 3719 && dynObj->TTDDiagOriginInfo.EventTime == 2628 && dynObj->TTDDiagOriginInfo.TimeHash == 7886)
-                        {
-                            fwprintf(stderr, L"Hit position\n");
-                        }
                     }
                 }
                 else

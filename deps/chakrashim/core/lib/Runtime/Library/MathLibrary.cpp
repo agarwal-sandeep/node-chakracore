@@ -12,6 +12,8 @@
 #pragma intrinsic(_mm_round_sd)
 #endif
 
+const LPCWSTR UCrtC99MathApis::LibraryName = _u("api-ms-win-crt-math-l1-1-0.dll");
+
 void UCrtC99MathApis::Ensure()
 {
     if (m_isInit)
@@ -147,7 +149,10 @@ namespace Js
     {
         double result;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm {
@@ -198,7 +203,10 @@ namespace Js
     {
         double result;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm {
@@ -248,7 +256,10 @@ namespace Js
     double Math::Atan(double x)
     {
         double result;
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm {
@@ -297,7 +308,10 @@ namespace Js
     double Math::Atan2( double x, double y )
     {
         double result;
-#ifdef _M_IX86
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm
@@ -351,15 +365,13 @@ namespace Js
             }
 #endif
 
-            // xplat-todo: use intrinsics here on linux
-#ifdef _MSC_VER
-#if defined(_M_IX86) || defined(_M_X64)
+#if (defined(_M_IX86) || defined(_M_X64)) \
+    && (__SSE4_1__ || _WIN32) // _mm_ceil_sd needs this
             if (AutoSystemInfo::Data.SSE4_1Available())
             {
                 __m128d input, output;
                 input = _mm_load_sd(&x);
-#pragma prefast(suppress:6001, "Signature of _mm_ceil_sd intrinsic confuses prefast, output in the parameter list is not used, it is the dst of the intrinsic")
-                output = _mm_ceil_sd(output, input);
+                output = _mm_ceil_sd(input, input);
                 int intResult = _mm_cvtsd_si32(output);
 
                 if (TaggedInt::IsOverflow(intResult) || intResult == 0 || intResult == 0x80000000)
@@ -382,7 +394,6 @@ namespace Js
                 }
             }
             else
-#endif
 #endif
             {
                 double result = ::ceil(x);
@@ -439,7 +450,10 @@ namespace Js
     {
         double result;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm {
@@ -489,7 +503,10 @@ namespace Js
     {
         double result;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm {
@@ -567,8 +584,7 @@ namespace Js
             }
             else
             {
-#pragma prefast(suppress:6001, "Signature of _mm_floor_sd intrinsic confuses prefast, output in the parameter list is not used, it is the dst of the intrinsic")
-                output = _mm_floor_sd(output, input);
+                output = _mm_floor_sd(input, input);
             }
             intResult = _mm_cvttsd_si32(output);
 
@@ -651,7 +667,10 @@ namespace Js
     {
         double result;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm {
@@ -816,8 +835,7 @@ namespace Js
     {
         double result = 0;
 
-#if defined(_M_IX86)
-
+#if defined(_M_IX86) && defined(_WIN32) // TODO: xplat support
         // We can't just use "if (0 == y)" because NaN compares
         // equal to 0 according to our compilers.
         if( 0 == NumberUtilities::LuLoDbl( y ) && 0 == ( NumberUtilities::LuHiDbl( y ) & 0x7FFFFFFF ) )
@@ -961,7 +979,10 @@ namespace Js
     {
         double result;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm {
@@ -1044,7 +1065,10 @@ namespace Js
     double Math::Tan( double x )
     {
         double result = 0;
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if( AutoSystemInfo::Data.SSE2Available() )
         {
             _asm {
@@ -1095,7 +1119,10 @@ namespace Js
     {
         double result;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && defined(_WIN32)
+        // This is for perf, not for functionality
+        // If non Win32 CRT implementation already support SSE2,
+        // then we get most of the perf already.
         if (AutoSystemInfo::Data.SSE2Available())
         {
             _asm {

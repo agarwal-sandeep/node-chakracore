@@ -166,10 +166,6 @@ namespace TTD
 
     void TTDebuggerSourceLocation::SetLocation(const TTDebuggerSourceLocation& other)
     {
-#if !ENABLE_TTD_DEBUGGING
-        AssertMsg(false, "Debugger is not enabled so you shouldn't be calling this");
-        this->Clear();
-#else
         this->m_etime = other.m_etime;
         this->m_ftime = other.m_ftime;
         this->m_ltime = other.m_ltime;
@@ -196,30 +192,20 @@ namespace TTD
             this->m_sourceFile = new char16[char16Length];
             js_memcpy_s(this->m_sourceFile, byteLength, other.m_sourceFile, byteLength);
         }
-#endif
     }
 
     void TTDebuggerSourceLocation::SetLocation(const SingleCallCounter& callFrame)
     {
-#if !ENABLE_TTD_DEBUGGING
-        AssertMsg(false, "Debugger is not enabled so you shouldn't be calling this");
-        this->Clear();
-#else
         ULONG srcLine = 0;
         LONG srcColumn = -1;
         uint32 startOffset = callFrame.Function->GetStatementStartOffset(callFrame.CurrentStatementIndex);
         callFrame.Function->GetSourceLineFromStartOffset_TTD(startOffset, &srcLine, &srcColumn);
 
         this->SetLocation(callFrame.EventTime, callFrame.FunctionTime, callFrame.LoopTime, callFrame.Function, (uint32)srcLine, (uint32)srcColumn);
-#endif
     }
 
     void TTDebuggerSourceLocation::SetLocation(int64 etime, int64 ftime, int64 ltime, Js::FunctionBody* body, ULONG line, LONG column)
     {
-#if !ENABLE_TTD_DEBUGGING
-        AssertMsg(false, "Debugger is not enabled so you shouldn't be calling this");
-        this->Clear();
-#else
         this->m_etime = etime;
         this->m_ftime = ftime;
         this->m_ltime = ltime;
@@ -247,7 +233,6 @@ namespace TTD
             this->m_sourceFile = new char16[char16Length];
             js_memcpy_s(this->m_sourceFile, byteLength, sourceFile, byteLength);
         }
-#endif
     }
 
     int64 TTDebuggerSourceLocation::GetRootEventTime() const
@@ -357,24 +342,28 @@ namespace TTD
 
     namespace NSLogEvents
     {
-        void PassVarToHostInReplay(Js::ScriptContext* ctx, TTDVar origVar, Js::Var replayVar)
+        void PassVarToHostInReplay(ThreadContextTTD* executeContext, TTDVar origVar, Js::Var replayVar)
         {
             static_assert(sizeof(TTDVar) == sizeof(Js::Var), "We assume the bit patterns on these types are the same!!!");
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
             if(replayVar == nullptr || TTD::JsSupport::IsVarTaggedInline(replayVar))
             {
-                AssertMsg(origVar == replayVar, "Should be same bit pattern.");
+                AssertMsg(TTD::JsSupport::AreInlineVarsEquiv(origVar, replayVar), "Should be same bit pattern.");
             }
 #endif
 
             if(replayVar != nullptr && TTD::JsSupport::IsVarPtrValued(replayVar))
             {
-                ctx->TTDContextInfo->AddLocalRoot(TTD_CONVERT_OBJ_TO_LOG_PTR_ID(origVar), Js::RecyclableObject::FromVar(replayVar));
+                Js::RecyclableObject* obj = Js::RecyclableObject::FromVar(replayVar);
+                if(!ThreadContextTTD::IsSpecialRootObject(obj))
+                {
+                    executeContext->AddLocalRoot(TTD_CONVERT_OBJ_TO_LOG_PTR_ID(origVar), obj);
+                }
             }
         }
 
-        Js::Var InflateVarInReplay(Js::ScriptContext* ctx, TTDVar origVar)
+        Js::Var InflateVarInReplay(ThreadContextTTD* executeContext, TTDVar origVar)
         {
             static_assert(sizeof(TTDVar) == sizeof(Js::Var), "We assume the bit patterns on these types are the same!!!");
 
@@ -384,13 +373,14 @@ namespace TTD
             }
             else
             {
-                return ctx->TTDContextInfo->LookupObjectForLogID(TTD_CONVERT_OBJ_TO_LOG_PTR_ID(origVar));
+                return executeContext->LookupObjectForLogID(TTD_CONVERT_OBJ_TO_LOG_PTR_ID(origVar));
             }
         }
 
         void EventLogEntry_Initialize(EventLogEntry* evt, EventKind tag, int64 etime)
         {
             evt->EventKind = tag;
+            evt->ResultStatus = -1;
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
             evt->EventTimeStamp = etime;
@@ -402,6 +392,7 @@ namespace TTD
             writer->WriteRecordStart(separator);
 
             writer->WriteTag<EventKind>(NSTokens::Key::eventKind, evt->EventKind);
+            writer->WriteInt32(NSTokens::Key::eventResultStatus, evt->ResultStatus, NSTokens::Separator::CommaSeparator);
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
             writer->WriteInt64(NSTokens::Key::eventTime, evt->EventTimeStamp, NSTokens::Separator::CommaSeparator);
@@ -421,6 +412,7 @@ namespace TTD
             reader->ReadRecordStart(readSeperator);
 
             evt->EventKind = reader->ReadTag<EventKind>(NSTokens::Key::eventKind);
+            evt->ResultStatus = reader->ReadInt32(NSTokens::Key::eventResultStatus, true);
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
             evt->EventTimeStamp = reader->ReadInt64(NSTokens::Key::eventTime, true);
@@ -433,6 +425,26 @@ namespace TTD
             }
 
             reader->ReadRecordEnd();
+        }
+
+        bool EventFailsWithRuntimeError(const EventLogEntry* evt)
+        {
+            return !(EventDoesNotReturn(evt) || EventCompletesNormally(evt) || EventCompletesWithException(evt));
+        }
+
+        bool EventDoesNotReturn(const EventLogEntry* evt)
+        {
+            return evt->ResultStatus == -1;
+        }
+
+        bool EventCompletesNormally(const EventLogEntry* evt)
+        {
+            return (evt->ResultStatus == 0) || (evt->ResultStatus == TTD_REPLAY_JsErrorArgumentNotObject) || (evt->ResultStatus == TTD_REPLAY_JsErrorArgumentNotObject);
+        }
+
+        bool EventCompletesWithException(const EventLogEntry* evt)
+        {
+            return (evt->ResultStatus == TTD_REPLAY_JsErrorCategoryScript) || (evt->ResultStatus == TTD_REPLAY_JsErrorScriptTerminated);
         }
 
         //////////////////
@@ -608,7 +620,7 @@ namespace TTD
         {
             const PropertyEnumStepEventLogEntry* propertyEvt = GetInlineEventDataAs<PropertyEnumStepEventLogEntry, EventKind::PropertyEnumTag>(evt);
 
-            writer->WriteBool(NSTokens::Key::boolVal, propertyEvt->ReturnCode ? true : false, NSTokens::Separator::CommaSeparator);
+            writer->WriteBool(NSTokens::Key::boolVal, !!propertyEvt->ReturnCode, NSTokens::Separator::CommaSeparator);
             writer->WriteUInt32(NSTokens::Key::propertyId, propertyEvt->Pid, NSTokens::Separator::CommaSeparator);
             writer->WriteUInt32(NSTokens::Key::attributeFlags, propertyEvt->Attributes, NSTokens::Separator::CommaSeparator);
 
@@ -708,7 +720,7 @@ namespace TTD
             return callEvt->AdditionalInfo->LastNestedEventTime;
         }
 
-        void ExternalCallEventLogEntry_ProcessArgs(EventLogEntry* evt, int32 rootDepth, Js::JavascriptFunction* function, uint32 argc, Js::Var* argv, UnlinkableSlabAllocator& alloc)
+        void ExternalCallEventLogEntry_ProcessArgs(EventLogEntry* evt, int32 rootDepth, Js::JavascriptFunction* function, uint32 argc, Js::Var* argv, bool checkExceptions, double beginTime, UnlinkableSlabAllocator& alloc)
         {
             ExternalCallEventLogEntry* callEvt = GetInlineEventDataAs<ExternalCallEventLogEntry, EventKind::ExternalCallTag>(evt);
             callEvt->AdditionalInfo = alloc.SlabAllocateStruct<ExternalCallEventLogEntry_AdditionalInfo>();
@@ -723,19 +735,21 @@ namespace TTD
             js_memcpy_s(callEvt->ArgArray + 1, (callEvt->ArgCount - 1) * sizeof(TTDVar), argv, argc * sizeof(Js::Var));
 
             //Initialize this info in case we terminate without completing (e.g. exit(1))
+            callEvt->AdditionalInfo->BeginTime = beginTime;
+            callEvt->AdditionalInfo->EndTime = -1.0;
+
             callEvt->ReturnValue = nullptr;
-            callEvt->AdditionalInfo->HasScriptException = false;
-            callEvt->AdditionalInfo->HasTerminiatingException = false;
             callEvt->AdditionalInfo->LastNestedEventTime = TTD_EVENT_MAXTIME;
+
+            callEvt->AdditionalInfo->CheckExceptionStatus = checkExceptions;
         }
 
-        void ExternalCallEventLogEntry_ProcessReturn(EventLogEntry* evt, Js::Var res, bool hasScriptException, bool hasTerminiatingException, int64 lastNestedEvent)
+        void ExternalCallEventLogEntry_ProcessReturn(EventLogEntry* evt, Js::Var res, int64 lastNestedEvent, double endTime)
         {
             ExternalCallEventLogEntry* callEvt = GetInlineEventDataAs<ExternalCallEventLogEntry, EventKind::ExternalCallTag>(evt);
 
+            callEvt->AdditionalInfo->EndTime = endTime;
             callEvt->ReturnValue = TTD_CONVERT_JSVAR_TO_TTDVAR(res);
-            callEvt->AdditionalInfo->HasScriptException = hasScriptException;
-            callEvt->AdditionalInfo->HasTerminiatingException = hasTerminiatingException;
             callEvt->AdditionalInfo->LastNestedEventTime = lastNestedEvent;
         }
 
@@ -774,9 +788,12 @@ namespace TTD
             writer->WriteKey(NSTokens::Key::argRetVal, NSTokens::Separator::CommaSeparator);
             NSSnapValues::EmitTTDVar(callEvt->ReturnValue, writer, NSTokens::Separator::NoSeparator);
 
-            writer->WriteBool(NSTokens::Key::boolVal, callEvt->AdditionalInfo->HasScriptException, NSTokens::Separator::CommaSeparator);
-            writer->WriteBool(NSTokens::Key::boolVal, callEvt->AdditionalInfo->HasTerminiatingException, NSTokens::Separator::CommaSeparator);
+            writer->WriteBool(NSTokens::Key::boolVal, callEvt->AdditionalInfo->CheckExceptionStatus, NSTokens::Separator::CommaSeparator);
+
             writer->WriteInt64(NSTokens::Key::i64Val, callEvt->AdditionalInfo->LastNestedEventTime, NSTokens::Separator::CommaSeparator);
+
+            writer->WriteDouble(NSTokens::Key::beginTime, callEvt->AdditionalInfo->BeginTime, NSTokens::Separator::CommaSeparator);
+            writer->WriteDouble(NSTokens::Key::endTime, callEvt->AdditionalInfo->EndTime, NSTokens::Separator::CommaSeparator);
         }
 
         void ExternalCallEventLogEntry_Parse(EventLogEntry* evt, ThreadContext* threadContext, FileReader* reader, UnlinkableSlabAllocator& alloc)
@@ -803,9 +820,12 @@ namespace TTD
             reader->ReadKey(NSTokens::Key::argRetVal, true);
             callEvt->ReturnValue = NSSnapValues::ParseTTDVar(false, reader);
 
-            callEvt->AdditionalInfo->HasScriptException = reader->ReadBool(NSTokens::Key::boolVal, true);
-            callEvt->AdditionalInfo->HasTerminiatingException = reader->ReadBool(NSTokens::Key::boolVal, true);
+            callEvt->AdditionalInfo->CheckExceptionStatus = reader->ReadBool(NSTokens::Key::boolVal, true);
+
             callEvt->AdditionalInfo->LastNestedEventTime = reader->ReadInt64(NSTokens::Key::i64Val, true);
+
+            callEvt->AdditionalInfo->BeginTime = reader->ReadDouble(NSTokens::Key::beginTime, true);
+            callEvt->AdditionalInfo->EndTime = reader->ReadDouble(NSTokens::Key::endTime, true);
         }
     }
 }
