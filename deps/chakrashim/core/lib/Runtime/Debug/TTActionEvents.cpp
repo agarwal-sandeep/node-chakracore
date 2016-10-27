@@ -1205,6 +1205,13 @@ namespace TTD
                         JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(const_cast<EventLogEntry*>(evt), markedAsJustMyCode, lastLocation);
 
                         err.GetAndClear();  // discard exception object
+
+                        //Reset any step controller logic
+                        if(ctx->GetThreadContext()->GetDebugManager() != nullptr)
+                        {
+                            ctx->GetThreadContext()->GetDebugManager()->stepController.Deactivate();
+                        }
+
                         throw TTDebuggerAbortException::CreateUncaughtExceptionAbortRequest(lastLocation.GetRootEventTime(), _u("Uncaught JavaScript exception -- Propagate to top-level."));
                     }
 

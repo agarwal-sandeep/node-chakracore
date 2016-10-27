@@ -4104,7 +4104,7 @@ CHAKRA_API JsTTDReplayExecution(_Inout_ JsTTDMoveMode* moveMode, _Inout_ int64_t
             }
             elog->UnLoadBPListAfterMoveForContextRecreate();
 
-            //Handle the pending BP as/if needed
+            //If the log has a BP requested then we should set the actual bp here
             if(elog->HasPendingTTDBP())
             {
                 TTD::TTDebuggerSourceLocation bpLocation;
@@ -4127,47 +4127,6 @@ CHAKRA_API JsTTDReplayExecution(_Inout_ JsTTDMoveMode* moveMode, _Inout_ int64_t
 
             return JsNoError;
         });
-    }
-
-    //If the log has a BP requested then we should set the actual bp here
-    if(elog->HasPendingTTDBP())
-    {
-        TTD::TTDebuggerSourceLocation bpLocation;
-        elog->GetPendingTTDBPInfo(bpLocation);
-
-        Js::FunctionBody* body = bpLocation.ResolveAssociatedSourceInfo(scriptContext);
-        Js::Utf8SourceInfo* utf8SourceInfo = body->GetUtf8SourceInfo();
-
-        charcount_t charPosition;
-        charcount_t byteOffset;
-        utf8SourceInfo->GetCharPositionForLineInfo((charcount_t)bpLocation.GetLine(), &charPosition, &byteOffset);
-        long ibos = charPosition + bpLocation.GetColumn() + 1;
-
-        Js::DebugDocument* debugDocument = utf8SourceInfo->GetDebugDocument();
-
-        Js::StatementLocation statement;
-        BOOL stmtok = debugDocument->GetStatementLocation(ibos, &statement);
-        AssertMsg(stmtok, "We have a bad line for setting a breakpoint.");
-
-        // Don't see a use case for supporting multiple breakpoints at same location.
-        // If a breakpoint already exists, just return that
-        Js::BreakpointProbe* probe = debugDocument->FindBreakpoint(statement);
-        bool isNewBP = (probe == nullptr);
-
-        if(probe == nullptr)
-        {
-            BEGIN_JS_RUNTIME_CALLROOT_EX(scriptContext, false)
-            {
-                probe = debugDocument->SetBreakPoint(statement, BREAKPOINT_ENABLED);
-                AssertMsg(probe != nullptr, "We have a bad line or something for setting a breakpoint.");
-            }
-            END_JS_RUNTIME_CALL(scriptContext);
-        }
-
-        elog->SetActiveBP(probe->GetId(), isNewBP, bpLocation);
-
-        //Finally clear the pending BP info so we don't get confused later
-        elog->ClearPendingTTDBPInfo();
     }
 
     JsErrorCode res = JsNoError;

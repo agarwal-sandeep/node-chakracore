@@ -422,15 +422,21 @@ CHAKRA_API JsDiagSetStepType(
         {
             jsrtDebugManager->SetResumeType(BREAKRESUMEACTION_STEP_INTO);
         }
+#if !TTD_STEP_BACK_WORK_AROUND
         else if (stepType == JsDiagStepTypeStepOut)
         {
             jsrtDebugManager->SetResumeType(BREAKRESUMEACTION_STEP_OUT);
         }
+#endif
         else if (stepType == JsDiagStepTypeStepOver)
         {
             jsrtDebugManager->SetResumeType(BREAKRESUMEACTION_STEP_OVER);
         }
-        else if (stepType == JsDiagStepTypeStepBack)
+        else if (stepType == JsDiagStepTypeStepBack
+#if TTD_STEP_BACK_WORK_AROUND
+            || stepType == JsDiagStepTypeStepOut
+#endif
+            )
         {
 #if ENABLE_TTD
             ThreadContext* threadContext = runtime->GetThreadContext();

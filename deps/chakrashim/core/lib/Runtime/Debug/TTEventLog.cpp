@@ -1383,6 +1383,9 @@ namespace TTD
 
         if(this->HasPendingTTDBP())
         {
+            //Reset any step controller logic
+            fb->GetScriptContext()->GetThreadContext()->GetDebugManager()->stepController.Deactivate();
+
             //
             //TODO: right now we have a very simple reverse step mode of 0 we will want to add GetPendingTTDBPMoveMode logic
             //

@@ -343,6 +343,9 @@
 //A workaround for profile based creation of Native Arrays -- we may or may not want to allow since it differs in record/replay and (currently) asserts in our snap compare
 #define TTD_NATIVE_PROFILE_ARRAY_WORK_AROUND 1
 
+//A very temp workaround for the broken step back button
+#define TTD_STEP_BACK_WORK_AROUND 1
+
 //Enable various sanity checking features and asserts
 #define ENABLE_TTD_INTERNAL_DIAGNOSTICS 1
 
@@ -359,7 +362,7 @@
 #endif
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-#define ENABLE_SNAPSHOT_COMPARE 1
+#define ENABLE_SNAPSHOT_COMPARE 0
 #define ENABLE_OBJECT_SOURCE_TRACKING 0
 #define ENABLE_VALUE_TRACE 0
 #define ENABLE_BASIC_TRACE 0
