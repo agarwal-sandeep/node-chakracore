@@ -282,9 +282,13 @@ JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const by
 
     ///
     //Figure out how to make this programatic
-    *relocatedUriLength = TTDHostStringLength(path);
-    *relocatedUri = (byte*)CoTaskMemAlloc((*relocatedUriLength + 1) * sizeof(TTDHostCharType));
-    memcpy_s(*relocatedUri, *relocatedUriLength, path, *relocatedUriLength);
+    if(relocatedUri != nullptr)
+    {
+        size_t bytelen = (TTDHostStringLength(path) + 1) * sizeof(TTDHostCharType);
+        *relocatedUriLength = TTDHostStringLength(path);
+        *relocatedUri = (byte*)CoTaskMemAlloc(bytelen);
+        memcpy_s(*relocatedUri, bytelen, path, bytelen);
+    }
     ///
 
     res = TTDHostOpen(path, write);
