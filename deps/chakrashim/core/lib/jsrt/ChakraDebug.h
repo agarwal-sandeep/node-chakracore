@@ -705,7 +705,7 @@ typedef __int64 int64_t;
     /// <param name="read">If the handle should be opened for reading.</param>
     /// <param name="write">If the handle should be opened for writing.</param>
     /// <returns>A JsTTDStreamHandle opened in read/write mode as specified.</returns>
-    typedef JsTTDStreamHandle (CHAKRA_CALLBACK *TTDOpenResourceStreamCallback)(_In_ size_t uriByteLength, _In_reads_(uriByteLength) const byte* uriBytes, _In_z_ const char* asciiResourceName, _In_ bool read, _In_ bool write);
+    typedef JsTTDStreamHandle (CHAKRA_CALLBACK *TTDOpenResourceStreamCallback)(_In_ size_t uriByteLength, _In_reads_(uriByteLength) const byte* uriBytes, _In_z_ const char* asciiResourceName, _In_ bool read, _In_ bool write, _Out_opt_ byte** relocatedUri, _Out_opt_ size_t* relocatedUriLength);
 
     /// <summary>
     ///     TTD API -- may change in future versions:

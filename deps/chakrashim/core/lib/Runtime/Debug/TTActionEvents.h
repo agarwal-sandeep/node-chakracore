@@ -535,6 +535,9 @@ namespace TTD
             TTString SourceUri;
             DWORD_PTR DocumentID;
 
+            //The relocated URI -- if requested during replay
+            TTString RelocatedSourceUri;
+
             //The flags for loading this script
             LoadScriptFlag LoadFlag;
         };

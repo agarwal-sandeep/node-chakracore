@@ -2856,6 +2856,9 @@ namespace TTD
         this->m_eventSlabAllocator.CopyNullTermStringInto(sourceUri, cpAction->AdditionalInfo->SourceUri);
         cpAction->AdditionalInfo->DocumentID = sourceContextId;
 
+        //Not needed for record -- just ensure initialized to default value
+        InitializeAsNullPtrTTString(cpAction->AdditionalInfo->RelocatedSourceUri);
+
         cpAction->AdditionalInfo->LoadFlag = loadFlag;
 
         actionPopper.InitializeWithEventAndEnterWResult(evt, &(cpAction->Result));
@@ -2897,7 +2900,7 @@ namespace TTD
 
         this->m_threadContext->TTDContext->TTDWriteInitializeFunction(outUri.UriByteLength, outUri.UriBytes);
 
-        JsTTDStreamHandle logHandle = iofp.pfGetResourceStream(outUri.UriByteLength, outUri.UriBytes, "ttdlog.log", false, true);
+        JsTTDStreamHandle logHandle = iofp.pfGetResourceStream(outUri.UriByteLength, outUri.UriBytes, "ttdlog.log", false, true, nullptr, nullptr);
         TTD_LOG_WRITER writer(logHandle, TTD_COMPRESSED_OUTPUT, iofp.pfWriteBytesToStream, iofp.pfFlushAndCloseStream);
 
         writer.WriteRecordStart();
@@ -3093,7 +3096,7 @@ namespace TTD
 
     void EventLog::ParseLogInto(const IOStreamFunctions& iofp, size_t uriByteLength, const byte* uriBytes)
     {
-        JsTTDStreamHandle logHandle = iofp.pfGetResourceStream(uriByteLength, uriBytes, "ttdlog.log", true, false);
+        JsTTDStreamHandle logHandle = iofp.pfGetResourceStream(uriByteLength, uriBytes, "ttdlog.log", true, false, nullptr, nullptr);
         TTD_LOG_READER reader(logHandle, TTD_COMPRESSED_OUTPUT, iofp.pfReadBytesFromStream, iofp.pfFlushAndCloseStream);
 
         reader.ReadRecordStart();

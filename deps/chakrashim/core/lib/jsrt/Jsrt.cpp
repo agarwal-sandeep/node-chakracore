@@ -129,19 +129,22 @@ JsErrorCode CreateContextCore(_In_ JsRuntimeHandle runtimeHandle, _In_ TTDRecord
 
 #if ENABLE_TTD_DIAGNOSTICS_TRACING
         bool noNative = true;
+        bool doDebug = true;
 #else
-        bool noNative = threadContext->TTDLog->IsDebugModeFlagSet();
+        bool noNative = TTD_FORCE_NOJIT_MODE || threadContext->TTDLog->IsDebugModeFlagSet();
+        bool doDebug = TTD_FORCE_DEBUG_MODE || threadContext->TTDLog->IsDebugModeFlagSet();
 #endif
 
         threadContext->TTDLog->PushMode(TTD::TTDMode::ExcludedExecutionTTAction);
         if(inRecordMode)
         {
-            threadContext->TTDContext->AddNewScriptContextRecord(context, scriptContext, callbackFunctor, noNative);
+            threadContext->TTDContext->AddNewScriptContextRecord(context, scriptContext, callbackFunctor, noNative, doDebug);
         }
         else
         {
-            threadContext->TTDContext->AddNewScriptContextReplay(context, scriptContext, callbackFunctor, noNative);
+            threadContext->TTDContext->AddNewScriptContextReplay(context, scriptContext, callbackFunctor, noNative, doDebug);
         }
+
         threadContext->TTDLog->SetModeFlagsOnContext(scriptContext);
         threadContext->TTDLog->PopMode(TTD::TTDMode::ExcludedExecutionTTAction);
     }

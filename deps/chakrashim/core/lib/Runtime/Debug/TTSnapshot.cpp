@@ -562,7 +562,7 @@ namespace TTD
 
         const TTUriString& uri = threadContext->TTDContext->TTDUri;
         const IOStreamFunctions& iops = threadContext->TTDContext->TTDStreamFunctions;
-        JsTTDStreamHandle snapHandle = iops.pfGetResourceStream(uri.UriByteLength, uri.UriBytes, asciiResourceName, false, true);
+        JsTTDStreamHandle snapHandle = iops.pfGetResourceStream(uri.UriByteLength, uri.UriBytes, asciiResourceName, false, true, nullptr, nullptr);
 
         TTD_SNAP_WRITER snapwriter(snapHandle, TTD_COMPRESSED_OUTPUT, iops.pfWriteBytesToStream, iops.pfFlushAndCloseStream);
 
@@ -577,7 +577,7 @@ namespace TTD
 
         const TTUriString& uri = threadContext->TTDContext->TTDUri;
         const IOStreamFunctions& iops = threadContext->TTDContext->TTDStreamFunctions;
-        JsTTDStreamHandle snapHandle = iops.pfGetResourceStream(uri.UriByteLength, uri.UriBytes, asciiResourceName, true, false);
+        JsTTDStreamHandle snapHandle = iops.pfGetResourceStream(uri.UriByteLength, uri.UriBytes, asciiResourceName, true, false, nullptr, nullptr);
 
         TTD_SNAP_READER snapreader(snapHandle, TTD_COMPRESSED_OUTPUT, iops.pfReadBytesFromStream, iops.pfFlushAndCloseStream);
         SnapShot* snap = SnapShot::ParseSnapshotFromFile(&snapreader);

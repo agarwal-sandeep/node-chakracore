@@ -174,9 +174,7 @@ namespace TTD
             TTDVar ComputedNameInfo;
 
             //Flags matching the runtime definitions
-            bool HasInlineCaches;
             bool HasSuperReference;
-            bool IsActiveScript;
         };
 
         ////

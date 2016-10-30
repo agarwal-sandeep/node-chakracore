@@ -9294,11 +9294,10 @@ CommonNumber:
         return thisVar;
     }
 
-
     Var JavascriptOperators::CallGetter(RecyclableObject * const function, Var const object, ScriptContext * requestContext)
     {
 #if ENABLE_TTD
-        if(requestContext->ShouldSuppressGetterInvocationForDebuggerEvaluation())
+        if(function->GetScriptContext()->ShouldSuppressGetterInvocationForDebuggerEvaluation())
         {
             return requestContext->GetLibrary()->GetUndefined();
         }

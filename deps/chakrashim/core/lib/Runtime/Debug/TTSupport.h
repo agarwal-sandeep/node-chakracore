@@ -261,7 +261,7 @@ namespace TTD
     typedef void* JsTTDStreamHandle;
 
     typedef void(CALLBACK *TTDInitializeForWriteLogStreamCallback)(size_t uriByteLength, const byte* uriBytes);
-    typedef JsTTDStreamHandle(CALLBACK *TTDOpenResourceStreamCallback)(size_t uriByteLength, const byte* uriBytes, const char* asciiNameString, bool read, bool write);
+    typedef JsTTDStreamHandle(CALLBACK *TTDOpenResourceStreamCallback)(size_t uriByteLength, const byte* uriBytes, const char* asciiNameString, bool read, bool write, byte** relocatedUri, size_t* relocatedUriLength);
 
     typedef bool(CALLBACK *TTDReadBytesFromStreamCallback)(JsTTDStreamHandle handle, byte* buff, size_t size, size_t* readCount);
     typedef bool(CALLBACK *TTDWriteBytesToStreamCallback)(JsTTDStreamHandle handle, const byte* buff, size_t size, size_t* writtenCount);

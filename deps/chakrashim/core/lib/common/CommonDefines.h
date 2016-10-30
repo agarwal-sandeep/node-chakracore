@@ -327,7 +327,9 @@
 #ifndef ENABLE_TEST_HOOKS
 #define ENABLE_TEST_HOOKS
 #endif
+#endif // ENABLE_DEBUG_CONFIG_OPTIONS
 
+#ifdef _CHAKRACOREBUILD
 ////////
 //Time Travel flags
 #ifdef __APPLE__
@@ -337,11 +339,12 @@
 #endif
 
 #if ENABLE_TTD
-//A workaround for some unimplemented code parse features (force debug mode) -- Need to set to enable debug attach on recorded traces
-#define TTD_DYNAMIC_DECOMPILATION_AND_JIT_WORK_AROUND 1
-
 //A workaround for profile based creation of Native Arrays -- we may or may not want to allow since it differs in record/replay and (currently) asserts in our snap compare
 #define TTD_NATIVE_PROFILE_ARRAY_WORK_AROUND 1
+
+//Force debug or notjit mode
+#define TTD_FORCE_DEBUG_MODE 0
+#define TTD_FORCE_NOJIT_MODE 0
 
 //A very temp workaround for the broken step back button
 #define TTD_STEP_BACK_WORK_AROUND 1
@@ -362,7 +365,7 @@
 #endif
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-#define ENABLE_SNAPSHOT_COMPARE 0
+#define ENABLE_SNAPSHOT_COMPARE 1
 #define ENABLE_OBJECT_SOURCE_TRACKING 0
 #define ENABLE_VALUE_TRACE 0
 #define ENABLE_BASIC_TRACE 0
@@ -381,8 +384,7 @@
 #endif
 //End Time Travel flags
 ////////
-
-#endif // ENABLE_DEBUG_CONFIG_OPTIONS
+#endif
 
 //----------------------------------------------------------------------------------------------------
 // Debug only features

@@ -134,7 +134,7 @@ namespace TTD
             const TTUriString& uri = threadContext->TTDContext->TTDUri;
             const IOStreamFunctions& iops = threadContext->TTDContext->TTDStreamFunctions;
 
-            JsTTDStreamHandle srcStream = iops.pfGetResourceStream(uri.UriByteLength, uri.UriBytes, asciiResourceName, false, true);
+            JsTTDStreamHandle srcStream = iops.pfGetResourceStream(uri.UriByteLength, uri.UriBytes, asciiResourceName, false, true, nullptr, nullptr);
 
             if(isUtf8Source)
             {
@@ -158,7 +158,7 @@ namespace TTD
             iops.pfFlushAndCloseStream(srcStream, false, true);
         }
 
-        void ReadCodeFromFile(ThreadContext* threadContext, bool fromEvent, DWORD_PTR docId, bool isUtf8Source, byte* sourceBuffer, uint32 length)
+        void ReadCodeFromFile(ThreadContext* threadContext, bool fromEvent, DWORD_PTR docId, bool isUtf8Source, byte* sourceBuffer, uint32 length, byte** relocatedUri, size_t* relocatedUriLength)
         {
             char asciiResourceName[64];
             sprintf_s(asciiResourceName, 64, "src%s_%I64u.js", (fromEvent ? "_ld" : ""), static_cast<uint64>(docId));
@@ -166,7 +166,7 @@ namespace TTD
             const TTUriString& uri = threadContext->TTDContext->TTDUri;
             const IOStreamFunctions& iops = threadContext->TTDContext->TTDStreamFunctions;
 
-            JsTTDStreamHandle srcStream = iops.pfGetResourceStream(uri.UriByteLength, uri.UriBytes, asciiResourceName, true, false);
+            JsTTDStreamHandle srcStream = iops.pfGetResourceStream(uri.UriByteLength, uri.UriBytes, asciiResourceName, true, false, relocatedUri, relocatedUriLength);
 
             if(isUtf8Source)
             {
@@ -592,10 +592,32 @@ namespace TTD
             Js::ScopeSlots scopeSlots(slotArray);
             scopeSlots.SetCount(slotInfo->SlotCount);
 
+            Js::Var undef = ctx->GetLibrary()->GetUndefined();
+            for(uint32 j = 0; j < slotInfo->SlotCount; j++)
+            {
+                scopeSlots.Set(j, undef);
+            }
+
             if(slotInfo->isFunctionBodyMetaData)
             {
                 Js::FunctionBody* fbody = inflator->LookupFunctionBody(slotInfo->OptFunctionBodyId);
                 scopeSlots.SetScopeMetadata(fbody);
+
+                //This is a doubly nested lookup so if the scope slot array is large this could be expensive
+                Js::PropertyId* propertyIds = fbody->GetPropertyIdsForScopeSlotArray();
+                for(uint32 j = 0; j < slotInfo->SlotCount; j++)
+                {
+                    Js::PropertyId trgtPid = slotInfo->PIDArray[j];
+                    for(uint32 i = 0; i < slotInfo->SlotCount; i++)
+                    {
+                        if(trgtPid == propertyIds[i])
+                        {
+                            Js::Var sval = inflator->InflateTTDVar(slotInfo->Slots[j]);
+                            scopeSlots.Set(i, sval);
+                            break;
+                        }
+                    }
+                }
             }
             else
             {
@@ -613,17 +635,22 @@ namespace TTD
                     dbgScope = scopeBody->GetScopeObjectChain()->pScopeChain->Item(scopeIndex);
                 }
 
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-                AssertMsg(dbgScope->GetStart() == slotInfo->OptDiagDebugScopeBegin && dbgScope->GetEnd() == slotInfo->OptDiagDebugScopeEnd, "Bytecode positions don't match!!!");
-#endif
-
                 scopeSlots.SetScopeMetadata(dbgScope);
-            }
 
-            for(uint32 j = 0; j < slotInfo->SlotCount; j++)
-            {
-                Js::Var sval = inflator->InflateTTDVar(slotInfo->Slots[j]);
-                scopeSlots.Set(j, sval);
+                //This is a doubly nested lookup so if the scope slot array is large this could be expensive
+                for(uint32 j = 0; j < slotInfo->SlotCount; j++)
+                {
+                    Js::PropertyId trgtPid = slotInfo->PIDArray[j];
+                    for(uint32 i = 0; i < slotInfo->SlotCount; i++)
+                    {
+                        if(trgtPid == dbgScope->GetPropertyIdForSlotIndex_TTD(i))
+                        {
+                            Js::Var sval = inflator->InflateTTDVar(slotInfo->Slots[j]);
+                            scopeSlots.Set(i, sval);
+                            break;
+                        }
+                    }
+                }
             }
 
             return slotArray;
@@ -653,11 +680,6 @@ namespace TTD
                 {
                     writer->WriteAddr(NSTokens::Key::debuggerScopeId, slotInfo->OptDebugScopeId, NSTokens::Separator::CommaSeparator);
                 }
-
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-                writer->WriteInt32(NSTokens::Key::i32Val, slotInfo->OptDiagDebugScopeBegin, NSTokens::Separator::CommaSeparator);
-                writer->WriteInt32(NSTokens::Key::i32Val, slotInfo->OptDiagDebugScopeEnd, NSTokens::Separator::CommaSeparator);
-#endif
             }
 
             writer->WriteLengthValue(slotInfo->SlotCount, NSTokens::Separator::CommaAndBigSpaceSeparator);
@@ -665,21 +687,13 @@ namespace TTD
             writer->AdjustIndent(1);
             for(uint32 i = 0; i < slotInfo->SlotCount; ++i)
             {
-                NSTokens::Separator sep = (i != 0 ? NSTokens::Separator::CommaAndBigSpaceSeparator : NSTokens::Separator::BigSpaceSeparator);
-
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-                writer->WriteRecordStart(sep);
-                writer->WriteUInt32(NSTokens::Key::pid, slotInfo->DebugPIDArray[i], NSTokens::Separator::NoSeparator);
+                writer->WriteRecordStart(i != 0 ? NSTokens::Separator::CommaAndBigSpaceSeparator : NSTokens::Separator::BigSpaceSeparator);
+                writer->WriteUInt32(NSTokens::Key::pid, slotInfo->PIDArray[i], NSTokens::Separator::NoSeparator);
                 writer->WriteKey(NSTokens::Key::entry, NSTokens::Separator::CommaSeparator);
 
-                sep = NSTokens::Separator::NoSeparator;
-#endif
+                EmitTTDVar(slotInfo->Slots[i], writer, NSTokens::Separator::NoSeparator);
 
-                EmitTTDVar(slotInfo->Slots[i], writer, sep);
-
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
                 writer->WriteRecordEnd();
-#endif
             }
             writer->AdjustIndent(-1);
             writer->WriteSequenceEnd(NSTokens::Separator::BigSpaceSeparator);
@@ -703,11 +717,6 @@ namespace TTD
             if(slotInfo->isFunctionBodyMetaData)
             {
                 slotInfo->OptFunctionBodyId = reader->ReadAddr(NSTokens::Key::functionBodyId, true);
-
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-                slotInfo->OptDiagDebugScopeBegin = -1;
-                slotInfo->OptDiagDebugScopeEnd = -1;
-#endif
             }
             else
             {
@@ -720,10 +729,6 @@ namespace TTD
                 {
                     slotInfo->OptDebugScopeId = reader->ReadAddr(NSTokens::Key::debuggerScopeId, true);
                 }
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-                slotInfo->OptDiagDebugScopeBegin = reader->ReadInt32(NSTokens::Key::i32Val, true);
-                slotInfo->OptDiagDebugScopeEnd = reader->ReadInt32(NSTokens::Key::i32Val, true);
-#endif
             }
 
             slotInfo->SlotCount = reader->ReadLengthValue(true);
@@ -731,27 +736,17 @@ namespace TTD
 
             slotInfo->Slots = alloc.SlabAllocateArray<TTDVar>(slotInfo->SlotCount);
 
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-            slotInfo->DebugPIDArray = alloc.SlabAllocateArray<Js::PropertyId>(slotInfo->SlotCount);
-#endif
+            slotInfo->PIDArray = alloc.SlabAllocateArray<Js::PropertyId>(slotInfo->SlotCount);
 
             for(uint32 i = 0; i < slotInfo->SlotCount; ++i)
             {
-                bool readSeparator = (i != 0);
-
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-                reader->ReadRecordStart(readSeparator);
-                slotInfo->DebugPIDArray[i] = (Js::PropertyId)reader->ReadUInt32(NSTokens::Key::pid);
+                reader->ReadRecordStart(i != 0);
+                slotInfo->PIDArray[i] = (Js::PropertyId)reader->ReadUInt32(NSTokens::Key::pid);
                 reader->ReadKey(NSTokens::Key::entry, true);
 
-                readSeparator = false;
-#endif
+                slotInfo->Slots[i] = ParseTTDVar(false, reader);
 
-                slotInfo->Slots[i] = ParseTTDVar(readSeparator, reader);
-
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
                 reader->ReadRecordEnd();
-#endif
             }
             reader->ReadSequenceEnd();
 
@@ -776,11 +771,15 @@ namespace TTD
             compareMap.DiagnosticAssert(sai1->SlotCount == sai2->SlotCount);
             for(uint32 i = 0; i < sai1->SlotCount; ++i)
             {
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-                compareMap.DiagnosticAssert(sai1->DebugPIDArray[i] == sai2->DebugPIDArray[i]);
-#endif
-
-                AssertSnapEquivTTDVar_SlotArray(sai1->Slots[i], sai2->Slots[i], compareMap, i);
+                Js::PropertyId id1 = sai1->PIDArray[i];
+                for(uint32 j = 0; j < sai1->SlotCount; ++j)
+                {
+                    if(id1 == sai2->PIDArray[j])
+                    {
+                        AssertSnapEquivTTDVar_SlotArray(sai1->Slots[i], sai2->Slots[j], compareMap, i);
+                        break;
+                    }
+                }
             }
         }
 #endif
@@ -1074,6 +1073,9 @@ namespace TTD
             fbInfo->DocumentID = documentID;
             alloc.CopyNullTermStringInto(fb->GetSourceContextInfo()->url, fbInfo->SourceUri);
 
+            //Not needed for record -- just ensure initialized to default value
+            InitializeAsNullPtrTTString(fbInfo->RelocatedSourceUri); 
+
             fbInfo->IsUtf8 = isUtf8source;
             fbInfo->ByteLength = sourceLen;
             fbInfo->SourceBuffer = alloc.SlabAllocateArray<byte>(fbInfo->ByteLength);
@@ -1096,6 +1098,8 @@ namespace TTD
             writer->WriteUInt64(NSTokens::Key::moduleId, fbInfo->ModuleId, NSTokens::Separator::CommaSeparator);
             writer->WriteUInt64(NSTokens::Key::documentId, fbInfo->DocumentID, NSTokens::Separator::CommaSeparator);
             writer->WriteString(NSTokens::Key::uri, fbInfo->SourceUri, NSTokens::Separator::CommaSeparator);
+
+            //RelocatedSourceUri is not used (or set) during record so nothing to emit here
 
             writer->WriteBool(NSTokens::Key::boolVal, fbInfo->IsUtf8, NSTokens::Separator::CommaSeparator);
             writer->WriteLengthValue(fbInfo->ByteLength, NSTokens::Separator::CommaSeparator);
@@ -1127,6 +1131,9 @@ namespace TTD
             fbInfo->DocumentID = (DWORD_PTR)reader->ReadUInt64(NSTokens::Key::documentId, true);
             reader->ReadString(NSTokens::Key::uri, alloc, fbInfo->SourceUri, true);
 
+            //Not needed for record -- so nothing to parse just ensure initialized to default value
+            InitializeAsNullPtrTTString(fbInfo->RelocatedSourceUri);
+
             fbInfo->IsUtf8 = reader->ReadBool(NSTokens::Key::boolVal, true);
             fbInfo->ByteLength = reader->ReadLengthValue(true);
             fbInfo->SourceBuffer = alloc.SlabAllocateArray<byte>(fbInfo->ByteLength);
@@ -1142,7 +1149,19 @@ namespace TTD
             }
             else
             {
-                JsSupport::ReadCodeFromFile(threadContext, false, fbInfo->DocumentID, fbInfo->IsUtf8, fbInfo->SourceBuffer, fbInfo->ByteLength);
+                byte* relocatedUri = nullptr;
+                size_t relocatedUriLength = 0;
+
+                JsSupport::ReadCodeFromFile(threadContext, false, fbInfo->DocumentID, fbInfo->IsUtf8, fbInfo->SourceBuffer, fbInfo->ByteLength, &relocatedUri, &relocatedUriLength);
+
+                if(relocatedUri != nullptr)
+                {
+                    alloc.CopyStringIntoWLength((char16*)relocatedUri, (uint32)relocatedUriLength, fbInfo->RelocatedSourceUri);
+
+                    //We may want to make this auto-freeing
+                    CoTaskMemFree(relocatedUri);
+                    relocatedUri = nullptr;
+                }
             }
 
             fbInfo->DbgSerializedBytecodeSize = 0;
@@ -1196,7 +1215,20 @@ namespace TTD
             AssertMsg(ctx->GetSourceContextInfo(sourceContext, nullptr) == nullptr, "On inflate we should either have clean ctxts or we want to optimize the inflate process by skipping redoing this work!!!");
             AssertMsg(fbInfo->TopLevelBase.IsUtf8 == ((fbInfo->LoadFlag & LoadScriptFlag_Utf8Source) == LoadScriptFlag_Utf8Source), "Utf8 status is inconsistent!!!");
 
-            SourceContextInfo * sourceContextInfo = ctx->CreateSourceContextInfo(sourceContext, fbInfo->TopLevelBase.SourceUri.Contents, fbInfo->TopLevelBase.SourceUri.Length, nullptr);
+            const char16* srcUri = nullptr;
+            uint32 srcUriLength = 0;
+            if(!IsNullPtrTTString(fbInfo->TopLevelBase.RelocatedSourceUri))
+            {
+                srcUri = fbInfo->TopLevelBase.RelocatedSourceUri.Contents;
+                srcUriLength = fbInfo->TopLevelBase.RelocatedSourceUri.Length;
+            }
+            else
+            {
+                srcUri = fbInfo->TopLevelBase.SourceUri.Contents;
+                srcUriLength = fbInfo->TopLevelBase.SourceUri.Length;
+            }
+
+            SourceContextInfo * sourceContextInfo = ctx->CreateSourceContextInfo(sourceContext, srcUri, srcUriLength, nullptr);
 
             AssertMsg(fbInfo->TopLevelBase.IsUtf8 || sizeof(wchar) == sizeof(char16), "Non-utf8 code only allowed on windows!!!");
             const int chsize = (fbInfo->LoadFlag & LoadScriptFlag_Utf8Source) ? sizeof(char) : sizeof(char16);

@@ -117,18 +117,9 @@ namespace TTD
                 slotInfo->OptDebugScopeId = TTD_INVALID_PTR_ID;
                 slotInfo->OptWellKnownDbgScope = TTD_INVALID_WELLKNOWN_TOKEN;
 
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
                 Js::PropertyId* propertyIds = fb->GetPropertyIdsForScopeSlotArray();
-                slotInfo->DebugPIDArray = this->m_pendingSnap->GetSnapshotSlabAllocator().SlabAllocateArray<Js::PropertyId>(slotInfo->SlotCount);
-
-                for(uint32 j = 0; j < slotInfo->SlotCount; ++j)
-                {
-                    slotInfo->DebugPIDArray[j] = propertyIds[j];
-                }
-
-                slotInfo->OptDiagDebugScopeBegin = -1;
-                slotInfo->OptDiagDebugScopeEnd = -1;
-#endif
+                slotInfo->PIDArray = this->m_pendingSnap->GetSnapshotSlabAllocator().SlabAllocateArray<Js::PropertyId>(slotInfo->SlotCount);
+                js_memcpy_s(slotInfo->PIDArray, sizeof(Js::PropertyId) * slotInfo->SlotCount, propertyIds, sizeof(Js::PropertyId) * slots.GetCount());
             }
             else
             {
@@ -148,17 +139,12 @@ namespace TTD
                     slotInfo->OptWellKnownDbgScope = wellKnownToken;
                 }
 
-#if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-                slotInfo->DebugPIDArray = this->m_pendingSnap->GetSnapshotSlabAllocator().SlabAllocateArray<Js::PropertyId>(slotInfo->SlotCount);
+                slotInfo->PIDArray = this->m_pendingSnap->GetSnapshotSlabAllocator().SlabAllocateArray<Js::PropertyId>(slotInfo->SlotCount);
 
                 for(uint32 j = 0; j < slotInfo->SlotCount; ++j)
                 {
-                    slotInfo->DebugPIDArray[j] = dbgScope->GetPropertyIdForSlotIndex_TTD(j);
+                    slotInfo->PIDArray[j] = dbgScope->GetPropertyIdForSlotIndex_TTD(j);
                 }
-
-                slotInfo->OptDiagDebugScopeBegin = dbgScope->GetStart();
-                slotInfo->OptDiagDebugScopeEnd = dbgScope->GetEnd();
-#endif
             }
 
             this->m_marks.ClearMark(scope);

@@ -52,7 +52,7 @@ namespace TTD
         RecyclerRootPtr<ObjectPinSet> m_ttdLocalRootSet;
         JsUtil::BaseDictionary<TTD_LOG_PTR_ID, Js::RecyclableObject*, HeapAllocator> m_ttdRootTagIdMap;
 
-        void AddNewScriptContext_Helper(Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative);
+        void AddNewScriptContext_Helper(Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode);
 
     public:
         TTUriString TTDUri;
@@ -88,8 +88,8 @@ namespace TTD
         //
         void MultipleScriptWarn() const;
 
-        void AddNewScriptContextRecord(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative);
-        void AddNewScriptContextReplay(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative);
+        void AddNewScriptContextRecord(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode);
+        void AddNewScriptContextReplay(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode);
         void SetActiveScriptContext(Js::ScriptContext* ctx);
         Js::ScriptContext* GetActiveScriptContext();
 

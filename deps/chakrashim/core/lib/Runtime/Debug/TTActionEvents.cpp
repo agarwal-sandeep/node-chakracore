@@ -971,7 +971,20 @@ namespace TTD
 
             if(sourceContextInfo == nullptr)
             {
-                sourceContextInfo = ctx->CreateSourceContextInfo(sourceContext, cpInfo->SourceUri.Contents, cpInfo->SourceUri.Length, nullptr);
+                const char16* srcUri = nullptr;
+                uint32 srcUriLength = 0;
+                if(!IsNullPtrTTString(cpInfo->RelocatedSourceUri))
+                {
+                    srcUri = cpInfo->RelocatedSourceUri.Contents;
+                    srcUriLength = cpInfo->RelocatedSourceUri.Length;
+                }
+                else
+                {
+                    srcUri = cpInfo->SourceUri.Contents;
+                    srcUriLength = cpInfo->SourceUri.Length;
+                }
+
+                sourceContextInfo = ctx->CreateSourceContextInfo(sourceContext, srcUri, srcUriLength, nullptr);
             }
 
             AssertMsg(cpAction->AdditionalInfo->IsUtf8 || sizeof(wchar) == sizeof(char16), "Non-utf8 code only allowed on windows!!!");
@@ -1026,6 +1039,11 @@ namespace TTD
                 alloc.UnlinkString(cpInfo->SourceUri);
             }
 
+            if(!IsNullPtrTTString(cpInfo->RelocatedSourceUri))
+            {
+                alloc.UnlinkString(cpInfo->RelocatedSourceUri);
+            }
+
             alloc.UnlinkAllocation(cpAction->AdditionalInfo);
         }
 
@@ -1043,6 +1061,8 @@ namespace TTD
             writer->WriteUInt64(NSTokens::Key::bodyCounterId, cpAction->BodyCtrId, NSTokens::Separator::CommaSeparator);
 
             writer->WriteString(NSTokens::Key::uri, cpInfo->SourceUri, NSTokens::Separator::CommaSeparator);
+
+            //RelocatedSourceUri is not used (or set) during record so nothing to emit here
 
             writer->WriteBool(NSTokens::Key::boolVal, cpInfo->IsUtf8, NSTokens::Separator::CommaSeparator);
             writer->WriteLengthValue(cpInfo->SourceByteLength, NSTokens::Separator::CommaSeparator);
@@ -1067,12 +1087,27 @@ namespace TTD
 
             reader->ReadString(NSTokens::Key::uri, alloc, cpInfo->SourceUri, true);
 
+            //Not needed for record -- so nothing to parse just ensure initialized to default value
+            InitializeAsNullPtrTTString(cpInfo->RelocatedSourceUri);
+
             cpInfo->IsUtf8 = reader->ReadBool(NSTokens::Key::boolVal, true);
             cpInfo->SourceByteLength = reader->ReadLengthValue(true);
 
             cpInfo->SourceCode = alloc.SlabAllocateArray<byte>(cpAction->AdditionalInfo->SourceByteLength);
 
-            JsSupport::ReadCodeFromFile(threadContext, true, cpInfo->DocumentID, cpInfo->IsUtf8, cpInfo->SourceCode, cpInfo->SourceByteLength);
+            byte* relocatedUri = nullptr;
+            size_t relocatedUriLength = 0;
+
+            JsSupport::ReadCodeFromFile(threadContext, true, cpInfo->DocumentID, cpInfo->IsUtf8, cpInfo->SourceCode, cpInfo->SourceByteLength, &relocatedUri, &relocatedUriLength);
+
+            if(relocatedUri != nullptr)
+            {
+                alloc.CopyStringIntoWLength((char16*)relocatedUri, (uint32)relocatedUriLength, cpInfo->RelocatedSourceUri);
+
+                //We may want to make this auto-freeing
+                CoTaskMemFree(relocatedUri);
+                relocatedUri = nullptr;
+            }
         }
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS

@@ -633,9 +633,7 @@ namespace Js
 
         ssfi->ComputedNameInfo = TTD_CONVERT_JSVAR_TO_TTDVAR(this->computedNameVar);
 
-        ssfi->HasInlineCaches = this->hasInlineCaches;
         ssfi->HasSuperReference = this->hasSuperReference;
-        ssfi->IsActiveScript = this->isActiveScript;
 
         TTD::NSSnapObjects::StdExtractSetKindSpecificInfo<TTD::NSSnapObjects::SnapScriptFunctionInfo*, TTD::NSSnapObjects::SnapObjectType::SnapScriptFunctionObject>(objData, ssfi);
     }

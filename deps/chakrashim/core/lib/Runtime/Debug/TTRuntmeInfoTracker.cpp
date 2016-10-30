@@ -8,7 +8,7 @@
 
 namespace TTD
 {
-    void ThreadContextTTD::AddNewScriptContext_Helper(Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative)
+    void ThreadContextTTD::AddNewScriptContext_Helper(Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode)
     {
         ////
         //First just setup the standard things needed for a script context
@@ -18,20 +18,17 @@ namespace TTD
             ctx->ForceNoNative();
         }
 
-#if TTD_DYNAMIC_DECOMPILATION_AND_JIT_WORK_AROUND
-        //
-        //TODO: We currently force this into debug mode in record as well to make sure parsing/bytecode generation is same as during replay.
-        //      Later we will want to be clever during inflate and not do this.
-        //
+        if(debugMode)
+        {
 #ifdef _WIN32
-        ctx->InitializeDebugging();
+            ctx->InitializeDebugging();
 #else
-        //
-        //TODO: x-plat does not like some parts of initiallize debugging so just set the flag we need 
-        //
-        ctx->GetDebugContext()->SetDebuggerMode(Js::DebuggerMode::Debugging);
+            //
+            //TODO: x-plat does not like some parts of initiallize debugging so just set the flag we need 
+            //
+            ctx->GetDebugContext()->SetDebuggerMode(Js::DebuggerMode::Debugging);
 #endif
-#endif
+        }
 
         ctx->InitializeCoreImage_TTD();
 
@@ -122,9 +119,9 @@ namespace TTD
         }
     }
 
-    void ThreadContextTTD::AddNewScriptContextRecord(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative)
+    void ThreadContextTTD::AddNewScriptContextRecord(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode)
     {
-        this->AddNewScriptContext_Helper(ctx, callbackFunctor, noNative);
+        this->AddNewScriptContext_Helper(ctx, callbackFunctor, noNative, debugMode);
 
         this->AddTrackedRootSpecial(TTD_CONVERT_OBJ_TO_LOG_PTR_ID(ctx->GetGlobalObject()), ctx->GetGlobalObject());
         ctx->ScriptContextLogTag = TTD_CONVERT_OBJ_TO_LOG_PTR_ID(ctx->GetGlobalObject());
@@ -135,9 +132,9 @@ namespace TTD
         this->AddTrackedRootSpecial(TTD_CONVERT_OBJ_TO_LOG_PTR_ID(ctx->GetLibrary()->GetFalse()), ctx->GetLibrary()->GetFalse());
     }
 
-    void ThreadContextTTD::AddNewScriptContextReplay(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative)
+    void ThreadContextTTD::AddNewScriptContextReplay(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode)
     {
-        this->AddNewScriptContext_Helper(ctx, callbackFunctor, noNative);
+        this->AddNewScriptContext_Helper(ctx, callbackFunctor, noNative, debugMode);
 
         this->m_contextCreatedOrDestoyedInReplay = true;
 

@@ -665,7 +665,7 @@ void CALLBACK Helpers::TTInitializeForWriteLogStreamCallback(size_t uriByteLengt
     Helpers::CleanDirectory(uriByteLength, uriBytes);
 }
 
-JsTTDStreamHandle CALLBACK Helpers::TTCreateStreamCallback(size_t uriByteLength, const byte* uriBytes, const char* asciiResourceName, bool read, bool write)
+JsTTDStreamHandle CALLBACK Helpers::TTCreateStreamCallback(size_t uriByteLength, const byte* uriBytes, const char* asciiResourceName, bool read, bool write, byte** relocatedUri, size_t* relocatedUriLength)
 {
     AssertMsg((read | write) & (!read | !write), "Read/Write streams not supported yet -- defaulting to read only");
 
