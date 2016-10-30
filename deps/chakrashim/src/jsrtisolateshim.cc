@@ -273,12 +273,19 @@ void CALLBACK TTInitializeForWriteLogStreamCallback(size_t uriByteLength, const 
     CleanDirectory(uriByteLength, uriBytes);
 }
 
-JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const byte* uriBytes, const char* asciiResourceName, bool read, bool write)
+JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const byte* uriBytes, const char* asciiResourceName, bool read, bool write, byte** relocatedUri, size_t* relocatedUriLength)
 {
     void* res = nullptr;
     TTDHostCharType path[MAX_PATH];
     TTDHostInitFromUriBytes(path, uriBytes, uriByteLength);
     TTDHostAppendAscii(path, asciiResourceName);
+
+    ///
+    //Figure out how to make this programatic
+    *relocatedUriLength = TTDHostStringLength(path);
+    *relocatedUri = (byte*)CoTaskMemAlloc((*relocatedUriLength + 1) * sizeof(TTDHostCharType));
+    memcpy_s(*relocatedUri, *relocatedUriLength, path, *relocatedUriLength);
+    ///
 
     res = TTDHostOpen(path, write);
     if(res == nullptr)
