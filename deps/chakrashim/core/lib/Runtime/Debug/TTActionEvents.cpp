@@ -436,17 +436,8 @@ namespace TTD
             Js::JavascriptExceptionObject *recordedException = nullptr;
 
             BEGIN_TRANSLATE_OOM_TO_HRESULT
-            recordedException = ctx->GetAndClearRecordedException();
+              recordedException = ctx->GetAndClearRecordedException();
             END_TRANSLATE_OOM_TO_HRESULT(hr)
-
-            if(hr == E_OUTOFMEMORY)
-            {
-                //
-                //TODO: we don't have support for OOM yet (and adding support will require a non-trivial amount of work)
-                //
-                AssertMsg(false, "OOM is not supported");
-                return;
-            }
 
             Js::Var exception = nullptr;
             if(recordedException != nullptr)
@@ -454,7 +445,10 @@ namespace TTD
                 exception = recordedException->GetThrownObject(nullptr);
             }
 
-            JsRTActionHandleResultForReplay<JsRTVarsArgumentAction, EventKind::GetAndClearExceptionActionTag>(executeContext, evt, exception);
+            if(exception != nullptr)
+            {
+                JsRTActionHandleResultForReplay<JsRTVarsArgumentAction, EventKind::GetAndClearExceptionActionTag>(executeContext, evt, exception);
+            }
         }
 
         void SetExceptionAction_Execute(const EventLogEntry* evt, ThreadContextTTD* executeContext)

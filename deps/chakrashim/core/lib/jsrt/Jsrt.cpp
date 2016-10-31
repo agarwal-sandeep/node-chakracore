@@ -2551,19 +2551,6 @@ CHAKRA_API JsGetAndClearException(_Out_ JsValueRef *exception)
       recordedException = scriptContext->GetAndClearRecordedException();
     END_TRANSLATE_OOM_TO_HRESULT(hr)
 
-#if ENABLE_TTD
-        if(PERFORM_JSRT_TTD_RECORD_ACTION_CHECK(scriptContext))
-        {
-            //
-            //TODO: We don't try to emulate OOM yet
-            //
-            if(hr != E_OUTOFMEMORY)
-            {
-                scriptContext->GetThreadContext()->TTDLog->RecordJsRTGetAndClearException();
-            }
-        }
-#endif
-
     if (hr == E_OUTOFMEMORY)
     {
         recordedException = scriptContext->GetThreadContext()->GetRecordedException();
@@ -2574,6 +2561,17 @@ CHAKRA_API JsGetAndClearException(_Out_ JsValueRef *exception)
     }
 
     *exception = recordedException->GetThrownObject(nullptr);
+
+#if ENABLE_TTD
+    if(hr != E_OUTOFMEMORY)
+    {
+        TTD::TTDJsRTActionResultAutoRecorder _actionEntryPopper;
+
+        PERFORM_JSRT_TTD_RECORD_ACTION(scriptContext, RecordJsRTGetAndClearException);
+        PERFORM_JSRT_TTD_RECORD_ACTION_RESULT(scriptContext, exception);
+    }
+#endif
+
     if (*exception == nullptr)
     {
         return JsErrorInvalidArgument;

@@ -350,7 +350,7 @@
 #define TTD_STEP_BACK_WORK_AROUND 1
 
 //Enable various sanity checking features and asserts
-#define ENABLE_TTD_INTERNAL_DIAGNOSTICS 1
+#define ENABLE_TTD_INTERNAL_DIAGNOSTICS 0
 
 #define TTD_COMPRESSED_OUTPUT 0
 #define TTD_LOG_READER TextFormatReader

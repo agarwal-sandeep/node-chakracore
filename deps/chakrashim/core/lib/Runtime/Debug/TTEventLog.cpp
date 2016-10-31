@@ -2530,13 +2530,12 @@ namespace TTD
         actionPopper.InitializeWithEventAndEnter(evt);
     }
 
-    void EventLog::RecordJsRTGetAndClearException()
+    void EventLog::RecordJsRTGetAndClearException(TTDJsRTActionResultAutoRecorder& actionPopper)
     {
-        this->RecordGetInitializedEvent_DataOnly<NSLogEvents::JsRTVarsArgumentAction, NSLogEvents::EventKind::GetAndClearExceptionActionTag>();
+        NSLogEvents::JsRTVarsArgumentAction* gcAction = nullptr;
+        NSLogEvents::EventLogEntry* evt = this->RecordGetInitializedEvent<NSLogEvents::JsRTVarsArgumentAction, NSLogEvents::EventKind::GetAndClearExceptionActionTag>(&gcAction);
 
-        //
-        //TODO: Maybe we want to track OOM later
-        //
+        actionPopper.InitializeWithEventAndEnterWResult(evt, &(gcAction->Result));
     }
 
     void EventLog::RecordJsRTSetException(TTDJsRTActionResultAutoRecorder& actionPopper, Js::Var var, bool propagateToDebugger)
