@@ -273,6 +273,8 @@ void CALLBACK TTInitializeForWriteLogStreamCallback(size_t uriByteLength, const 
     CleanDirectory(uriByteLength, uriBytes);
 }
 
+bool g_ttdUseRelocatedSources = false;
+
 JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const byte* uriBytes, const char* asciiResourceName, bool read, bool write, byte** relocatedUri, size_t* relocatedUriLength)
 {
     void* res = nullptr;
@@ -280,16 +282,13 @@ JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const by
     TTDHostInitFromUriBytes(path, uriBytes, uriByteLength);
     TTDHostAppendAscii(path, asciiResourceName);
 
-    ///
-    //Figure out how to make this programatic
-    if(relocatedUri != nullptr)
+    if(g_ttdUseRelocatedSources && relocatedUri != nullptr)
     {
         size_t bytelen = (TTDHostStringLength(path) + 1) * sizeof(TTDHostCharType);
         *relocatedUriLength = TTDHostStringLength(path);
         *relocatedUri = (byte*)CoTaskMemAlloc(bytelen);
         memcpy_s(*relocatedUri, bytelen, path, bytelen);
     }
-    ///
 
     res = TTDHostOpen(path, write);
     if(res == nullptr)
@@ -385,7 +384,7 @@ IsolateShim::~IsolateShim() {
   }
 }
 
-/* static */ v8::Isolate * IsolateShim::New(const char* uri, bool doRecord, bool doReplay, bool doDebug, uint32_t snapInterval, uint32_t snapHistoryLength) {
+/* static */ v8::Isolate * IsolateShim::New(const char* uri, bool doRecord, bool doReplay, bool doDebug, bool useRelocatedSrc, uint32_t snapInterval, uint32_t snapHistoryLength) {
   // CHAKRA-TODO: Disable multiple isolate for now until it is fully implemented
   /*
   if (s_isolateList != nullptr) {
@@ -406,6 +405,8 @@ IsolateShim::~IsolateShim() {
   }
   else
   {
+      g_ttdUseRelocatedSources = useRelocatedSrc;
+
       byte ttUri[MAX_PATH * sizeof(wchar_t)];
       size_t ttUriByteLength = 0;
       GetTTDDirectory(uri, &ttUriByteLength, ttUri);

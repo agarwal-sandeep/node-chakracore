@@ -52,7 +52,7 @@ class IsolateShim {
   bool Dispose();
   bool IsDisposing();
 
-  static v8::Isolate * New(const char* uri, bool doRecord, bool doReplay, bool doDebug, uint32_t snapInterval, uint32_t snapHistoryLength);
+  static v8::Isolate * New(const char* uri, bool doRecord, bool doReplay, bool doDebug, bool useRelocatedSrc, uint32_t snapInterval, uint32_t snapHistoryLength);
   static v8::Isolate * GetCurrentAsIsolate();
   static IsolateShim * GetCurrent();
   static IsolateShim * FromIsolate(v8::Isolate * isolate);
@@ -68,6 +68,7 @@ class IsolateShim {
   void PushScope(ContextShim::Scope * scope, JsContextRef contextRef);
   void PushScope(ContextShim::Scope * scope, ContextShim * contextShim);
   void PopScope(ContextShim::Scope * scope);
+
 //#if ENABLE_TTD_NODE
   static bool RunSingleStepOfReverseMoveLoop(v8::Isolate* isolate, uint64_t* moveMode, int64_t* nextEventTime);
 //#endif

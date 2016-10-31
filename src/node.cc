@@ -97,6 +97,7 @@ extern char **environ;
 bool s_doTTRecord = false;
 bool s_doTTReplay = false;
 bool s_doTTDebug = false;
+bool s_useRelocatedSrc = false;
 const char* s_ttUri = nullptr;
 uint32_t s_ttdSnapInterval = 2000;
 uint32_t s_ttdSnapHistoryLength = 2;
@@ -4257,6 +4258,10 @@ void Init(int* argc,
           const char* historyStr = argv[i] + strlen("-TTHistoryLength:");
           s_ttdSnapHistoryLength = (uint32_t)atoi(historyStr);
       }
+      else if(strstr(argv[i], "-TTRelocatedCode") == argv[i])
+      {
+          s_useRelocatedSrc = true;
+      }
       else
       {
           argv[cpos] = argv[i];
@@ -4452,7 +4457,7 @@ static void StartNodeInstance(void* arg) {
 #endif
 
 #if ENABLE_TTD_NODE
-  Isolate* isolate = Isolate::New(params, s_ttUri, s_doTTRecord, false, false, s_ttdSnapInterval, s_ttdSnapHistoryLength);
+  Isolate* isolate = Isolate::New(params, s_ttUri, s_doTTRecord, false, false, false, s_ttdSnapInterval, s_ttdSnapHistoryLength);
 #else
   Isolate* isolate = Isolate::New(params, nullptr, false, false, UINT32_MAX, UINT32_MAX);
 #endif
@@ -4597,7 +4602,7 @@ static void StartNodeInstance_TTDReplay(void* arg) {
     params.code_event_handler = vTune::GetVtuneCodeEventHandler();
 #endif
 
-    Isolate* isolate = Isolate::New(params, s_ttUri, false, true, s_doTTDebug, UINT32_MAX, UINT32_MAX);
+    Isolate* isolate = Isolate::New(params, s_ttUri, false, true, s_doTTDebug, s_useRelocatedSrc, UINT32_MAX, UINT32_MAX);
 
     {
         Mutex::ScopedLock scoped_lock(node_isolate_mutex);

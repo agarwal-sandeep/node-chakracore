@@ -31,8 +31,8 @@ NODE_EXTERN size_t Length(v8::Local<v8::Object> val);
 
 #if ENABLE_TTD_NODE
 //Notify us that a native buffer access (which we don't currently understand/support) happened.
-//#define TTD_NATIVE_BUFFER_ACCESS_NOTIFY(X) fprintf(stderr, "Unsupported raw buffer access %s -- investigate this!!!\n", X)
-#define TTD_NATIVE_BUFFER_ACCESS_NOTIFY(X)
+#define TTD_NATIVE_BUFFER_ACCESS_NOTIFY(X) fprintf(stderr, "Unsupported raw buffer access %s -- investigate this!!!\n", X)
+//#define TTD_NATIVE_BUFFER_ACCESS_NOTIFY(X)
 #else
 #define TTD_NATIVE_BUFFER_ACCESS_NOTIFY(X)
 #endif

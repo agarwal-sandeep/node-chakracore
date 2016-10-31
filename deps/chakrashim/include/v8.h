@@ -2200,7 +2200,7 @@ class V8_EXPORT Isolate {
     kMinorGarbageCollection
   };
 
-  static Isolate* New(const CreateParams& params, const char* uri, bool doRecord, bool doReplay, bool doDebug, uint32_t snapInterval, uint32_t snapHistoryLength);
+  static Isolate* New(const CreateParams& params, const char* uri, bool doRecord, bool doReplay, bool doDebug, bool useRelocatedSrc, uint32_t snapInterval, uint32_t snapHistoryLength);
   static Isolate* New();
   static Isolate* GetCurrent();
   typedef bool(*AbortOnUncaughtExceptionCallback)(Isolate*);
