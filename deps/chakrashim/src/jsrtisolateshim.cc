@@ -284,10 +284,12 @@ JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const by
 
     if(g_ttdUseRelocatedSources && relocatedUri != nullptr)
     {
-        size_t bytelen = (TTDHostStringLength(path) + 1) * sizeof(TTDHostCharType);
-        *relocatedUriLength = TTDHostStringLength(path);
+        size_t bytelen = (strlen(asciiResourceName) + 1) * sizeof(TTDHostCharType);
+        *relocatedUriLength = strlen(asciiResourceName);
         *relocatedUri = (byte*)CoTaskMemAlloc(bytelen);
-        memcpy_s(*relocatedUri, bytelen, path, bytelen);
+
+        TTDHostInitEmpty((TTDHostCharType*)*relocatedUri);
+        TTDHostAppendAscii((TTDHostCharType*)*relocatedUri, asciiResourceName);
     }
 
     res = TTDHostOpen(path, write);
@@ -726,11 +728,39 @@ void* IsolateShim::GetData(uint32_t slot) {
 
 /*static*/ bool IsolateShim::RunSingleStepOfReverseMoveLoop(v8::Isolate* isolate, uint64_t* moveMode, int64_t* nextEventTime)
 {
-    INT64 snapEventTime = -1;
-    INT64 snapEventEndTime = -1;
+    int64_t snapEventTime = -1;
+    int64_t snapEventEndTime = -1;
     int64_t origNETime = *nextEventTime;
     JsTTDMoveMode _moveMode = (JsTTDMoveMode)(*moveMode);
     JsRuntimeHandle rHandle = jsrt::IsolateShim::FromIsolate(isolate)->GetRuntimeHandle();
+
+    //if mode is reverse continue then we need to scan for our 
+    if((_moveMode & JsTTDMoveMode::JsTTDMoveScanIntervalForContinue) == JsTTDMoveMode::JsTTDMoveScanIntervalForContinue)
+    {
+        int64_t ciStart = -1;
+        int64_t ciEnd = -1;
+        JsTTDGetSnapShotBoundInterval(rHandle, *nextEventTime, &ciStart, &ciEnd);
+
+        *nextEventTime = -1;
+        JsTTDPreExecuteSnapShotInterval(ciStart, ciEnd, ((JsTTDMoveMode)(*moveMode)), nextEventTime);
+        while(*nextEventTime == -1)
+        {
+            int64_t newCiStart = -1;
+            JsTTDGetPreviousSnapshotInterval(rHandle, ciStart, &newCiStart);
+            if(newCiStart == -1)
+            {
+                //no previous so break on first
+                _moveMode = (JsTTDMoveMode)(_moveMode | JsTTDMoveMode::JsTTDMoveFirstEvent);
+                break;
+            }
+
+            ciEnd = ciStart;
+            ciStart = newCiStart;
+            JsTTDPreExecuteSnapShotInterval(ciStart, ciEnd, ((JsTTDMoveMode)(*moveMode)), nextEventTime);
+        }
+
+        _moveMode = (JsTTDMoveMode)(_moveMode & ~JsTTDMoveMode::JsTTDMoveScanIntervalForContinue); //did scan so no longer needed
+    }
 
     JsErrorCode error = JsTTDGetSnapTimeTopLevelEventMove(rHandle, _moveMode, nextEventTime, &snapEventTime, &snapEventEndTime);
     if(error != JsNoError)
@@ -744,26 +774,6 @@ void* IsolateShim::GetData(uint32_t slot) {
         {
             printf("Fatal Error in Move!!!");
             ExitProcess(1);
-        }
-    }
-
-    if((*moveMode & JsTTDMoveMode::JsTTDMoveScanIntervalBeforeDebugExecute) == JsTTDMoveMode::JsTTDMoveScanIntervalBeforeDebugExecute)
-    {
-        JsTTDPreExecuteSnapShotInterval(snapEventTime, snapEventEndTime, ((JsTTDMoveMode)(*moveMode)));
-        _moveMode = (JsTTDMoveMode)(_moveMode & ~JsTTDMoveMode::JsTTDMoveScanIntervalBeforeDebugExecute); //did scan so no longer needed
-        error = JsTTDGetSnapTimeTopLevelEventMove(rHandle, _moveMode, nextEventTime, &snapEventTime, nullptr);
-        if(error != JsNoError)
-        {
-            if(error == JsErrorCategoryUsage)
-            {
-                printf("Start time not in log range.");
-                ExitProcess(0);
-            }
-            else
-            {
-                printf("Fatal Error in Move!!!");
-                ExitProcess(1);
-            }
         }
     }
 
