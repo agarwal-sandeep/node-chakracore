@@ -284,13 +284,12 @@ JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const by
 
     if(g_ttdUseRelocatedSources && relocatedUri != nullptr)
     {
-        size_t bytelen = (strlen(asciiResourceName) + strlen("ttlog\\") + 1) * sizeof(TTDHostCharType);
-        *relocatedUriLength = strlen(asciiResourceName) + strlen("ttlog\\");
+        size_t bytelen = (TTDHostStringLength(path) + 1) * sizeof(TTDHostCharType);
+        *relocatedUriLength = TTDHostStringLength(path);
         *relocatedUri = (byte*)CoTaskMemAlloc(bytelen);
 
         TTDHostInitEmpty((TTDHostCharType*)*relocatedUri);
-        TTDHostAppendAscii((TTDHostCharType*)*relocatedUri, "ttlog\\");
-        TTDHostAppendAscii((TTDHostCharType*)*relocatedUri, asciiResourceName);
+        TTDHostAppend((TTDHostCharType*)*relocatedUri, path);
     }
 
     res = TTDHostOpen(path, write);
