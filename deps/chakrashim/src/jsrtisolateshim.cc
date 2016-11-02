@@ -284,11 +284,12 @@ JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const by
 
     if(g_ttdUseRelocatedSources && relocatedUri != nullptr)
     {
-        size_t bytelen = (strlen(asciiResourceName) + 1) * sizeof(TTDHostCharType);
-        *relocatedUriLength = strlen(asciiResourceName);
+        size_t bytelen = (strlen(asciiResourceName) + strlen("ttlog\\") + 1) * sizeof(TTDHostCharType);
+        *relocatedUriLength = strlen(asciiResourceName) + strlen("ttlog\\");
         *relocatedUri = (byte*)CoTaskMemAlloc(bytelen);
 
         TTDHostInitEmpty((TTDHostCharType*)*relocatedUri);
+        TTDHostAppendAscii((TTDHostCharType*)*relocatedUri, "ttlog\\");
         TTDHostAppendAscii((TTDHostCharType*)*relocatedUri, asciiResourceName);
     }
 
@@ -742,7 +743,7 @@ void* IsolateShim::GetData(uint32_t slot) {
         JsTTDGetSnapShotBoundInterval(rHandle, *nextEventTime, &ciStart, &ciEnd);
 
         *nextEventTime = -1;
-        JsTTDPreExecuteSnapShotInterval(ciStart, ciEnd, ((JsTTDMoveMode)(*moveMode)), nextEventTime);
+        JsTTDPreExecuteSnapShotInterval(rHandle, ciStart, ciEnd, ((JsTTDMoveMode)(*moveMode)), nextEventTime);
         while(*nextEventTime == -1)
         {
             int64_t newCiStart = -1;
@@ -756,7 +757,7 @@ void* IsolateShim::GetData(uint32_t slot) {
 
             ciEnd = ciStart;
             ciStart = newCiStart;
-            JsTTDPreExecuteSnapShotInterval(ciStart, ciEnd, ((JsTTDMoveMode)(*moveMode)), nextEventTime);
+            JsTTDPreExecuteSnapShotInterval(rHandle, ciStart, ciEnd, ((JsTTDMoveMode)(*moveMode)), nextEventTime);
         }
 
         _moveMode = (JsTTDMoveMode)(_moveMode & ~JsTTDMoveMode::JsTTDMoveScanIntervalForContinue); //did scan so no longer needed
@@ -777,7 +778,7 @@ void* IsolateShim::GetData(uint32_t slot) {
         }
     }
 
-    JsTTDMoveToTopLevelEvent(_moveMode, snapEventTime, *nextEventTime);
+    JsTTDMoveToTopLevelEvent(rHandle, _moveMode, snapEventTime, *nextEventTime);
     JsErrorCode res = JsTTDReplayExecution(&_moveMode, nextEventTime);
 
     //update before we return
