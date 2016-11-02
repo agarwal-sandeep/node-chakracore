@@ -580,7 +580,6 @@ namespace TTD
             Js::Var* ExecArgs;
 
             //Info on the last executed statement in this call
-            bool MarkedAsJustMyCode;
             TTDebuggerSourceLocation LastExecutedLocation;
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
@@ -626,8 +625,8 @@ namespace TTD
         void JsRTCallFunctionAction_UnloadSnapshot(EventLogEntry* evt);
 
         //Set the last executed statement and frame (in debugging mode -- nops for replay mode)
-        void JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(EventLogEntry* evt, bool markedAsJustMyCode, const TTDebuggerSourceLocation& lastSourceLocation);
-        bool JsRTCallFunctionAction_GetLastExecutedStatementAndFrameInfoForDebugger(const EventLogEntry* evt, bool* markedAsJustMyCode, TTDebuggerSourceLocation& lastSourceInfo);
+        void JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(EventLogEntry* evt, const TTDebuggerSourceLocation& lastSourceLocation);
+        bool JsRTCallFunctionAction_GetLastExecutedStatementAndFrameInfoForDebugger(const EventLogEntry* evt, TTDebuggerSourceLocation& lastSourceInfo);
     }
 }
 

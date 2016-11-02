@@ -83,11 +83,6 @@ namespace TTD
         //Get the list of any contexts which we want to mark as destoyed (CALLER SHOULD CLEAR WHEN DONE RECORDING)
         JsUtil::List<DeadScriptLogTagInfo, HeapAllocator>& GetTTDDeadContextsForRecord();
 
-        //
-        //TODO: this is a temp method to warn in a few places where we are not multi-context freindly yet
-        //
-        void MultipleScriptWarn() const;
-
         void AddNewScriptContextRecord(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode);
         void AddNewScriptContextReplay(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode);
         void SetActiveScriptContext(Js::ScriptContext* ctx);
@@ -120,6 +115,8 @@ namespace TTD
 
         Js::RecyclableObject* LookupObjectForLogID(TTD_LOG_PTR_ID origId);
         void ClearRootsForSnapRestore();
+
+        Js::ScriptContext* LookupContextForScriptId(TTD_LOG_PTR_ID ctxId) const;
     };
 
     //This struct stores the info for pending async mutations to array buffer objects

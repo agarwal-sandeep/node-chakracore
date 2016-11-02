@@ -348,46 +348,17 @@ namespace TTD
         return this->m_callStack.Item(this->m_callStack.Count() - 1);
     }
 
-    bool EventLog::IsFunctionJustMyCode(const Js::FunctionBody* fbody)
+    bool EventLog::TryGetTopCallCallerCounter(SingleCallCounter& caller) const
     {
-        //If not in JMC mode then implicitly everything is my code
-        if(!EventLog::IsDebuggerRunningJustMyCode(fbody->GetScriptContext()))
-        {
-            return true;
-        }
-
-        Js::Utf8SourceInfo* srcInfo = fbody->GetUtf8SourceInfo();
-        if(srcInfo == nullptr)
+        if(this->m_callStack.Count() < 2)
         {
             return false;
         }
-
-        return (srcInfo->HasDebugDocument() && srcInfo->GetDebugDocument()->IsJustMyCode());
-    }
-
-    bool EventLog::IsFunctionJustMyCode(const Js::JavascriptFunction* function)
-    {
-        return EventLog::IsFunctionJustMyCode(function->GetFunctionBody());
-    }
-
-    bool EventLog::IsDebuggerRunningJustMyCode(Js::ScriptContext* ctx)
-    {
-        return (ctx->GetDebugContext() != nullptr && ctx->GetDebugContext()->IsJustMyCode());
-    }
-
-    const SingleCallCounter* EventLog::GetTopCallCallerCounter(bool justMyCode) const
-    {
-
-        for(int32 pos = this->m_callStack.Count() - 2; pos >= 0; --pos)
+        else
         {
-            const SingleCallCounter* csi = &(this->m_callStack.Item(pos));
-            if(!justMyCode || EventLog::IsFunctionJustMyCode(csi->Function))
-            {
-                return csi;
-            }
+            caller = this->m_callStack.Item(this->m_callStack.Count() - 2);
+            return true;
         }
-
-        return nullptr;
     }
 
     int64 EventLog::GetCurrentEventTimeAndAdvance()
@@ -458,6 +429,8 @@ namespace TTD
         {
             this->m_propertyRecordPinSet.Unroot(this->m_propertyRecordPinSet->GetAllocator());
         }
+
+        this->UnLoadPreservedBPInfo();
     }
 
     SnapShot* EventLog::DoSnapshotExtract_Helper()
@@ -628,7 +601,8 @@ namespace TTD
         m_eventTimeCtr(0), m_timer(), m_runningFunctionTimeCtr(0), m_topLevelCallbackEventTime(-1), m_hostCallbackId(-1),
         m_eventList(&this->m_eventSlabAllocator), m_eventListVTable(nullptr), m_currentReplayEventIterator(),
         m_callStack(&HeapAllocator::Instance, 32), 
-        m_lastReturnLocation(), m_lastReturnLocationJMC(), m_breakOnFirstUserCode(false), m_pendingTTDBP(), m_activeBPId(-1), m_shouldRemoveWhenDone(false), m_activeTTDBP(), m_breakpointInfoList(&HeapAllocator::Instance), m_bpPreserveList(&HeapAllocator::Instance),
+        m_lastReturnLocation(), m_breakOnFirstUserCode(false), m_pendingTTDBP(), m_pendingTTDMoveMode(-1), m_activeBPId(-1), m_shouldRemoveWhenDone(false), m_activeTTDBP(), 
+        m_continueBreakPoint(), m_preservedBPCount(0), m_preservedBreakPointSourceScriptArray(nullptr), m_preservedBreakPointLocationArray(nullptr),
 #if ENABLE_BASIC_TRACE || ENABLE_FULL_BC_TRACE
         m_diagnosticLogger(),
 #endif
@@ -1141,10 +1115,6 @@ namespace TTD
     {
         //Clear any previous last return frame info
         this->m_lastReturnLocation.ClearReturnOnly();
-        if(EventLog::IsFunctionJustMyCode(function))
-        {
-            this->m_lastReturnLocationJMC.ClearReturnOnly();
-        }
 
         this->m_runningFunctionTimeCtr++;
 
@@ -1175,7 +1145,7 @@ namespace TTD
         Js::FunctionBody* functionBody = function->GetFunctionBody();
         Js::Utf8SourceInfo* utf8SourceInfo = functionBody->GetUtf8SourceInfo();
 
-        if(this->m_breakOnFirstUserCode && EventLog::IsFunctionJustMyCode(function))
+        if(this->m_breakOnFirstUserCode)
         {
             this->m_breakOnFirstUserCode = false;
 
@@ -1224,10 +1194,6 @@ namespace TTD
     void EventLog::PopCallEvent(Js::JavascriptFunction* function, Js::Var result)
     {
         this->m_lastReturnLocation.SetReturnLocation(this->m_callStack.Last());
-        if(EventLog::IsFunctionJustMyCode(function))
-        {
-            this->m_lastReturnLocationJMC.SetReturnLocation(this->m_callStack.Last());
-        }
 
         this->m_runningFunctionTimeCtr++;
         this->m_callStack.RemoveAtEnd();
@@ -1247,11 +1213,6 @@ namespace TTD
             this->m_lastReturnLocation.SetExceptionLocation(this->m_callStack.Last());
         }
 
-        if(EventLog::IsFunctionJustMyCode(function) && !this->m_lastReturnLocationJMC.IsExceptionLocation())
-        {
-            this->m_lastReturnLocationJMC.SetExceptionLocation(this->m_callStack.Last());
-        }
-
         this->m_runningFunctionTimeCtr++;
         this->m_callStack.RemoveAtEnd();
 
@@ -1263,7 +1224,6 @@ namespace TTD
     void EventLog::ClearExceptionFrames()
     {
         this->m_lastReturnLocation.Clear();
-        this->m_lastReturnLocationJMC.Clear();
     }
 
     void EventLog::SetBreakOnFirstUserCode()
@@ -1294,6 +1254,21 @@ namespace TTD
     void EventLog::SetPendingTTDBPInfo(const TTDebuggerSourceLocation& BPLocation)
     {
         this->m_pendingTTDBP.SetLocation(BPLocation);
+    }
+
+    int64 EventLog::GetPendingTTDMoveMode() const
+    {
+        return this->m_pendingTTDMoveMode;
+    }
+
+    void EventLog::ClearPendingTTDMoveMode()
+    {
+        this->m_pendingTTDMoveMode = -1;
+    }
+
+    void EventLog::SetPendingTTDMoveMode(int64 mode)
+    {
+        this->m_pendingTTDMoveMode = mode;
     }
 
     bool EventLog::HasActiveBP() const
@@ -1386,89 +1361,118 @@ namespace TTD
             //Reset any step controller logic
             fb->GetScriptContext()->GetThreadContext()->GetDebugManager()->stepController.Deactivate();
 
-            //
-            //TODO: right now we have a very simple reverse step mode of 0 we will want to add GetPendingTTDBPMoveMode logic
-            //
-            throw TTD::TTDebuggerAbortException::CreateTopLevelAbortRequest(this->GetPendingTTDBPTargetEventTime(), 0, _u("Reverse operation requested."));
+            throw TTD::TTDebuggerAbortException::CreateTopLevelAbortRequest(this->GetPendingTTDBPTargetEventTime(), this->GetPendingTTDMoveMode(), _u("Reverse operation requested."));
         }
     }
 
-    void EventLog::ClearBPScanList()
+    void EventLog::ClearBPScanInfo()
     {
-        this->m_breakpointInfoList.Clear();
+        this->m_continueBreakPoint.Clear();
     }
 
     void EventLog::AddCurrentLocationDuringScan()
     {
-        TTDebuggerSourceLocation current(this->m_callStack.Last());
-        this->m_breakpointInfoList.Add(current);
+        TTDebuggerSourceLocation current(this->m_topLevelCallbackEventTime, this->m_callStack.Last());
+        if(this->m_pendingTTDBP.HasValue() && current.IsBefore(this->m_pendingTTDBP))
+        {
+            this->m_continueBreakPoint.SetLocation(current);
+        }
     }
 
     bool EventLog::TryFindAndSetPreviousBP()
     {
         AssertMsg(this->m_pendingTTDBP.HasValue(), "This needs to have a value!!!");
 
-        const TTDebuggerSourceLocation& target(this->m_pendingTTDBP);
-
-        int32 i = 0;
-        for(; i < this->m_breakpointInfoList.Count(); ++i)
-        {
-            bool isBefore = target.IsBefore(this->m_breakpointInfoList.Item(i));
-            if(!isBefore)
-            {
-                break;
-            }
-        }
-        int32 lastBefore = i - 1;
-
-        if(lastBefore == -1)
+        if(!this->m_continueBreakPoint.HasValue())
         {
             return false;
         }
         else
         {
-            this->m_pendingTTDBP.SetLocation(this->m_breakpointInfoList.Item(lastBefore));
+            AssertMsg(this->m_continueBreakPoint.IsBefore(this->m_pendingTTDBP), "How did this happen?");
 
+            this->m_pendingTTDBP.SetLocation(this->m_continueBreakPoint);
             return true;
         }
     }
 
-    void EventLog::LoadBPListForContextRecreate()
+    void EventLog::LoadPreservedBPInfo()
     {
-        AssertMsg(this->m_bpPreserveList.Count() == 0, "How do we still have breakpoints in here???");
+        AssertMsg(this->m_preservedBPCount == 0, "How do we still have breakpoints in here???");
 
-        this->m_threadContext->TTDContext->MultipleScriptWarn(); // we need to get the breakpoints from all the contexts
-        Js::ProbeContainer* probeContainer = this->m_threadContext->TTDContext->GetActiveScriptContext()->GetDebugContext()->GetProbeContainer();
-
-        probeContainer->MapProbes([&](int i, Js::Probe* pProbe)
+        uint32 bpCount = 0;
+        const JsUtil::List<Js::ScriptContext*, HeapAllocator>& ctxs = this->m_threadContext->TTDContext->GetTTDContexts();
+        for(int32 i = 0; i < ctxs.Count(); ++i)
         {
-            Js::BreakpointProbe* bp = (Js::BreakpointProbe*)pProbe;
-            if((int64)bp->GetId() != this->m_activeBPId)
+            Js::ProbeContainer* probeContainer = ctxs.Item(i)->GetDebugContext()->GetProbeContainer();
+            probeContainer->MapProbes([&](int i, Js::Probe* pProbe)
             {
-                Js::FunctionBody* body = bp->GetFunctionBody();
-                int32 bpIndex = body->GetEnclosingStatementIndexFromByteCode(bp->GetBytecodeOffset());
+                Js::BreakpointProbe* bp = (Js::BreakpointProbe*)pProbe;
+                if((int64)bp->GetId() != this->m_activeBPId)
+                {
+                    bpCount++;
+                }
+            });
+        }
 
-                ULONG srcLine = 0;
-                LONG srcColumn = -1;
-                uint32 startOffset = body->GetStatementStartOffset(bpIndex);
-                body->GetSourceLineFromStartOffset_TTD(startOffset, &srcLine, &srcColumn);
+        this->m_preservedBreakPointSourceScriptArray = TT_HEAP_ALLOC_ARRAY_ZERO(TTD_LOG_PTR_ID, bpCount);
+        this->m_preservedBreakPointLocationArray = TT_HEAP_ALLOC_ARRAY_ZERO(TTDebuggerSourceLocation*, bpCount);
 
-                TTDebuggerSourceLocation ploc;
-                ploc.SetLocation(-1, -1, -1, body, srcLine, srcColumn);
+        for(int32 i = 0; i < ctxs.Count(); ++i)
+        {
+            Js::ProbeContainer* probeContainer = ctxs.Item(i)->GetDebugContext()->GetProbeContainer();
+            probeContainer->MapProbes([&](int i, Js::Probe* pProbe)
+            {
+                Js::BreakpointProbe* bp = (Js::BreakpointProbe*)pProbe;
+                if((int64)bp->GetId() != this->m_activeBPId)
+                {
+                    Js::FunctionBody* body = bp->GetFunctionBody();
+                    int32 bpIndex = body->GetEnclosingStatementIndexFromByteCode(bp->GetBytecodeOffset());
 
-                this->m_bpPreserveList.Add(ploc);
-            }
-        });
+                    ULONG srcLine = 0;
+                    LONG srcColumn = -1;
+                    uint32 startOffset = body->GetStatementStartOffset(bpIndex);
+                    body->GetSourceLineFromStartOffset_TTD(startOffset, &srcLine, &srcColumn);
+
+                    this->m_preservedBreakPointSourceScriptArray[this->m_preservedBPCount] = ctxs.Item(i)->ScriptContextLogTag;
+
+                    this->m_preservedBreakPointLocationArray[this->m_preservedBPCount] = TT_HEAP_NEW(TTDebuggerSourceLocation);
+                    this->m_preservedBreakPointLocationArray[this->m_preservedBPCount]->SetLocation(-1, -1, -1, body, srcLine, srcColumn);
+
+                    this->m_preservedBPCount++;
+                }
+            });
+        }
+
+        AssertMsg(this->m_preservedBPCount == bpCount, "Something is wrong!!!");
     }
 
-    void EventLog::UnLoadBPListAfterMoveForContextRecreate()
+    void EventLog::UnLoadPreservedBPInfo()
     {
-        this->m_bpPreserveList.Clear();
+        TT_HEAP_FREE_ARRAY(TTD_LOG_PTR_ID, this->m_preservedBreakPointSourceScriptArray, this->m_preservedBPCount);
+
+        for(uint32 i = 0; i < this->m_preservedBPCount; ++i)
+        {
+            TT_HEAP_DELETE(TTDebuggerSourceLocation, this->m_preservedBreakPointLocationArray[i]);
+        }
+        TT_HEAP_FREE_ARRAY(TTDebuggerSourceLocation*, this->m_preservedBreakPointLocationArray, this->m_preservedBPCount);
+
+        this->m_preservedBPCount = 0;
     }
 
-    const JsUtil::List<TTDebuggerSourceLocation, HeapAllocator>& EventLog::GetRestoreBPListAfterContextRecreate()
+    const uint32 EventLog::GetPerservedBPInfoCount() const
     {
-        return this->m_bpPreserveList;
+        return this->m_preservedBPCount;
+    }
+
+    TTD_LOG_PTR_ID* EventLog::GetPerservedBPInfoScriptArray()
+    {
+        return this->m_preservedBreakPointSourceScriptArray;
+    }
+
+    TTDebuggerSourceLocation** EventLog::GetPerservedBPInfoLocationArray()
+    {
+        return this->m_preservedBreakPointLocationArray;
     }
 
     void EventLog::UpdateLoopCountInfo()
@@ -1549,8 +1553,6 @@ namespace TTD
         bool noPrevious = false;
         const SingleCallCounter& cfinfo = this->GetTopCallCounter();
 
-        bool justMyCode = EventLog::IsDebuggerRunningJustMyCode(this->m_threadContext->TTDContext->GetActiveScriptContext());
-
         //if we are at the first statement in the function then we want the parents current
         Js::FunctionBody* fbody = nullptr;
         int32 statementIndex = -1;
@@ -1558,10 +1560,11 @@ namespace TTD
         uint64 ltime = 0;
         if(cfinfo.LastStatementIndex == -1)
         {
-            const SingleCallCounter* cfinfoCaller = this->GetTopCallCallerCounter(justMyCode);
+            SingleCallCounter cfinfoCaller = { 0 }; 
+            bool hasCaller = this->TryGetTopCallCallerCounter(cfinfoCaller);
 
             //check if we are at the first statement in the callback event
-            if(cfinfoCaller == nullptr)
+            if(!hasCaller)
             {
                 //Set the position info to the current statement and return true
                 noPrevious = true;
@@ -1574,11 +1577,11 @@ namespace TTD
             }
             else
             {
-                ftime = cfinfoCaller->FunctionTime;
-                ltime = cfinfoCaller->CurrentStatementLoopTime;
+                ftime = cfinfoCaller.FunctionTime;
+                ltime = cfinfoCaller.CurrentStatementLoopTime;
 
-                fbody = cfinfoCaller->Function;
-                statementIndex = cfinfoCaller->CurrentStatementIndex;
+                fbody = cfinfoCaller.Function;
+                statementIndex = cfinfoCaller.CurrentStatementIndex;
             }
         }
         else
@@ -1600,11 +1603,9 @@ namespace TTD
         return noPrevious;
     }
 
-    void EventLog::GetLastExecutedTimeAndPositionForDebugger(bool* markedAsJustMyCode, TTDebuggerSourceLocation& sourceLocation) const
+    void EventLog::GetLastExecutedTimeAndPositionForDebugger(TTDebuggerSourceLocation& sourceLocation) const
     {
-        *markedAsJustMyCode = false;
-        const TTLastReturnLocationInfo& cframe = EventLog::IsDebuggerRunningJustMyCode(this->m_threadContext->TTDContext->GetActiveScriptContext()) ? this->m_lastReturnLocationJMC : this->m_lastReturnLocation;
-
+        const TTLastReturnLocationInfo& cframe = this->m_lastReturnLocation;
         if(!cframe.IsDefined())
         {
             sourceLocation.Clear();
@@ -1617,7 +1618,6 @@ namespace TTD
             uint32 startOffset = cframe.GetLocation().Function->GetStatementStartOffset(cframe.GetLocation().CurrentStatementIndex);
             cframe.GetLocation().Function->GetSourceLineFromStartOffset_TTD(startOffset, &srcLine, &srcColumn);
 
-            *markedAsJustMyCode = EventLog::IsFunctionJustMyCode(cframe.GetLocation().Function);
             sourceLocation.SetLocation(this->m_topLevelCallbackEventTime, cframe.GetLocation().FunctionTime, cframe.GetLocation().CurrentStatementLoopTime, cframe.GetLocation().Function, srcLine, srcColumn);
         }
     }
@@ -1654,55 +1654,33 @@ namespace TTD
         return nullptr;
     }
 
-    int64 EventLog::GetFirstEventTime(bool justMyCode) const
+    int64 EventLog::GetFirstEventTimeInLog() const
     {
         for(auto iter = this->m_eventList.GetIteratorAtFirst(); iter.IsValid(); iter.MoveNext())
         {
             if(NSLogEvents::IsJsRTActionRootCall(iter.Current()))
             {
-                if(!justMyCode)
-                {
-                    return NSLogEvents::GetTimeFromRootCallOrSnapshot(iter.Current());
-                }
-                else
-                {
-                    const NSLogEvents::JsRTCallFunctionAction* cfAction = NSLogEvents::GetInlineEventDataAs<NSLogEvents::JsRTCallFunctionAction, NSLogEvents::EventKind::CallExistingFunctionActionTag>(iter.Current());
-                    if(cfAction->AdditionalInfo->MarkedAsJustMyCode)
-                    {
-                        return NSLogEvents::GetTimeFromRootCallOrSnapshot(iter.Current());
-                    }
-                }
+                return NSLogEvents::GetTimeFromRootCallOrSnapshot(iter.Current());
             }
         }
 
         return -1;
     }
 
-    int64 EventLog::GetLastEventTime(bool justMyCode) const
+    int64 EventLog::GetLastEventTimeInLog() const
     {
         for(auto iter = this->m_eventList.GetIteratorAtLast(); iter.IsValid(); iter.MovePrevious())
         {
             if(NSLogEvents::IsJsRTActionRootCall(iter.Current()))
             {
-                if(!justMyCode)
-                {
-                    return NSLogEvents::GetTimeFromRootCallOrSnapshot(iter.Current());
-                }
-                else
-                {
-                    const NSLogEvents::JsRTCallFunctionAction* cfAction = NSLogEvents::GetInlineEventDataAs<NSLogEvents::JsRTCallFunctionAction, NSLogEvents::EventKind::CallExistingFunctionActionTag>(iter.Current());
-                    if(cfAction->AdditionalInfo->MarkedAsJustMyCode)
-                    {
-                        return NSLogEvents::GetTimeFromRootCallOrSnapshot(iter.Current());
-                    }
-                }
+                return NSLogEvents::GetTimeFromRootCallOrSnapshot(iter.Current());
             }
         }
 
         return -1;
     }
 
-    int64 EventLog::GetKthEventTime(uint32 k) const
+    int64 EventLog::GetKthEventTimeInLog(uint32 k) const
     {
         uint32 topLevelCount = 0;
         for(auto iter = this->m_eventList.GetIteratorAtFirst(); iter.IsValid(); iter.MoveNext())
@@ -1730,7 +1708,6 @@ namespace TTD
         this->m_hostCallbackId = -1;
 
         this->m_lastReturnLocation.Clear();
-        this->m_lastReturnLocationJMC.Clear();
     }
 
     bool EventLog::IsTimeForSnapshot() const
@@ -1816,7 +1793,7 @@ namespace TTD
         this->SetSnapshotOrInflateInProgress(false);
     }
 
-    int64 EventLog::FindSnapTimeForEventTime(int64 targetTime, bool allowRTR, int64* optEndSnapTime)
+    int64 EventLog::FindSnapTimeForEventTime(int64 targetTime, int64* optEndSnapTime)
     {
         int64 snapTime = -1;
         if(optEndSnapTime != nullptr)
@@ -1831,15 +1808,12 @@ namespace TTD
             bool hasRtrSnap = false;
             int64 time = NSLogEvents::AccessTimeInRootCallOrSnapshot(iter.Current(), isSnap, isRoot, hasRtrSnap);
 
-            bool validSnap = false;
-            if(allowRTR)
-            {
-                validSnap = isSnap | (isRoot & hasRtrSnap);
-            }
-            else
-            {
-                validSnap = isSnap;
-            }
+            //
+            //TODO: TEMP DEBUGGING WORKAROUND
+            //
+            //bool validSnap =  isSnap | (isRoot & hasRtrSnap);
+
+            bool validSnap = isSnap;
 
             if(validSnap && time <= targetTime)
             {
@@ -1865,6 +1839,66 @@ namespace TTD
         }
 
         return snapTime;
+    }
+
+    void EventLog::GetSnapShotBoundInterval(int64 targetTime, int64* snapIntervalStart, int64* snapIntervalEnd) const
+    {
+        *snapIntervalStart = -1;
+        *snapIntervalEnd = -1;
+
+        //move the iterator to the current snapshot just before the event
+        auto iter = this->m_eventList.GetIteratorAtLast();
+        while(iter.IsValid())
+        {
+            NSLogEvents::EventLogEntry* evt = iter.Current();
+            if(evt->EventKind == NSLogEvents::EventKind::SnapshotTag)
+            {
+                NSLogEvents::SnapshotEventLogEntry* snapEvent = NSLogEvents::GetInlineEventDataAs<NSLogEvents::SnapshotEventLogEntry, NSLogEvents::EventKind::SnapshotTag>(iter.Current());
+                if(snapEvent->RestoreTimestamp <= targetTime)
+                {
+                    *snapIntervalStart = snapEvent->RestoreTimestamp;
+                    break;
+                }
+            }
+
+            iter.MovePrevious();
+        }
+
+        //now move the iter to the next snapshot
+        while(iter.IsValid())
+        {
+            NSLogEvents::EventLogEntry* evt = iter.Current();
+            if(evt->EventKind == NSLogEvents::EventKind::SnapshotTag)
+            {
+                NSLogEvents::SnapshotEventLogEntry* snapEvent = NSLogEvents::GetInlineEventDataAs<NSLogEvents::SnapshotEventLogEntry, NSLogEvents::EventKind::SnapshotTag>(iter.Current());
+                if(*snapIntervalStart < snapEvent->RestoreTimestamp)
+                {
+                    *snapIntervalEnd = snapEvent->RestoreTimestamp;
+                    break;
+                }
+            }
+
+            iter.MoveNext();
+        }
+    }
+
+    int64 EventLog::GetPreviousSnapshotInterval(int64 currentSnapTime) const
+    {
+        //move the iterator to the current snapshot just before the event
+        for(auto iter = this->m_eventList.GetIteratorAtLast(); iter.IsValid(); iter.MovePrevious())
+        {
+            NSLogEvents::EventLogEntry* evt = iter.Current();
+            if(evt->EventKind == NSLogEvents::EventKind::SnapshotTag)
+            {
+                NSLogEvents::SnapshotEventLogEntry* snapEvent = NSLogEvents::GetInlineEventDataAs<NSLogEvents::SnapshotEventLogEntry, NSLogEvents::EventKind::SnapshotTag>(iter.Current());
+                if(snapEvent->RestoreTimestamp < currentSnapTime)
+                {
+                    return snapEvent->RestoreTimestamp;
+                }
+            }
+        }
+
+        return -1;
     }
 
     void EventLog::DoSnapshotInflate(int64 etime)

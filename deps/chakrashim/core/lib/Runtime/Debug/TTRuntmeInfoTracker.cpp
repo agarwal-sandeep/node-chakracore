@@ -111,14 +111,6 @@ namespace TTD
         return this->m_deadScriptRecordList;
     }
 
-    void ThreadContextTTD::MultipleScriptWarn() const
-    {
-        if(this->m_contextList.Count() > 1)
-        {
-            printf("Need to add multiple script context support here!!!");
-        }
-    }
-
     void ThreadContextTTD::AddNewScriptContextRecord(FinalizableObject* externalCtx, Js::ScriptContext* ctx, HostScriptContextCallbackFunctor& callbackFunctor, bool noNative, bool debugMode)
     {
         this->AddNewScriptContext_Helper(ctx, callbackFunctor, noNative, debugMode);
@@ -334,6 +326,20 @@ namespace TTD
         this->m_ttdLocalRootSet->Clear();
 
         this->m_ttdRootTagIdMap.Clear();
+    }
+
+    Js::ScriptContext* ThreadContextTTD::LookupContextForScriptId(TTD_LOG_PTR_ID ctxId) const
+    {
+        for(int i = 0; i < this->m_contextList.Count(); ++i)
+        {
+            if(this->m_contextList.Item(i)->ScriptContextLogTag == ctxId)
+            {
+                return this->m_contextList.Item(i);
+            }
+        }
+
+        AssertMsg(false, "Should only call if you know the context is here!!!");
+        return nullptr;
     }
 
     ScriptContextTTD::ScriptContextTTD(Js::ScriptContext* ctx)

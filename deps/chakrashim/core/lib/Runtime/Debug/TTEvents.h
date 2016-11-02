@@ -159,7 +159,7 @@ namespace TTD
 
     public:
         TTDebuggerSourceLocation();
-        TTDebuggerSourceLocation(const SingleCallCounter& callFrame);
+        TTDebuggerSourceLocation(int64 topLevelETime, const SingleCallCounter& callFrame);
         TTDebuggerSourceLocation(const TTDebuggerSourceLocation& other);
         ~TTDebuggerSourceLocation();
 
@@ -174,7 +174,7 @@ namespace TTD
         bool HasValue() const;
         void Clear();
         void SetLocation(const TTDebuggerSourceLocation& other);
-        void SetLocation(const SingleCallCounter& callFrame);
+        void SetLocation(int64 topLevelETime, const SingleCallCounter& callFrame);
         void SetLocation(int64 etime, int64 ftime, int64 ltime, Js::FunctionBody* body, ULONG line, LONG column);
 
         int64 GetRootEventTime() const;

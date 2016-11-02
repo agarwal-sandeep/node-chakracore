@@ -101,7 +101,11 @@ typedef __int64 int64_t;
         /// <summary>
         ///     Perform a single step back to the previous statement (only applicable in TTD mode).
         /// </summary>
-        JsDiagStepTypeStepBack = 3
+        JsDiagStepTypeStepBack = 3,
+        /// <summary>
+        ///     Perform a reverse continue operation (only applicable in TTD mode).
+        /// </summary>
+        JsDiagStepTypeStepReverseContinue = 4
     } JsDiagStepType;
 
     /// <summary>
@@ -662,14 +666,9 @@ typedef __int64 int64_t;
         JsTTDMoveKthEvent = 0x4,
 
         /// <summary>
-        ///     Indicates if we want to scan the snapshot interval containing the event to populate debug info before moving to execute event.
-        /// </summary>
-        JsTTDMoveScanIntervalBeforeDebugExecute = 0x10,
-
-        /// <summary>
         ///     Indicates if we are doing the scan for a continue operation
         /// </summary>
-        JsTTDMoveScanIntervalForContinue = 0x20,
+        JsTTDMoveScanIntervalForContinue = 0x10,
 
         /// <summary>
         ///     Indicates if we want to set break on entry or just run and let something else trigger breakpoints.
@@ -971,29 +970,63 @@ typedef __int64 int64_t;
 
     /// <summary>
     ///     TTD API -- may change in future versions:
+    ///     Get the snapshot interval that bounds the target event time.
+    /// </summary>
+    /// <param name="runtimeHandle">The runtime handle that the script is executing in.</param>
+    /// <param name="targetEventTime">The event time we want to get the interval for.</param>
+    /// <param name="startSnapTime">The snapshot time that comes before the desired event.</param>
+    /// <param name="endSnapTime">The snapshot time that comes after the desired event (-1 if the leg ends before a snapshot appears).</param>
+    /// <returns>The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.</returns>
+    CHAKRA_API JsTTDGetSnapShotBoundInterval(
+        _In_ JsRuntimeHandle runtimeHandle,
+        _In_ int64_t targetEventTime,
+        _Out_ int64_t* startSnapTime,
+        _Out_ int64_t* endSnapTime);
+
+    /// <summary>
+    ///     TTD API -- may change in future versions:
+    ///     Get the snapshot interval that precedes the one given by currentSnapStartTime (or -1 if there is no such interval).
+    /// </summary>
+    /// <param name="runtimeHandle">The runtime handle that the script is executing in.</param>
+    /// <param name="currentSnapStartTime">The current snapshot interval start time.</param>
+    /// <param name="previousSnapTime">The resulting previous snapshot interval start time or -1 if no such time.</param>
+    /// <returns>The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.</returns>
+    CHAKRA_API JsTTDGetPreviousSnapshotInterval(
+        _In_ JsRuntimeHandle runtimeHandle,
+        _In_ int64_t currentSnapStartTime,
+        _Out_ int64_t* previousSnapTime);
+
+    /// <summary>
+    ///     TTD API -- may change in future versions:
     ///     During debug operations some additional information is populated during replay. This runs the code between the given 
     ///     snapshots to poulate this information which may be needed by the debugger to determine time-travel jump targets.
     /// </summary>
+    /// <param name="runtimeHandle">The runtime handle that the script is executing in.</param>
     ///<param name = "startSnapTime">The snapshot time that we will start executing from.< / param>
     ///<param name = "endSnapTime">The snapshot time that we will stop at (or -1 if we want to run to the end).< / param>
     /// <param name="moveMode">Additional flags for controling how the move is done.</param>
+    /// <param name="newTargetEventTime">The updated target event time set according to the moveMode (-1 if not found).</param>
     /// <returns>The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.</returns>
     CHAKRA_API JsTTDPreExecuteSnapShotInterval(
+        _In_ JsRuntimeHandle runtimeHandle,
         _In_ int64_t startSnapTime,
         _In_ int64_t endSnapTime,
-        _In_ JsTTDMoveMode moveMode);
+        _In_ JsTTDMoveMode moveMode,
+        _Out_ int64_t* newTargetEventTime);
 
     /// <summary>
     ///     TTD API -- may change in future versions:
     ///     Move to the given top-level call event time (assuming JsTTDPrepContextsForTopLevelEventMove) was called previously to reset any script contexts.
     ///     This also computes the ready-to-run snapshot if needed.
     /// </summary>
+    /// <param name="runtimeHandle">The runtime handle that the script is executing in.</param>
     /// <param name="moveMode">Additional flags for controling how the move is done.</param>
     /// <param name="snapshotTime">The event time that we will start executing from to move to the given target time.</param>
     /// <param name="eventTime">The event that we want to move to.</param>
     /// <returns>The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.</returns>
     CHAKRA_API
         JsTTDMoveToTopLevelEvent(
+            _In_ JsRuntimeHandle runtimeHandle,
             _In_ JsTTDMoveMode moveMode,
             _In_ int64_t snapshotTime,
             _In_ int64_t eventTime);
@@ -1012,6 +1045,6 @@ typedef __int64 int64_t;
     CHAKRA_API
         JsTTDReplayExecution(
             _Inout_ JsTTDMoveMode* moveMode,
-            _Inout_ int64_t* rootEventTime);
+            _Out_ int64_t* rootEventTime);
 
 #endif // _CHAKRADEBUG_H_

@@ -70,10 +70,10 @@ namespace TTD
         ;
     }
 
-    TTDebuggerSourceLocation::TTDebuggerSourceLocation(const SingleCallCounter& callFrame)
+    TTDebuggerSourceLocation::TTDebuggerSourceLocation(int64 topLevelETime, const SingleCallCounter& callFrame)
         : m_etime(-1), m_ftime(0), m_ltime(0), m_sourceFile(nullptr), m_docid(0), m_functionLine(0), m_functionColumn(0), m_line(0), m_column(0)
     {
-        this->SetLocation(callFrame);
+        this->SetLocation(topLevelETime, callFrame);
     }
 
     TTDebuggerSourceLocation::TTDebuggerSourceLocation(const TTDebuggerSourceLocation& other)
@@ -194,14 +194,14 @@ namespace TTD
         }
     }
 
-    void TTDebuggerSourceLocation::SetLocation(const SingleCallCounter& callFrame)
+    void TTDebuggerSourceLocation::SetLocation(int64 topLevelETime, const SingleCallCounter& callFrame)
     {
         ULONG srcLine = 0;
         LONG srcColumn = -1;
         uint32 startOffset = callFrame.Function->GetStatementStartOffset(callFrame.CurrentStatementIndex);
         callFrame.Function->GetSourceLineFromStartOffset_TTD(startOffset, &srcLine, &srcColumn);
 
-        this->SetLocation(callFrame.EventTime, callFrame.FunctionTime, callFrame.LoopTime, callFrame.Function, (uint32)srcLine, (uint32)srcColumn);
+        this->SetLocation(topLevelETime, callFrame.FunctionTime, callFrame.LoopTime, callFrame.Function, (uint32)srcLine, (uint32)srcColumn);
     }
 
     void TTDebuggerSourceLocation::SetLocation(int64 etime, int64 ftime, int64 ltime, Js::FunctionBody* body, ULONG line, LONG column)

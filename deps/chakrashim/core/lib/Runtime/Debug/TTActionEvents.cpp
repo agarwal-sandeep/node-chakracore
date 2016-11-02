@@ -1163,7 +1163,6 @@ namespace TTD
             cfAction->AdditionalInfo->RtRSnap = nullptr;
             cfAction->AdditionalInfo->ExecArgs = nullptr;
 
-            cfAction->AdditionalInfo->MarkedAsJustMyCode = false;
             cfAction->AdditionalInfo->LastExecutedLocation.Initialize();
 
             //Result is initialized when we register this with the popper
@@ -1228,10 +1227,9 @@ namespace TTD
                     if(executeContext->GetActiveScriptContext()->ShouldPerformDebuggerAction())
                     {
                         //convert to uncaught debugger exception for host
-                        bool markedAsJustMyCode = false;
                         TTDebuggerSourceLocation lastLocation;
-                        threadContext->TTDLog->GetLastExecutedTimeAndPositionForDebugger(&markedAsJustMyCode, lastLocation);
-                        JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(const_cast<EventLogEntry*>(evt), markedAsJustMyCode, lastLocation);
+                        threadContext->TTDLog->GetLastExecutedTimeAndPositionForDebugger(lastLocation);
+                        JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(const_cast<EventLogEntry*>(evt), lastLocation);
 
                         err.GetAndClear();  // discard exception object
 
@@ -1253,10 +1251,9 @@ namespace TTD
                     if(executeContext->GetActiveScriptContext()->ShouldPerformDebuggerAction())
                     {
                         //convert to uncaught debugger exception for host
-                        bool markedAsJustMyCode = false;
                         TTDebuggerSourceLocation lastLocation;
-                        threadContext->TTDLog->GetLastExecutedTimeAndPositionForDebugger(&markedAsJustMyCode, lastLocation);
-                        JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(const_cast<EventLogEntry*>(evt), markedAsJustMyCode, lastLocation);
+                        threadContext->TTDLog->GetLastExecutedTimeAndPositionForDebugger(lastLocation);
+                        JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(const_cast<EventLogEntry*>(evt), lastLocation);
 
                         throw TTDebuggerAbortException::CreateUncaughtExceptionAbortRequest(lastLocation.GetRootEventTime(), _u("Uncaught Script exception -- Propagate to top-level."));
                     }
@@ -1269,10 +1266,9 @@ namespace TTD
                 {
                     if(executeContext->GetActiveScriptContext()->ShouldPerformDebuggerAction())
                     {
-                        bool markedAsJustMyCode = false;
                         TTDebuggerSourceLocation lastLocation;
-                        threadContext->TTDLog->GetLastExecutedTimeAndPositionForDebugger(&markedAsJustMyCode, lastLocation);
-                        JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(const_cast<EventLogEntry*>(evt), markedAsJustMyCode, lastLocation);
+                        threadContext->TTDLog->GetLastExecutedTimeAndPositionForDebugger(lastLocation);
+                        JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(const_cast<EventLogEntry*>(evt), lastLocation);
                     }
 
                     throw;
@@ -1296,7 +1292,6 @@ namespace TTD
 
             if(cfInfo->LastExecutedLocation.HasValue())
             {
-                cfInfo->MarkedAsJustMyCode = false;
                 cfInfo->LastExecutedLocation.Clear();
             }
 
@@ -1371,7 +1366,6 @@ namespace TTD
             cfInfo->RtRSnap = nullptr;
             cfInfo->ExecArgs = (cfAction->ArgCount > 1) ? alloc.SlabAllocateArray<Js::Var>(cfAction->ArgCount - 1) : nullptr; //ArgCount includes slot for function which we don't use in exec
 
-            cfInfo->MarkedAsJustMyCode = false;
             cfInfo->LastExecutedLocation.Initialize();
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
@@ -1392,28 +1386,25 @@ namespace TTD
             }
         }
 
-        void JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(EventLogEntry* evt, bool markedAsJustMyCode, const TTDebuggerSourceLocation& lastSourceLocation)
+        void JsRTCallFunctionAction_SetLastExecutedStatementAndFrameInfo(EventLogEntry* evt, const TTDebuggerSourceLocation& lastSourceLocation)
         {
             JsRTCallFunctionAction* cfAction = GetInlineEventDataAs<JsRTCallFunctionAction, EventKind::CallExistingFunctionActionTag>(evt);
             JsRTCallFunctionAction_AdditionalInfo* cfInfo = cfAction->AdditionalInfo;
 
-            cfInfo->MarkedAsJustMyCode = markedAsJustMyCode;
             cfInfo->LastExecutedLocation.SetLocation(lastSourceLocation);
         }
 
-        bool JsRTCallFunctionAction_GetLastExecutedStatementAndFrameInfoForDebugger(const EventLogEntry* evt, bool* markedAsJustMyCode, TTDebuggerSourceLocation& lastSourceInfo)
+        bool JsRTCallFunctionAction_GetLastExecutedStatementAndFrameInfoForDebugger(const EventLogEntry* evt, TTDebuggerSourceLocation& lastSourceInfo)
         {
             const JsRTCallFunctionAction* cfAction = GetInlineEventDataAs<JsRTCallFunctionAction, EventKind::CallExistingFunctionActionTag>(evt);
             JsRTCallFunctionAction_AdditionalInfo* cfInfo = cfAction->AdditionalInfo;
             if(cfInfo->LastExecutedLocation.HasValue())
             {
-                *markedAsJustMyCode = cfInfo->MarkedAsJustMyCode;
                 lastSourceInfo.SetLocation(cfInfo->LastExecutedLocation);
                 return true;
             }
             else
             {
-                *markedAsJustMyCode = false;
                 lastSourceInfo.Clear();
                 return false;
             }
