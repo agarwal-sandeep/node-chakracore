@@ -40,7 +40,7 @@ namespace TTD
         : m_threadCtx(threadContext), m_runtimeHandle(runtimeHandle), m_contextCreatedOrDestoyedInReplay(false),
         TTDUri(), SnapInterval(snapInterval), SnapHistoryLength(snapHistoryLength),
         m_activeContext(nullptr), m_contextList(&HeapAllocator::Instance), m_deadScriptRecordList(&HeapAllocator::Instance), m_ttdContextToExternalRefMap(&HeapAllocator::Instance),
-        m_ttdRootTagIdMap(&HeapAllocator::Instance),
+        m_ttdRootSet(), m_ttdLocalRootSet(), m_ttdRootTagIdMap(&HeapAllocator::Instance),
         TTDWriteInitializeFunction(nullptr), TTDStreamFunctions({ 0 }), TTDExternalObjectFunctions({ 0 })
     {
         this->TTDUri.SetUriValue(uriByteLength, ttdUri);
@@ -338,7 +338,6 @@ namespace TTD
             }
         }
 
-        AssertMsg(false, "Should only call if you know the context is here!!!");
         return nullptr;
     }
 
@@ -698,9 +697,7 @@ namespace TTD
         this->EnqueueRootPathObject(_u("_stackTraceAccessor"), ctx->GetLibrary()->GetStackTraceAccessorFunction());
         this->EnqueueRootPathObject(_u("_throwTypeErrorRestrictedPropertyAccessor"), ctx->GetLibrary()->GetThrowTypeErrorRestrictedPropertyAccessorFunction());
 
-        //DEBUG
         uint32 counter = 0;
-
         while(!this->m_worklist.Empty())
         {
             Js::RecyclableObject* curr = this->m_worklist.Dequeue();

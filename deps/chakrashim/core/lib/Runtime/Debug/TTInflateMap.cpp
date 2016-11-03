@@ -13,6 +13,7 @@ namespace TTD
         m_tagToGlobalObjectMap(), m_objectMap(),
         m_functionBodyMap(), m_environmentMap(), m_slotArrayMap(), m_promiseDataMap(&HeapAllocator::Instance),
         m_debuggerScopeHomeBodyMap(), m_debuggerScopeChainIndexMap(),
+        m_inflatePinSet(), m_environmentPinSet(), m_oldInflatePinSet(),
         m_oldObjectMap(), m_oldFunctionBodyMap(), m_propertyReset(&HeapAllocator::Instance)
     {
         ;

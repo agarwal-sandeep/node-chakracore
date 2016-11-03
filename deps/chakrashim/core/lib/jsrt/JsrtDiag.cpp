@@ -434,11 +434,7 @@ CHAKRA_API JsDiagSetStepType(
         {
             jsrtDebugManager->SetResumeType(BREAKRESUMEACTION_STEP_OVER);
         }
-        else if (stepType == JsDiagStepTypeStepBack 
-#if TTD_STEP_BACK_WORK_AROUND
-            //|| stepType == JsDiagStepTypeStepOut
-#endif
-            )
+        else if (stepType == JsDiagStepTypeStepBack)
         {
 #if ENABLE_TTD
             ThreadContext* threadContext = runtime->GetThreadContext();
@@ -451,8 +447,6 @@ CHAKRA_API JsDiagSetStepType(
             threadContext->TTDLog->GetPreviousTimeAndPositionForDebugger(bpLocation);
             threadContext->TTDLog->SetPendingTTDBPInfo(bpLocation);
             threadContext->TTDLog->SetPendingTTDMoveMode(JsTTDMoveMode::JsTTDMoveNone);
-
-            threadContext->TTDLog->LoadPreservedBPInfo();
 
             //don't worry about BP suppression because we are just going to throw after we return
             jsrtDebugManager->SetResumeType(BREAKRESUMEACTION_CONTINUE);
@@ -477,8 +471,6 @@ CHAKRA_API JsDiagSetStepType(
             threadContext->TTDLog->GetTimeAndPositionForDebugger(bpLocation);
             threadContext->TTDLog->SetPendingTTDBPInfo(bpLocation);
             threadContext->TTDLog->SetPendingTTDMoveMode(JsTTDMoveMode::JsTTDMoveScanIntervalForContinue);
-
-            threadContext->TTDLog->LoadPreservedBPInfo();
 
             //don't worry about BP suppression because we are just going to throw after we return
 

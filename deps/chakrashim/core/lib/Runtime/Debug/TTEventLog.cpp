@@ -1398,14 +1398,15 @@ namespace TTD
 
     void EventLog::LoadPreservedBPInfo()
     {
-        AssertMsg(this->m_preservedBPCount == 0, "How do we still have breakpoints in here???");
+        //Unload this before we move again
+        AssertMsg(this->m_preservedBPCount == 0, "This should always be clear???");
 
         uint32 bpCount = 0;
         const JsUtil::List<Js::ScriptContext*, HeapAllocator>& ctxs = this->m_threadContext->TTDContext->GetTTDContexts();
         for(int32 i = 0; i < ctxs.Count(); ++i)
         {
             Js::ProbeContainer* probeContainer = ctxs.Item(i)->GetDebugContext()->GetProbeContainer();
-            probeContainer->MapProbes([&](int i, Js::Probe* pProbe)
+            probeContainer->MapProbes([&](int j, Js::Probe* pProbe)
             {
                 Js::BreakpointProbe* bp = (Js::BreakpointProbe*)pProbe;
                 if((int64)bp->GetId() != this->m_activeBPId)
@@ -1421,7 +1422,7 @@ namespace TTD
         for(int32 i = 0; i < ctxs.Count(); ++i)
         {
             Js::ProbeContainer* probeContainer = ctxs.Item(i)->GetDebugContext()->GetProbeContainer();
-            probeContainer->MapProbes([&](int i, Js::Probe* pProbe)
+            probeContainer->MapProbes([&](int j, Js::Probe* pProbe)
             {
                 Js::BreakpointProbe* bp = (Js::BreakpointProbe*)pProbe;
                 if((int64)bp->GetId() != this->m_activeBPId)
@@ -1808,13 +1809,7 @@ namespace TTD
             bool hasRtrSnap = false;
             int64 time = NSLogEvents::AccessTimeInRootCallOrSnapshot(iter.Current(), isSnap, isRoot, hasRtrSnap);
 
-            //
-            //TODO: TEMP DEBUGGING WORKAROUND
-            //
-            //bool validSnap =  isSnap | (isRoot & hasRtrSnap);
-
-            bool validSnap = isSnap;
-
+            bool validSnap =  isSnap | (isRoot & hasRtrSnap);
             if(validSnap && time <= targetTime)
             {
                 snapTime = time;

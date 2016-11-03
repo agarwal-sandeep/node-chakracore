@@ -1775,7 +1775,7 @@ namespace TTD
 
             for(uint32 i = 0; i < snpCtx->PendingAsyncModCount; ++i)
             {
-                Js::RecyclableObject* buff = inflator->LookupObject(snpCtx->PendingAsyncModArray[i].LogId);
+                Js::RecyclableObject* buff = intoCtx->GetThreadContext()->TTDContext->LookupObjectForLogID(snpCtx->PendingAsyncModArray[i].LogId);
                 uint32 index = snpCtx->PendingAsyncModArray[i].Index;
 
                 AssertMsg(Js::ArrayBuffer::Is(buff), "Not an ArrayBuffer!!!");

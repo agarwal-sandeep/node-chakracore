@@ -324,14 +324,14 @@ namespace TTD
         }
 
         //so all times are the same => min column/min row decide
-        if(this->m_functionLine != other.m_functionLine)
+        if(this->m_line != other.m_line)
         {
-            return this->m_functionLine < other.m_functionLine;
+            return this->m_line < other.m_line;
         }
 
-        if(this->m_functionColumn != other.m_functionColumn)
+        if(this->m_column != other.m_column)
         {
-            return this->m_functionColumn < other.m_functionColumn;
+            return this->m_column < other.m_column;
         }
 
         //they are refering to the same location so this is *not* stricly before

@@ -3979,7 +3979,32 @@ CHAKRA_API JsTTDPreExecuteSnapShotInterval(_In_ JsRuntimeHandle runtimeHandle, _
 
     JsErrorCode inflateStatus = GlobalAPIWrapper_NoRecord([&]() -> JsErrorCode
     {
+        elog->LoadPreservedBPInfo();
+
         elog->DoSnapshotInflate(startSnapTime);
+
+        if(elog->GetPerservedBPInfoCount() != 0)
+        {
+            JsrtDebugManager* jsrtDebugManager = runtime->GetJsrtDebugManager();
+
+            TTD_LOG_PTR_ID* ctxIdList = elog->GetPerservedBPInfoScriptArray();
+            TTD::TTDebuggerSourceLocation** locationList = elog->GetPerservedBPInfoLocationArray();
+            for(uint32 i = 0; i < elog->GetPerservedBPInfoCount(); ++i)
+            {
+                const TTD::TTDebuggerSourceLocation* bpLocation = locationList[i];
+                Js::ScriptContext* bpContext = threadContext->TTDContext->LookupContextForScriptId(ctxIdList[i]);
+
+                if(bpContext != nullptr)
+                {
+                    Js::FunctionBody* body = bpLocation->ResolveAssociatedSourceInfo(bpContext);
+                    Js::Utf8SourceInfo* utf8SourceInfo = body->GetUtf8SourceInfo();
+
+                    bool isNewBP = false;
+                    jsrtDebugManager->SetBreakpointHelper_TTD(bpContext, utf8SourceInfo, bpLocation->GetLine(), bpLocation->GetColumn(), &isNewBP);
+                }
+            }
+        }
+        elog->UnLoadPreservedBPInfo();
 
         return JsNoError;
     });
@@ -3987,25 +4012,6 @@ CHAKRA_API JsTTDPreExecuteSnapShotInterval(_In_ JsRuntimeHandle runtimeHandle, _
     if(inflateStatus != JsNoError)
     {
         return inflateStatus;
-    }
-
-    if(elog->GetPerservedBPInfoCount() != 0)
-    {
-        JsrtDebugManager* jsrtDebugManager = runtime->GetJsrtDebugManager();
-
-        TTD_LOG_PTR_ID* ctxIdList = elog->GetPerservedBPInfoScriptArray();
-        TTD::TTDebuggerSourceLocation** locationList = elog->GetPerservedBPInfoLocationArray();
-        for(uint32 i = 0; i < elog->GetPerservedBPInfoCount(); ++i)
-        {
-            const TTD::TTDebuggerSourceLocation* bpLocation = locationList[i];
-
-            Js::ScriptContext* bpContext = threadContext->TTDContext->LookupContextForScriptId(ctxIdList[i]);
-            Js::FunctionBody* body = bpLocation->ResolveAssociatedSourceInfo(bpContext);
-            Js::Utf8SourceInfo* utf8SourceInfo = body->GetUtf8SourceInfo();
-
-            bool isNewBP = false;
-            jsrtDebugManager->SetBreakpointHelper_TTD(bpContext, utf8SourceInfo, bpLocation->GetLine(), bpLocation->GetColumn(), &isNewBP);
-        }
     }
 
     elog->ClearBPScanInfo();
@@ -4072,7 +4078,32 @@ CHAKRA_API JsTTDMoveToTopLevelEvent(_In_ JsRuntimeHandle runtimeHandle, _In_ JsT
 
     JsErrorCode inflateStatus = GlobalAPIWrapper_NoRecord([&]() -> JsErrorCode
     {
+        elog->LoadPreservedBPInfo();
+
         elog->DoSnapshotInflate(snapshotTime);
+
+        if(elog->GetPerservedBPInfoCount() != 0)
+        {
+            JsrtDebugManager* jsrtDebugManager = runtime->GetJsrtDebugManager();
+
+            TTD_LOG_PTR_ID* ctxIdList = elog->GetPerservedBPInfoScriptArray();
+            TTD::TTDebuggerSourceLocation** locationList = elog->GetPerservedBPInfoLocationArray();
+            for(uint32 i = 0; i < elog->GetPerservedBPInfoCount(); ++i)
+            {
+                const TTD::TTDebuggerSourceLocation* bpLocation = locationList[i];
+                Js::ScriptContext* bpContext = threadContext->TTDContext->LookupContextForScriptId(ctxIdList[i]);
+
+                if(bpContext != nullptr)
+                {
+                    Js::FunctionBody* body = bpLocation->ResolveAssociatedSourceInfo(bpContext);
+                    Js::Utf8SourceInfo* utf8SourceInfo = body->GetUtf8SourceInfo();
+
+                    bool isNewBP = false;
+                    jsrtDebugManager->SetBreakpointHelper_TTD(bpContext, utf8SourceInfo, bpLocation->GetLine(), bpLocation->GetColumn(), &isNewBP);
+                }
+            }
+        }
+        elog->UnLoadPreservedBPInfo();
 
         return JsNoError;
     });
@@ -4080,25 +4111,6 @@ CHAKRA_API JsTTDMoveToTopLevelEvent(_In_ JsRuntimeHandle runtimeHandle, _In_ JsT
     if(inflateStatus != JsNoError)
     {
         return inflateStatus;
-    }
-
-    if(elog->GetPerservedBPInfoCount() != 0)
-    {
-        JsrtDebugManager* jsrtDebugManager = runtime->GetJsrtDebugManager();
-
-        TTD_LOG_PTR_ID* ctxIdList = elog->GetPerservedBPInfoScriptArray();
-        TTD::TTDebuggerSourceLocation** locationList = elog->GetPerservedBPInfoLocationArray();
-        for(uint32 i = 0; i < elog->GetPerservedBPInfoCount(); ++i)
-        {
-            const TTD::TTDebuggerSourceLocation* bpLocation = locationList[i];
-
-            Js::ScriptContext* bpContext = threadContext->TTDContext->LookupContextForScriptId(ctxIdList[i]);
-            Js::FunctionBody* body = bpLocation->ResolveAssociatedSourceInfo(bpContext);
-            Js::Utf8SourceInfo* utf8SourceInfo = body->GetUtf8SourceInfo();
-
-            bool isNewBP = false;
-            jsrtDebugManager->SetBreakpointHelper_TTD(bpContext, utf8SourceInfo, bpLocation->GetLine(), bpLocation->GetColumn(), &isNewBP);
-        }
     }
 
     elog->PushMode(TTD::TTDMode::DebuggerSuppressBreakpoints);
