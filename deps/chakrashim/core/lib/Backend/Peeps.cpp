@@ -303,7 +303,7 @@ Peeps::PeepAssign(IR::Instr *assign)
     IR::Instr *instrNext = assign->m_next;
 
     // MOV reg, sym
-    if (src->IsSymOpnd())
+    if (src->IsSymOpnd() && src->AsSymOpnd()->m_offset == 0)
     {
         AssertMsg(src->AsSymOpnd()->m_sym->IsStackSym(), "Only expect stackSyms at this point");
         StackSym *sym = src->AsSymOpnd()->m_sym->AsStackSym();
@@ -353,7 +353,7 @@ Peeps::PeepAssign(IR::Instr *assign)
             this->ClearReg(dstReg);
         }
     }
-    else if (dst->IsSymOpnd() && src->IsRegOpnd())
+    else if (dst->IsSymOpnd() && dst->AsSymOpnd()->m_offset == 0 && src->IsRegOpnd())
     {
         // MOV Sym, Reg
         // Track this reg
@@ -439,7 +439,7 @@ Peeps::PeepBranch(IR::BranchInstr *branchInstr, bool *const peepedRef)
             {
                 if (branchInstr->HasAnyImplicitCalls())
                 {
-                    Assert(!branchInstr->m_func->GetJnFunction()->GetIsAsmjsMode());
+                    Assert(!branchInstr->m_func->GetJITFunctionBody()->IsAsmJsMode());
                     // if (x > y) might trigger a call to valueof() or something for x and y.
                     // We can't just delete them.
                     Js::OpCode newOpcode;
@@ -683,7 +683,10 @@ Peeps::HoistSameInstructionAboveSplit(IR::BranchInstr *branchInstr, IR::Instr *i
     Assert(instr && targetInstr);
     while (!instr->EndsBasicBlock() && !instr->IsLabelInstr() && instr->IsEqual(targetInstr) &&
         !EncoderMD::UsesConditionCode(instr) && !EncoderMD::SetsConditionCode(instr) &&
-        !this->peepsAgen.DependentInstrs(instrSetCondition, instr))
+        !this->peepsAgen.DependentInstrs(instrSetCondition, instr) &&
+        // cannot hoist InlineeStart from branch targets even for the same inlinee function.
+        // it is used by encoder to generate InlineeFrameRecord for each inlinee
+        instr->m_opcode != Js::OpCode::InlineeStart)
     {
         branchNextInstr = instr->GetNextRealInstrOrLabel();
         targetNextInstr = targetInstr->GetNextRealInstrOrLabel();
@@ -1004,7 +1007,10 @@ Peeps::PeepRedundant(IR::Instr *instr)
         do
         {
             instr = instr->GetPrevRealInstrOrLabel();
-            if (instr->m_opcode == Js::OpCode::IMUL)
+            if (
+                instr->m_opcode == Js::OpCode::IMUL ||
+                (instr->m_opcode == Js::OpCode::CALL && this->func->GetJITFunctionBody()->IsWasmFunction())
+            )
             {
                 found = true;
                 break;

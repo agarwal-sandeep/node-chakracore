@@ -242,7 +242,9 @@ Recycler::Recycler(AllocationPolicyManager * policyManager, IdleDecommitPageAllo
 #ifdef HEAP_ENUMERATION_VALIDATION
     ,pfPostHeapEnumScanCallback(nullptr)
 #endif
+#ifdef NTBUILD
     , telemetryBlock(&localTelemetryBlock)
+#endif
 #ifdef ENABLE_JS_ETW
     ,bulkFreeMemoryWrittenCount(0)
 #endif
@@ -321,7 +323,9 @@ Recycler::Recycler(AllocationPolicyManager * policyManager, IdleDecommitPageAllo
     this->inDetachProcess = false;
 #endif
 
+#ifdef NTBUILD
     memset(&localTelemetryBlock, 0, sizeof(localTelemetryBlock));
+#endif
 
 #ifdef ENABLE_DEBUG_CONFIG_OPTIONS
     // recycler requires at least Recycler::PrimaryMarkStackReservedPageCount to function properly for the main mark context
@@ -1278,16 +1282,34 @@ Recycler::OutOfMemory()
     outOfMemoryFunc();
 }
 
-void Recycler::GetNormalHeapBlockAllocatorInfoForNativeAllocation(size_t allocSize, void*& allocatorAddress, uint32& endAddressOffset, uint32& freeListOffset)
+void Recycler::GetNormalHeapBlockAllocatorInfoForNativeAllocation(void* recyclerAddr, size_t allocSize, void*& allocatorAddress, uint32& endAddressOffset, uint32& freeListOffset, bool allowBumpAllocation, bool isOOPJIT)
+{
+    Assert(recyclerAddr);
+    return ((Recycler*)recyclerAddr)->GetNormalHeapBlockAllocatorInfoForNativeAllocation(allocSize, allocatorAddress, endAddressOffset, freeListOffset, allowBumpAllocation, isOOPJIT);
+}
+
+void Recycler::GetNormalHeapBlockAllocatorInfoForNativeAllocation(size_t allocSize, void*& allocatorAddress, uint32& endAddressOffset, uint32& freeListOffset, bool allowBumpAllocation, bool isOOPJIT)
 {
     Assert(HeapInfo::IsAlignedSize(allocSize));
     Assert(HeapInfo::IsSmallObject(allocSize));
 
-    allocatorAddress = GetAddressOfAllocator<NoBit>(allocSize);
-    endAddressOffset = GetEndAddressOffset<NoBit>(allocSize);
-    freeListOffset = GetFreeObjectListOffset<NoBit>(allocSize);
+    allocatorAddress = (char*)this + offsetof(Recycler, autoHeap) + offsetof(HeapInfo, heapBuckets) +
+        sizeof(HeapBucketGroup<SmallAllocationBlockAttributes>)*((uint)(allocSize >> HeapConstants::ObjectAllocationShift) - 1)
+        + HeapBucketGroup<SmallAllocationBlockAttributes>::GetHeapBucketOffset()
+        + HeapBucketT<SmallNormalHeapBlockT<SmallAllocationBlockAttributes>>::GetAllocatorHeadOffset();
 
-    if (!AllowNativeCodeBumpAllocation())
+    endAddressOffset = SmallHeapBlockAllocator<SmallNormalHeapBlockT<SmallAllocationBlockAttributes>>::GetEndAddressOffset();
+    freeListOffset = SmallHeapBlockAllocator<SmallNormalHeapBlockT<SmallAllocationBlockAttributes>>::GetFreeObjectListOffset();;
+
+    if (!isOOPJIT)
+    {
+        Assert(allocatorAddress == GetAddressOfAllocator<NoBit>(allocSize));
+        Assert(endAddressOffset == GetEndAddressOffset<NoBit>(allocSize));
+        Assert(freeListOffset == GetFreeObjectListOffset<NoBit>(allocSize));
+        Assert(allowBumpAllocation == AllowNativeCodeBumpAllocation());
+    }
+
+    if (!allowBumpAllocation)
     {
         freeListOffset = endAddressOffset;
     }
@@ -3408,8 +3430,10 @@ Recycler::Collect()
 
     {
         RECORD_TIMESTAMP(initialCollectionStartTime);
+#ifdef NTBUILD
         this->telemetryBlock->initialCollectionStartProcessUsedBytes = PageAllocator::GetProcessUsedBytes();
         this->telemetryBlock->exhaustiveRepeatedCount = 0;
+#endif
 
         return DoCollectWrapped(finalFlags);
     }
@@ -3536,7 +3560,9 @@ Recycler::DoCollect(CollectionFlags flags)
     {
         INC_TIMESTAMP_FIELD(exhaustiveRepeatedCount);
         RECORD_TIMESTAMP(currentCollectionStartTime);
+#ifdef NTBUILD
         this->telemetryBlock->currentCollectionStartProcessUsedBytes = PageAllocator::GetProcessUsedBytes();
+#endif
 
 #if ENABLE_CONCURRENT_GC
         // DisposeObject may call script again and start another GC, so we may still be in concurrent GC state
@@ -3909,12 +3935,6 @@ Recycler::CollectionBegin()
 {
     RECYCLER_PROFILE_EXEC_BEGIN2(this, Js::RecyclerPhase, phase);
     GCETW(GC_START, (this, GetETWEventGCActivationKind<phase>()));
-#ifdef ENABLE_BASIC_TELEMETRY
-    if (this->IsMemProtectMode() == false)
-    {
-        gcTel.LogGCPauseStartTime();
-    }
-#endif
 }
 
 template <Js::Phase phase>
@@ -3922,12 +3942,6 @@ void
 Recycler::CollectionEnd()
 {
     GCETW(GC_STOP, (this, GetETWEventGCActivationKind<phase>()));
-#ifdef ENABLE_BASIC_TELEMETRY
-    if (GetCurrentThreadContextId() == mainThreadId && IsMemProtectMode() == false)
-    {
-        gcTel.LogGCPauseEndTime();
-    }
-#endif
     RECYCLER_PROFILE_EXEC_END2(this, phase, Js::RecyclerPhase);
 }
 
@@ -4635,7 +4649,7 @@ Recycler::EnableConcurrent(JsUtil::ThreadService *threadService, bool startAllTh
 
         if (startConcurrentThread)
         {
-            HANDLE concurrentThread = (HANDLE)_beginthreadex(NULL, Recycler::ConcurrentThreadStackSize, &Recycler::StaticThreadProc, this, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+            HANDLE concurrentThread = (HANDLE)PlatformAgnostic::Thread::Create(Recycler::ConcurrentThreadStackSize, &Recycler::StaticThreadProc, this, PlatformAgnostic::Thread::ThreadInitStackSizeParamIsAReservation);
             if (concurrentThread != nullptr)
             {
                 // Wait for recycler thread to initialize
@@ -5298,12 +5312,6 @@ Recycler::FinishConcurrentCollect(CollectionFlags flags)
     if (collectionState == CollectionStateRescanWait)
     {
         GCETW(GC_START, (this, ETWEvent_ConcurrentRescan));
-#ifdef ENABLE_BASIC_TELEMETRY
-        if(GetCurrentThreadContextId()==mainThreadId && IsMemProtectMode()==false)
-        {
-            gcTel.LogGCPauseStartTime();
-        }
-#endif
 
 #ifdef RECYCLER_TRACE
 #if ENABLE_PARTIAL_GC
@@ -5334,12 +5342,7 @@ Recycler::FinishConcurrentCollect(CollectionFlags flags)
             Assert(this->IsMarkState());
             RECYCLER_PROFILE_EXEC_END2(this, concurrentPhase, Js::RecyclerPhase);
             GCETW(GC_STOP, (this, ETWEvent_ConcurrentRescan));
-#ifdef ENABLE_BASIC_TELEMETRY
-            if (GetCurrentThreadContextId() == mainThreadId && IsMemProtectMode() == false)
-            {
-               gcTel.LogGCPauseEndTime();
-            }
-#endif
+
             // we timeout trying to mark.
             return false;
         }
@@ -5369,12 +5372,6 @@ Recycler::FinishConcurrentCollect(CollectionFlags flags)
     else
     {
         GCETW(GC_START, (this, ETWEvent_ConcurrentTransferSwept));
-#ifdef ENABLE_BASIC_TELEMETRY
-        if(GetCurrentThreadContextId()==mainThreadId && IsMemProtectMode()==false)
-        {
-            gcTel.LogGCPauseStartTime();
-        }
-#endif
         GCETW(GC_FLUSHZEROPAGE_START, (this));
 
         Assert(collectionState == CollectionStateTransferSweptWait);
@@ -5408,12 +5405,6 @@ Recycler::FinishConcurrentCollect(CollectionFlags flags)
         GCETW(GC_TRANSFERSWEPTOBJECTS_STOP, (this));
 
         GCETW(GC_STOP, (this, ETWEvent_ConcurrentTransferSwept));
-#ifdef ENABLE_BASIC_TELEMETRY
-        if (GetCurrentThreadContextId() == mainThreadId && IsMemProtectMode() == false)
-        {
-            gcTel.LogGCPauseEndTime();
-        }
-#endif
     }
 
     RECYCLER_PROFILE_EXEC_END2(this, concurrentPhase, Js::RecyclerPhase);
@@ -5519,12 +5510,6 @@ Recycler::DoBackgroundWork(bool forceForeground)
         RECYCLER_PROFILE_EXEC_BACKGROUND_BEGIN(this, this->collectionState == CollectionStateConcurrentFinishMark?
             Js::BackgroundFinishMarkPhase : Js::ConcurrentMarkPhase);
         GCETW(GC_START, (this, BackgroundMarkETWEventGCActivationKind(this->collectionState)));
-#ifdef ENABLE_BASIC_TELEMETRY
-        if (GetCurrentThreadContextId() == mainThreadId && IsMemProtectMode() == false)
-        {
-            gcTel.LogGCPauseStartTime();
-        }
-#endif
         DebugOnly(this->markContext.GetPageAllocator()->SetConcurrentThreadId(::GetCurrentThreadId()));
         Assert(this->enableConcurrentMark);
         if (this->collectionState != CollectionStateConcurrentFinishMark)
@@ -5557,12 +5542,6 @@ Recycler::DoBackgroundWork(bool forceForeground)
             break;
         };
         GCETW(GC_STOP, (this, BackgroundMarkETWEventGCActivationKind(this->collectionState)));
-#ifdef ENABLE_BASIC_TELEMETRY
-        if (GetCurrentThreadContextId() == mainThreadId && IsMemProtectMode() == false)
-        {
-            gcTel.LogGCPauseEndTime();
-        }
-#endif
         RECYCLER_PROFILE_EXEC_BACKGROUND_END(this, this->collectionState == CollectionStateConcurrentFinishMark?
             Js::BackgroundFinishMarkPhase : Js::ConcurrentMarkPhase);
 
@@ -5573,12 +5552,6 @@ Recycler::DoBackgroundWork(bool forceForeground)
     {
         RECYCLER_PROFILE_EXEC_BACKGROUND_BEGIN(this, Js::ConcurrentSweepPhase);
         GCETW(GC_START, (this, ETWEvent_ConcurrentSweep));
-#ifdef ENABLE_BASIC_TELEMETRY
-        if (GetCurrentThreadContextId() == mainThreadId && IsMemProtectMode() == false)
-        {
-            gcTel.LogGCPauseStartTime();
-        }
-#endif
         GCETW(GC_BACKGROUNDZEROPAGE_START, (this));
 
         Assert(this->enableConcurrentSweep);
@@ -5613,12 +5586,6 @@ Recycler::DoBackgroundWork(bool forceForeground)
         recyclerLargeBlockPageAllocator.BackgroundZeroQueuedPages();
         GCETW(GC_BACKGROUNDZEROPAGE_STOP, (this));
         GCETW(GC_STOP, (this, ETWEvent_ConcurrentSweep));
-#ifdef ENABLE_BASIC_TELEMETRY
-        if (GetCurrentThreadContextId() == mainThreadId && IsMemProtectMode() == false)
-        {
-            gcTel.LogGCPauseEndTime();
-        }
-#endif
 
         Assert(this->collectionState == CollectionStateConcurrentSweep);
         this->collectionState = CollectionStateTransferSweptWait;
@@ -6067,7 +6034,7 @@ RecyclerParallelThread::EnableConcurrent(bool waitForThread)
         return false;
     }
 
-    this->concurrentThread = (HANDLE)_beginthreadex(NULL, Recycler::ConcurrentThreadStackSize, &RecyclerParallelThread::StaticThreadProc, this, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+    this->concurrentThread = (HANDLE)PlatformAgnostic::Thread::Create(Recycler::ConcurrentThreadStackSize, &RecyclerParallelThread::StaticThreadProc, this, PlatformAgnostic::Thread::ThreadInitStackSizeParamIsAReservation);
 
     if (this->concurrentThread != nullptr && waitForThread)
     {
@@ -6947,15 +6914,21 @@ Recycler::FillCheckPad(void * address, size_t size, size_t alignedAllocSize, boo
         // Actually this is filling the non-pad to zero
         VerifyCheckFill(addressToVerify, sizeToVerify - sizeof(size_t));
 
-        // Ignore the first word
-        if (!objectAlreadyInitialized && size > sizeof(FreeObject))
-        {
-            memset((char *)address + sizeof(FreeObject), 0, size - sizeof(FreeObject));
-        }
-
-        // write the pad size at the end;
-        *(size_t *)((char *)address + alignedAllocSize - sizeof(size_t)) = alignedAllocSize - size;
+        FillPadNoCheck(address, size, alignedAllocSize, objectAlreadyInitialized);
     }
+}
+
+void
+Recycler::FillPadNoCheck(void * address, size_t size, size_t alignedAllocSize, bool objectAlreadyInitialized)
+{
+    // Ignore the first word
+    if (!objectAlreadyInitialized && size > sizeof(FreeObject))
+    {
+        memset((char *)address + sizeof(FreeObject), 0, size - sizeof(FreeObject));
+    }
+
+    // write the pad size at the end;
+    *(size_t *)((char *)address + alignedAllocSize - sizeof(size_t)) = alignedAllocSize - size;
 }
 
 void Recycler::Verify(Js::Phase phase)
@@ -8222,4 +8195,3 @@ RecyclerHeapObjectInfo::GetSize() const
 }
 
 template char* Recycler::AllocWithAttributesInlined<(Memory::ObjectInfoBits)32, false>(size_t);
-

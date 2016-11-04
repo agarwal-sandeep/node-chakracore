@@ -328,11 +328,7 @@ HRESULT Parser::ParseSourceInternal(
     AssertMem(parseTree);
     AssertPsz(pszSrc);
     AssertMemN(pse);
-
-#ifdef ENABLE_BASIC_TELEMETRY
-    double startTime = m_scriptContext->GetThreadContext()->ParserTelemetry.Now();
-#endif
-    
+   
     if (this->IsBackgroundParser())
     {
         PROBE_STACK_NO_DISPOSE(m_scriptContext, Js::Constants::MinStackDefault);
@@ -448,11 +444,6 @@ HRESULT Parser::ParseSourceInternal(
     m_scriptContext->ProfileEnd(Js::ParsePhase);
 #endif
     JS_ETW(EventWriteJSCRIPT_PARSE_STOP(m_scriptContext, 0));
-
-#ifdef ENABLE_BASIC_TELEMETRY
-    ThreadContext *threadContext = m_scriptContext->GetThreadContext();
-    threadContext->ParserTelemetry.LogTime(threadContext->ParserTelemetry.Now() - startTime);
-#endif
     
     return hr;
 }
@@ -2859,22 +2850,26 @@ ParseNodePtr Parser::ParseTerm(BOOL fAllowCall,
         ichMin = m_pscan->IchMinTok();
         iecpMin  = m_pscan->IecpMinTok();
 
+        if (pid == wellKnownPropertyPids.async &&
+            m_scriptContext->GetConfig()->IsES7AsyncAndAwaitEnabled())
+        {
+            isAsyncExpr = true;
+        }
+
+        bool previousAwaitIsKeyword = m_pscan->SetAwaitIsKeyword(isAsyncExpr);
         m_pscan->Scan();
+        m_pscan->SetAwaitIsKeyword(previousAwaitIsKeyword);
 
         // We search for an Async expression (a function declaration or an async lambda expression)
-        if (pid == wellKnownPropertyPids.async &&
-            !m_pscan->FHadNewLine() &&
-            m_scriptContext->GetConfig()->IsES7AsyncAndAwaitEnabled())
+        if (isAsyncExpr && !m_pscan->FHadNewLine())
         {
             if (m_token.tk == tkFUNCTION)
             {
-                isAsyncExpr = true;
                 goto LFunction;
             }
-            else if (m_token.tk == tkID)
+            else if (m_token.tk == tkID || m_token.tk == tkAWAIT)
             {
                 isLambdaExpr = true;
-                isAsyncExpr = true;
                 goto LFunction;
             }
         }
@@ -3147,7 +3142,6 @@ LFunction :
     }
 
     case tkCLASS:
-        fAllowCall = FALSE;
         if (m_scriptContext->GetConfig()->IsES6ClassAndExtendsEnabled())
         {
             pnode = ParseClassDecl<buildAST>(FALSE, pNameHint, pHintLength, pShortNameOffset);
@@ -4745,6 +4739,8 @@ Parse a function definition.
 template<bool buildAST>
 bool Parser::ParseFncDeclHelper(ParseNodePtr pnodeFnc, LPCOLESTR pNameHint, ushort flags, bool *pHasName, bool fUnaryOrParen, bool noStmtContext, bool *pNeedScanRCurly, bool skipFormals)
 {
+    ParseNodePtr pnodeFncParent = GetCurrentFunctionNode();
+    // is the following correct? When buildAST is false, m_currentNodeDeferredFunc can be nullptr on transition to deferred parse from non-deferred
     ParseNodePtr pnodeFncSave = buildAST ? m_currentNodeFunc : m_currentNodeDeferredFunc;
     ParseNodePtr pnodeFncSaveNonLambda = buildAST ? m_currentNodeNonLambdaFunc : m_currentNodeNonLambdaDeferredFunc;
     int32* pAstSizeSave = m_pCurrentAstSize;
@@ -4974,7 +4970,7 @@ bool Parser::ParseFncDeclHelper(ParseNodePtr pnodeFnc, LPCOLESTR pNameHint, usho
 
         if (!skipFormals)
         {
-            this->ParseFncFormals<buildAST>(pnodeFnc, flags);
+            this->ParseFncFormals<buildAST>(pnodeFnc, pnodeFncParent, flags);
         }
 
         // Create function body scope
@@ -6003,14 +5999,14 @@ bool Parser::ParseFncNames(ParseNodePtr pnodeFnc, ParseNodePtr pnodeFncParent, u
 
 void Parser::ValidateFormals()
 {
-    ParseFncFormals<false>(NULL, fFncNoFlgs);
+    ParseFncFormals<false>(nullptr, nullptr, fFncNoFlgs);
     // Eat the tkRParen. The ParseFncDeclHelper caller expects to see it.
     m_pscan->Scan();
 }
 
 void Parser::ValidateSourceElementList()
 {
-    ParseStmtList<false>(NULL, NULL, SM_NotUsed, true);
+    ParseStmtList<false>(nullptr, nullptr, SM_NotUsed, true);
 }
 
 void Parser::UpdateOrCheckForDuplicateInFormals(IdentPtr pid, SList<IdentPtr> *formals)
@@ -6039,12 +6035,22 @@ void Parser::UpdateOrCheckForDuplicateInFormals(IdentPtr pid, SList<IdentPtr> *f
 }
 
 template<bool buildAST>
-void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
+void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ParseNodePtr pnodeParentFnc, ushort flags)
 {
     bool fLambda = (flags & fFncLambda) != 0;
     bool fMethod = (flags & fFncMethod) != 0;
     bool fNoArg = (flags & fFncNoArg) != 0;
     bool fOneArg = (flags & fFncOneArg) != 0;
+    bool fAsync = (flags & fFncAsync) != 0;
+
+    bool fPreviousYieldIsKeyword = false;
+    bool fPreviousAwaitIsKeyword = false;
+
+    if (fLambda)
+    {
+        fPreviousYieldIsKeyword = m_pscan->SetYieldIsKeyword(pnodeParentFnc != nullptr && pnodeParentFnc->sxFnc.IsGenerator());
+        fPreviousAwaitIsKeyword = m_pscan->SetAwaitIsKeyword(fAsync || (pnodeParentFnc != nullptr && pnodeParentFnc->sxFnc.IsAsync()));
+    }
 
     Assert(!fNoArg || !fOneArg); // fNoArg and fOneArg can never be true at the same time.
 
@@ -6060,6 +6066,7 @@ void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
     if (fLambda && m_token.tk == tkID)
     {
         IdentPtr pid = m_token.GetIdentifier(m_phtbl);
+
         CreateVarDeclNode(pid, STFormal, false, nullptr, false);
         CheckPidIsValid(pid);
 
@@ -6070,7 +6077,18 @@ void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
             Error(ERRsyntax, m_pscan->IchMinTok(), m_pscan->IchLimTok());
         }
 
+        if (fLambda)
+        {
+            m_pscan->SetYieldIsKeyword(fPreviousYieldIsKeyword);
+            m_pscan->SetAwaitIsKeyword(fPreviousAwaitIsKeyword);
+        }
+
         return;
+    }
+    else if (fLambda && m_token.tk == tkAWAIT)
+    {
+        // async await => {}
+        IdentifierExpectedError(m_token);
     }
 
     // Otherwise, must have a parameter list within parens.
@@ -6316,6 +6334,12 @@ void Parser::ParseFncFormals(ParseNodePtr pnodeFnc, ushort flags)
         }
     }
     Assert(m_token.tk == tkRParen);
+
+    if (fLambda)
+    {
+        m_pscan->SetYieldIsKeyword(fPreviousYieldIsKeyword);
+        m_pscan->SetAwaitIsKeyword(fPreviousAwaitIsKeyword);
+    }
 }
 
 template<bool buildAST>
@@ -6342,7 +6366,7 @@ ParseNodePtr Parser::GenerateEmptyConstructor(bool extends)
     pnodeFnc->sxFnc.SetIsClassMember(TRUE);
     pnodeFnc->sxFnc.SetIsClassConstructor(TRUE);
     pnodeFnc->sxFnc.SetIsBaseClassConstructor(!extends);
-    pnodeFnc->sxFnc.SetHasNonThisStmt(extends);
+    pnodeFnc->sxFnc.SetHasNonThisStmt();
     pnodeFnc->sxFnc.SetIsGeneratedDefault(TRUE);
 
     pnodeFnc->ichLim = m_pscan->IchLimTok();
@@ -6769,11 +6793,6 @@ void Parser::FinishFncDecl(ParseNodePtr pnodeFnc, LPCOLESTR pNameHint, ParseNode
     pnodeFnc->ichLim = m_pscan->IchLimTok();
     pnodeFnc->sxFnc.cbLim = m_pscan->IecpLimTok();
 
-    // Restore the lists of scopes that contain function expressions.
-    // Save the temps and restore the outer scope's list.
-    // NOTE: Eze makes no use of this.
-    //pnodeFnc->sxFnc.pnodeTmps = *m_ppnodeVar;
-
 #ifdef ENABLE_JS_ETW
     int32 astSize = *m_pCurrentAstSize - startAstSize;
     EventWriteJSCRIPT_PARSE_METHOD_STOP(m_sourceContextInfo->dwHostSourceContext, GetScriptContext(), pnodeFnc->sxFnc.functionId, astSize, m_parseType, name);
@@ -7167,6 +7186,7 @@ ParseNodePtr Parser::ParseClassDecl(BOOL isDeclaration, LPCOLESTR pNameHint, uin
             pnodeConstructor->sxFnc.hintOffset = constructorShortNameHintOffset;
             pnodeConstructor->sxFnc.pid = pnodeName && pnodeName->sxVar.pid ? pnodeName->sxVar.pid : wellKnownPropertyPids.constructor;
             pnodeConstructor->sxFnc.SetIsClassConstructor(TRUE);
+            pnodeConstructor->sxFnc.SetHasNonThisStmt();
             pnodeConstructor->sxFnc.SetIsBaseClassConstructor(pnodeExtends == nullptr);
         }
         else
@@ -7961,16 +7981,19 @@ ParseNodePtr Parser::ParseExpr(int oplMin,
                 // binding operator, be it unary or binary.
                 Error(ERRsyntax);
             }
-            if (GetCurrentFunctionNode()->sxFnc.IsGenerator()
-                && m_currentBlockInfo->pnodeBlock->sxBlock.blockType == PnodeBlockType::Parameter)
+            if (m_currentBlockInfo->pnodeBlock->sxBlock.blockType == PnodeBlockType::Parameter)
             {
+                // 'yield' can appear (as a keyword) in parameter scope as formal name or as
+                // expression within a default parameter expression, in either a generator
+                // function or an arrow function contained within a generator function.
+                // In all cases it is an error.
                 Error(ERRsyntax);
             }
         }
         else if (nop == knopAwait)
         {
             if (!m_pscan->AwaitIsKeyword() ||
-                (GetCurrentFunctionNode()->sxFnc.IsAsync() && m_currentScope->GetScopeType() == ScopeType_Parameter))
+                m_currentScope->GetScopeType() == ScopeType_Parameter)
             {
                 // As with the 'yield' keyword, the case where 'await' is scanned as a keyword (tkAWAIT)
                 // but the scanner is not treating await as a keyword (!m_pscan->AwaitIsKeyword())
@@ -8313,8 +8336,8 @@ ParseNodePtr Parser::ParseExpr(int oplMin,
             {
                 ichMin = m_pscan->IchMinTok();
                 iecpMin = m_pscan->IecpMinTok();
-                m_pscan->Scan();
 
+                m_pscan->Scan();
                 if ((m_token.tk == tkID || m_token.tk == tkLParen) && !m_pscan->FHadNewLine())
                 {
                     flags |= fFncAsync;
@@ -8760,7 +8783,7 @@ ParseNodePtr Parser::ParseVariableDeclaration(
 Parse try-catch-finally statement
 ***************************************************************************/
 
-// Eze try-catch-finally tree nests the try-catch within a try-finally.
+// The try-catch-finally tree nests the try-catch within a try-finally.
 // This matches the new runtime implementation.
 template<bool buildAST>
 ParseNodePtr Parser::ParseTryCatchFinally()
@@ -10904,9 +10927,7 @@ ParseNodePtr Parser::Parse(LPCUTF8 pszSrc, size_t offset, size_t length, charcou
     pnodeProg->ichLim = m_pscan->IchLimTok();
     pnodeProg->sxFnc.cbLim = m_pscan->IecpLimTok();
 
-    // save the temps and terminate the local list
-    // NOTE: Eze makes no use of this.
-    //pnodeProg->sxFnc.pnodeTmps = *m_ppnodeVar;
+    // Terminate the local list
     *m_ppnodeVar = nullptr;
 
     Assert(nullptr == *m_ppnodeScope);
@@ -11145,6 +11166,7 @@ HRESULT Parser::ParseFunctionInBackground(ParseNodePtr pnodeFnc, ParseContext *p
     pnodeFnc->sxFnc.pnodeBody = nullptr;
     pnodeFnc->sxFnc.nestedCount = 0;
 
+    ParseNodePtr pnodeParentFnc = GetCurrentFunctionNode();
     m_currentNodeFunc = pnodeFnc;
     m_currentNodeDeferredFunc = nullptr;
     m_ppnodeScope = nullptr;
@@ -11164,7 +11186,7 @@ HRESULT Parser::ParseFunctionInBackground(ParseNodePtr pnodeFnc, ParseContext *p
         m_pscan->Scan();
 
         m_ppnodeVar = &pnodeFnc->sxFnc.pnodeParams;
-        this->ParseFncFormals<true>(pnodeFnc, fFncNoFlgs);
+        this->ParseFncFormals<true>(pnodeFnc, pnodeParentFnc, fFncNoFlgs);
 
         if (m_token.tk == tkRParen)
         {
@@ -11455,11 +11477,18 @@ ParseNode* Parser::CopyPnode(ParseNode *pnode) {
     return pnode;
       //PTNODE(knopFalse      , "false"        ,False   ,None ,fnopLeaf)
   case knopFalse:
-    return CreateNodeT<knopFalse>(pnode->ichMin,pnode->ichLim);
-      break;
+    {
+      ParseNode* ret = CreateNodeT<knopFalse>(pnode->ichMin, pnode->ichLim);
+      ret->location = pnode->location;
+      return ret;
+    }
       //PTNODE(knopTrue       , "true"        ,True    ,None ,fnopLeaf)
   case knopTrue:
-    return CreateNodeT<knopTrue>(pnode->ichMin,pnode->ichLim);
+    {
+        ParseNode* ret = CreateNodeT<knopTrue>(pnode->ichMin, pnode->ichLim);
+        ret->location = pnode->location;
+        return ret;
+    }
       //PTNODE(knopEmpty      , "empty"        ,Empty   ,None ,fnopLeaf)
   case knopEmpty:
     return CreateNodeT<knopEmpty>(pnode->ichMin,pnode->ichLim);
@@ -11589,8 +11618,8 @@ ParseNode* Parser::CopyPnode(ParseNode *pnode) {
       //PTNODE(knopNew        , "new"        ,None    ,Bin  ,fnopBin)
   case knopNew:
   case knopCall:
-    return CreateCallNode(pnode->nop,CopyPnode(pnode->sxBin.pnode1),
-                         CopyPnode(pnode->sxBin.pnode2),pnode->ichMin,pnode->ichLim);
+    return CreateCallNode(pnode->nop,CopyPnode(pnode->sxCall.pnodeTarget),
+                         CopyPnode(pnode->sxCall.pnodeArgs),pnode->ichMin,pnode->ichLim);
       //PTNODE(knopQmark      , "?"            ,None    ,Tri  ,fnopBin)
   case knopQmark:
     return CreateTriNode(pnode->nop,CopyPnode(pnode->sxTri.pnode1),

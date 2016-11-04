@@ -872,7 +872,8 @@ namespace Js
             // The function body is created in GenerateByteCode but the source info isn't passed in, only the index
             // So we need to pin it here (TODO: Change GenerateByteCode to take in the sourceInfo itself)
             ENTER_PINNED_SCOPE(Utf8SourceInfo, sourceInfo);
-            sourceInfo = Utf8SourceInfo::New(scriptContext, utf8Source, cchSource, cbSource, pSrcInfo, ((grfscr & fscrIsLibraryCode) != 0));
+            sourceInfo = Utf8SourceInfo::New(scriptContext, utf8Source, cchSource,
+              cbSource, pSrcInfo, ((grfscr & fscrIsLibraryCode) != 0), nullptr);
 
             Parser parser(scriptContext, strictMode);
             bool forceNoNative = false;
@@ -995,7 +996,7 @@ namespace Js
                 funcBody = funcBody->GetParseableFunctionInfo(); // RegisterFunction may parse and update function body
             }
 
-            ScriptFunction* pfuncScript = funcBody->IsGenerator() ?
+            ScriptFunction* pfuncScript = funcBody->IsCoroutine() ?
                 scriptContext->GetLibrary()->CreateGeneratorVirtualScriptFunction(funcBody) :
                 scriptContext->GetLibrary()->CreateScriptFunction(funcBody);
 
@@ -1576,7 +1577,6 @@ LHexError:
         Assert(!(callInfo.Flags & CallFlags_New));
 
         ScriptContext* scriptContext = function->GetScriptContext();
-
         if (!scriptContext->GetConfig()->IsCollectGarbageEnabled()
 #ifdef ENABLE_PROJECTION
             && scriptContext->GetConfig()->GetHostType() != HostType::HostTypeApplication
@@ -2115,6 +2115,18 @@ LHexError:
         }
 
         // Non-existent property
+        return TRUE;
+    }
+
+    BOOL GlobalObject::DeleteProperty(JavascriptString *propertyNameString, PropertyOperationFlags flags)
+    {
+        PropertyRecord const *propertyRecord = nullptr;
+        if (JavascriptOperators::ShouldTryDeleteProperty(this, propertyNameString, &propertyRecord))
+        {
+            Assert(propertyRecord);
+            return DeleteProperty(propertyRecord->GetPropertyId(), flags);
+        }
+
         return TRUE;
     }
 

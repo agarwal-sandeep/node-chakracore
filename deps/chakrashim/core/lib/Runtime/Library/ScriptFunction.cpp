@@ -27,13 +27,13 @@ namespace Js
 
     ScriptFunction::ScriptFunction(DynamicType * type) :
         ScriptFunctionBase(type), environment((FrameDisplay*)&NullFrameDisplay),
-        cachedScopeObj(nullptr), hasInlineCaches(false), hasSuperReference(false),
+        cachedScopeObj(nullptr), hasInlineCaches(false), hasSuperReference(false), homeObj(nullptr),
         isActiveScript(false)
     {}
 
     ScriptFunction::ScriptFunction(FunctionProxy * proxy, ScriptFunctionType* deferredPrototypeType)
         : ScriptFunctionBase(deferredPrototypeType, proxy),
-        environment((FrameDisplay*)&NullFrameDisplay), cachedScopeObj(nullptr),
+        environment((FrameDisplay*)&NullFrameDisplay), cachedScopeObj(nullptr), homeObj(nullptr),
         hasInlineCaches(false), hasSuperReference(false), isActiveScript(false)
     {
         Assert(proxy->GetFunctionProxy() == proxy);
@@ -747,14 +747,15 @@ namespace Js
                     }
                     else if (!scriptContext->IsClosed())
                     {
-                        AllocatorDelete(IsInstInlineCacheAllocator, scriptContext->GetIsInstInlineCacheAllocator(), (IsInstInlineCache*)this->m_inlineCaches[i]);
+                        AllocatorDelete(CacheAllocator, scriptContext->GetIsInstInlineCacheAllocator(), (IsInstInlineCache*)this->m_inlineCaches[i]);
                     }
                     this->m_inlineCaches[i] = nullptr;
                 }
             }
 
-            if (!isShutdown && unregisteredInlineCacheCount > 0 && !scriptContext->IsClosed())
+            if (unregisteredInlineCacheCount > 0)
             {
+                AssertMsg(!isShutdown && !scriptContext->IsClosed(), "Unregistration of inlineCache should only be done if this is not shutdown or scriptContext closing.");
                 scriptContext->GetThreadContext()->NotifyInlineCacheBatchUnregistered(unregisteredInlineCacheCount);
             }
         }
@@ -811,7 +812,7 @@ namespace Js
             }
             for (; i < totalCacheCount; i++)
             {
-                inlineCaches[i] = AllocatorNewStructZ(IsInstInlineCacheAllocator,
+                inlineCaches[i] = AllocatorNewStructZ(CacheAllocator,
                     functionBody->GetScriptContext()->GetIsInstInlineCacheAllocator(), IsInstInlineCache);
             }
 #if DBG

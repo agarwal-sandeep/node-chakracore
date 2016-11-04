@@ -1276,6 +1276,9 @@ FuncInfo * ByteCodeGenerator::StartBindFunction(const char16 *name, uint nameLen
             parsedFunctionBody = Js::FunctionBody::NewFromRecycler(scriptContext, name, nameLength, shortNameOffset, pnode->sxFnc.nestedCount, m_utf8SourceInfo,
                 m_utf8SourceInfo->GetSrcInfo()->sourceContextInfo->sourceContextId, functionId, propertyRecordList
                 , attributes
+                , pnode->sxFnc.IsClassConstructor() ?
+                    Js::FunctionBody::FunctionBodyFlags::Flags_None :
+                    Js::FunctionBody::FunctionBodyFlags::Flags_HasNoExplicitReturnValue
 #ifdef PERF_COUNTERS
                 , false /* is function from deferred deserialized proxy */
 #endif
@@ -4163,7 +4166,7 @@ void Bind(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator)
         // VisitFunctionsInScope has already done binding within the declared function. Here, just record the fact
         // that the parent function has a local/global declaration in it.
         BindFuncSymbol(pnode, byteCodeGenerator);
-        if (pnode->sxFnc.IsGenerator())
+        if (pnode->sxFnc.IsCoroutine())
         {
             // Always assume generator functions escape since tracking them requires tracking
             // the resulting generators in addition to the function.
@@ -4675,7 +4678,7 @@ void AssignRegisters(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator)
     case knopFncDecl:
         if (!byteCodeGenerator->TopFuncInfo()->IsGlobalFunction())
         {
-            if (pnode->sxFnc.IsGenerator())
+            if (pnode->sxFnc.IsCoroutine())
             {
                 // Assume generators always escape; otherwise need to analyze if
                 // the return value of calls to generator function, the generator
@@ -4921,9 +4924,9 @@ void AssignRegisters(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator)
             FuncInfo* parent = funcInfo;
             if (funcInfo->IsLambda())
             {
-                // If this is a lambda inside a class member, the class member will need to load super.
+                // If this is a lambda inside a method or a constructor, the enclosing function will need to load super.
                 parent = byteCodeGenerator->FindEnclosingNonLambda();
-                if (parent->root->sxFnc.IsClassMember())
+                if (parent->root->sxFnc.IsMethod() || parent->root->sxFnc.IsConstructor())
                 {
                     // Set up super reference
                     if (containsSuperReference)
@@ -4978,8 +4981,8 @@ void AssignRegisters(ParseNode *pnode, ByteCodeGenerator *byteCodeGenerator)
                 }
             }
 
-            // An eval call in a class member needs to load super.
-            if (funcInfo->root->sxFnc.IsClassMember())
+            // An eval call in a method or a constructor needs to load super.
+            if (funcInfo->root->sxFnc.IsMethod() || funcInfo->root->sxFnc.IsConstructor())
             {
                 funcInfo->AssignSuperRegister();
                 if (funcInfo->root->sxFnc.IsClassConstructor() && !funcInfo->root->sxFnc.IsBaseClassConstructor())
@@ -5277,7 +5280,8 @@ Js::FunctionBody * ByteCodeGenerator::MakeGlobalFunctionBody(ParseNode *pnode)
             m_utf8SourceInfo->GetSrcInfo()->sourceContextInfo->sourceContextId,
             pnode->sxFnc.functionId,
             propertyRecordList,
-            Js::FunctionInfo::Attributes::None
+            Js::FunctionInfo::Attributes::None,
+            Js::FunctionBody::FunctionBodyFlags::Flags_HasNoExplicitReturnValue
 #ifdef PERF_COUNTERS
             , false /* is function from deferred deserialized proxy */
 #endif

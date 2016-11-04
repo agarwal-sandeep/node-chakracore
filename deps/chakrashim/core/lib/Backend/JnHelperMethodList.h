@@ -82,6 +82,7 @@ HELPERCALL(Op_TypeofElem_UInt32, Js::JavascriptOperators::TypeofElem_UInt32, 0)
 HELPERCALL(Op_TypeofElem_Int32, Js::JavascriptOperators::TypeofElem_Int32, 0)
 HELPERCALL(Op_TypeofPropertyScoped, Js::JavascriptOperators::OP_TypeofPropertyScoped, 0)
 HELPERCALL(Op_Rem_Double, Js::NumberUtilities::Modulus, 0)
+HELPERCALL(Throw_Unreachable, Js::JavascriptError::ThrowUnreachable, AttrCanThrow)
 
 HELPERCALL_FULL_OR_INPLACE_MATH(Op_Increment, Js::JavascriptMath::Increment, Js::SSE2::JavascriptMath::Increment, AttrCanThrow)
 HELPERCALL_FULL_OR_INPLACE_MATH(Op_Decrement, Js::JavascriptMath::Decrement, Js::SSE2::JavascriptMath::Decrement, AttrCanThrow)
@@ -95,7 +96,6 @@ HELPERCALL_FULL_OR_INPLACE_MATH(Op_Modulus, Js::JavascriptMath::Modulus, Js::SSE
 HELPERCALL_FULL_OR_INPLACE_MATH(Op_Multiply, Js::JavascriptMath::Multiply, Js::SSE2::JavascriptMath::Multiply, AttrCanThrow)
 HELPERCALL_FULL_OR_INPLACE_MATH(Op_Subtract, Js::JavascriptMath::Subtract, Js::SSE2::JavascriptMath::Subtract, AttrCanThrow)
 HELPERCALL_FULL_OR_INPLACE_MATH(Op_Exponentiation, Js::JavascriptMath::Exponentiation, Js::SSE2::JavascriptMath::Exponentiation, AttrCanThrow)
-
 
 HELPERCALL_FULL_OR_INPLACE_MATH(Op_And, Js::JavascriptMath::And, Js::SSE2::JavascriptMath::And, AttrCanThrow)
 HELPERCALL_FULL_OR_INPLACE_MATH(Op_Or, Js::JavascriptMath::Or, Js::SSE2::JavascriptMath::Or, AttrCanThrow)
@@ -258,8 +258,7 @@ HELPERCALL(OP_InitElemGetter, Js::JavascriptOperators::OP_InitElemGetter, AttrCa
 HELPERCALL(OP_InitComputedProperty, Js::JavascriptOperators::OP_InitComputedProperty, AttrCanThrow)
 HELPERCALL(OP_InitProto, Js::JavascriptOperators::OP_InitProto, AttrCanThrow)
 
-HELPERCALL(Op_OP_GetForInEnumerator, Js::JavascriptOperators::OP_GetForInEnumerator, 0)
-HELPERCALL(Op_OP_ReleaseForInEnumerator, Js::JavascriptOperators::OP_ReleaseForInEnumerator, 0)
+HELPERCALL(Op_OP_InitForInEnumerator, Js::JavascriptOperators::OP_InitForInEnumerator, 0)
 HELPERCALL(Op_OP_BrOnEmpty, Js::JavascriptOperators::OP_BrOnEmpty, 0)
 
 HELPERCALL(Op_OP_BrFncEqApply, Js::JavascriptOperators::OP_BrFncEqApply, 0)
@@ -487,11 +486,13 @@ HELPERCALL(EnsureFunctionProxyDeferredPrototypeType, &Js::FunctionProxy::EnsureF
 HELPERCALL(SpreadArrayLiteral, Js::JavascriptArray::SpreadArrayArgs, 0)
 HELPERCALL(SpreadCall, Js::JavascriptFunction::EntrySpreadCall, 0)
 
-HELPERCALL(LdSuper,             Js::JavascriptOperators::OP_LdSuper,            0)
-HELPERCALL(LdSuperCtor,         Js::JavascriptOperators::OP_LdSuperCtor,        0)
-HELPERCALL(ScopedLdSuper,       Js::JavascriptOperators::OP_ScopedLdSuper,      0)
-HELPERCALL(ScopedLdSuperCtor,   Js::JavascriptOperators::OP_ScopedLdSuperCtor,  0)
+HELPERCALL(LdHomeObj,           Js::JavascriptOperators::OP_LdHomeObj,          0)
+HELPERCALL(LdFuncObj,           Js::JavascriptOperators::OP_LdFuncObj,          0)
+HELPERCALL(ScopedLdHomeObj,     Js::JavascriptOperators::OP_ScopedLdHomeObj,    0)
+HELPERCALL(ScopedLdFuncObj,     Js::JavascriptOperators::OP_ScopedLdFuncObj,    0)
 HELPERCALL(SetHomeObj,          Js::JavascriptOperators::OP_SetHomeObj,         0)
+HELPERCALL(LdHomeObjProto,      Js::JavascriptOperators::OP_LdHomeObjProto,     0)
+HELPERCALL(LdFuncObjProto,      Js::JavascriptOperators::OP_LdFuncObjProto,     0)
 
 HELPERCALL(ResumeYield,   Js::JavascriptOperators::OP_ResumeYield,   AttrCanThrow)
 
@@ -509,7 +510,6 @@ HELPERCALL(DirectMath_PowDoubleInt, (double(*)(double, int32))Js::JavascriptNumb
 HELPERCALL(DirectMath_Pow, (double(*)(double, double))Js::JavascriptNumber::DirectPow, 0)
 HELPERCALL_MATH(DirectMath_Random,  (double(*)(Js::ScriptContext*))Js::JavascriptMath::Random, (double(*)(Js::ScriptContext*))Js::SSE2::JavascriptMath::Random, 0)
 
-
 //
 // Putting dllimport function ptr in JnHelperMethodAddresses will cause the table to be allocated in read-write memory
 // as dynamic initialization is require to load these addresses.  Use nullptr instead and handle these function in GetNonTableMethodAddress().
@@ -523,6 +523,18 @@ HELPERCALL(DirectMath_FloorFlt, nullptr, 0)
 HELPERCALL(DirectMath_CeilDb, nullptr, 0)
 HELPERCALL(DirectMath_CeilFlt, nullptr, 0)
 
+HELPERCALL(DirectMath_TruncDb, (double(*)(double)) Wasm::WasmMath::Trunc<double>, 0)
+HELPERCALL(DirectMath_TruncFlt, (float(*)(float)) Wasm::WasmMath::Trunc<float>, 0)
+HELPERCALL(DirectMath_NearestDb, (double(*)(double)) Wasm::WasmMath::Nearest<double>, 0)
+HELPERCALL(DirectMath_NearestFlt, (float(*)(float)) Wasm::WasmMath::Nearest<float>, 0)
+
+HELPERCALL(PopCnt32, Math::PopCnt32, 0)
+HELPERCALL(PopCnt64, (int64(*)(int64)) Wasm::WasmMath::PopCnt<int64>, 0)
+
+#if (defined(ASMJS_PLAT) || defined(ENABLE_WASM)) && defined(ENABLE_DEBUG_CONFIG_OPTIONS)
+HELPERCALL(TraceAsmJsArgIn, WAsmJs::TraceAsmJsArgsIn, 0)
+#endif
+
 #ifdef _M_IX86
 HELPERCALL(DirectMath_Acos, nullptr, 0)
 HELPERCALL(DirectMath_Asin, nullptr, 0)
@@ -533,6 +545,19 @@ HELPERCALL(DirectMath_Exp, nullptr, 0)
 HELPERCALL(DirectMath_Log, nullptr, 0)
 HELPERCALL(DirectMath_Sin, nullptr, 0)
 HELPERCALL(DirectMath_Tan, nullptr, 0)
+
+HELPERCALL(DirectMath_Int64Mul , (int64(*)(int64,int64)) Js::AsmJsMath::Mul<int64>, 0)
+HELPERCALL(DirectMath_Int64DivS, (int64(*)(int64,int64)) Wasm::WasmMath::Div<int64>, 0)
+HELPERCALL(DirectMath_Int64DivU, (int64(*)(int64,int64)) Wasm::WasmMath::Div<uint64>, 0)
+HELPERCALL(DirectMath_Int64RemS, (int64(*)(int64,int64)) Wasm::WasmMath::Rem<int64>, 0)
+HELPERCALL(DirectMath_Int64RemU, (int64(*)(int64,int64)) Wasm::WasmMath::Rem<uint64>, 0)
+HELPERCALL(DirectMath_Int64Shl , (int64(*)(int64,int64)) Wasm::WasmMath::Shl<int64>, 0)
+HELPERCALL(DirectMath_Int64Shr , (int64(*)(int64,int64)) Wasm::WasmMath::Shr<int64>, 0)
+HELPERCALL(DirectMath_Int64ShrU, (int64(*)(int64,int64)) Wasm::WasmMath::ShrU<uint64>, 0)
+HELPERCALL(DirectMath_Int64Rol , (int64(*)(int64,int64)) Wasm::WasmMath::Rol<int64>, 0)
+HELPERCALL(DirectMath_Int64Ror , (int64(*)(int64,int64)) Wasm::WasmMath::Ror<int64>, 0)
+HELPERCALL(DirectMath_Int64Clz , (int64(*)(int64)) Wasm::WasmMath::Clz<int64>, 0)
+HELPERCALL(DirectMath_Int64Ctz , (int64(*)(int64)) Wasm::WasmMath::Ctz<int64>, 0)
 #elif defined(_M_X64)
 // AMD64 regular CRT calls -- on AMD64 calling convention is already what we want -- args in XMM0, XMM1 rather than on stack which is slower.
 HELPERCALL(DirectMath_Acos, nullptr, 0)

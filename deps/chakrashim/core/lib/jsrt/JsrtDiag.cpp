@@ -87,9 +87,10 @@ CHAKRA_API JsDiagStartDebugging(
                 debugContext->SetHostDebugContext(jsrtDebugManager);
             }
 
-            if (FAILED(scriptContext->OnDebuggerAttached()))
+            HRESULT hr;
+            if (FAILED(hr = scriptContext->OnDebuggerAttached()))
             {
-                Debugger_AttachDetach_fatal_error(); // Inconsistent state, we can't continue from here
+                Debugger_AttachDetach_fatal_error(hr); // Inconsistent state, we can't continue from here
                 return JsErrorFatal;
             }
 
@@ -129,9 +130,10 @@ CHAKRA_API JsDiagStopDebugging(
         {
             Assert(scriptContext->IsScriptContextInDebugMode());
 
-            if (FAILED(scriptContext->OnDebuggerDetached()))
+            HRESULT hr;
+            if (FAILED(hr = scriptContext->OnDebuggerDetached()))
             {
-                Debugger_AttachDetach_fatal_error(); // Inconsistent state, we can't continue from here
+                Debugger_AttachDetach_fatal_error(hr); // Inconsistent state, we can't continue from here
                 return JsErrorFatal;
             }
 
@@ -649,7 +651,7 @@ CHAKRA_API JsDiagGetObjectFromHandle(
 }
 
 CHAKRA_API JsDiagEvaluate(
-    _In_ const wchar_t *expression,
+    _In_z_ const wchar_t *expression,
     _In_ unsigned int stackFrameIndex,
     _Out_ JsValueRef *evalResult)
 {
@@ -695,7 +697,7 @@ CHAKRA_API JsDiagEvaluate(
 }
 
 CHAKRA_API JsDiagEvaluateUtf8(
-    _In_ const char *expression,
+    _In_z_ const char *expression,
     _In_ unsigned int stackFrameIndex,
     _Out_ JsValueRef *evalResult)
 {

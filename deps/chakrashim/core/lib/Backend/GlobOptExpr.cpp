@@ -160,13 +160,13 @@ GlobOpt::GetHash(IR::Instr *instr, Value *src1Val, Value *src2Val, ExprAttribute
 #if DBG_DUMP
     if (!pHash->IsValid() && Js::Configuration::Global.flags.Trace.IsEnabled(Js::CSEPhase, this->func->GetSourceContextId(), this->func->GetLocalFunctionId()))
     {
-        Output::Print(_u(" >>>>  CSE: Value numbers too big to be hashed in function %s!\n"), this->func->GetJnFunction()->GetDisplayName());
+        Output::Print(_u(" >>>>  CSE: Value numbers too big to be hashed in function %s!\n"), this->func->GetJITFunctionBody()->GetDisplayName());
     }
 #endif
 #if ENABLE_DEBUG_CONFIG_OPTIONS
     if (!pHash->IsValid() && Js::Configuration::Global.flags.TestTrace.IsEnabled(Js::CSEPhase, this->func->GetSourceContextId(), this->func->GetLocalFunctionId()))
     {
-        Output::Print(_u(" >>>>  CSE: Value numbers too big to be hashed in function %s!\n"), this->func->GetJnFunction()->GetDisplayName());
+        Output::Print(_u(" >>>>  CSE: Value numbers too big to be hashed in function %s!\n"), this->func->GetJITFunctionBody()->GetDisplayName());
     }
 #endif
 
@@ -196,14 +196,7 @@ GlobOpt::CSEAddInstr(
     switch(instr->m_opcode)
     {
     case Js::OpCode::LdElemI_A:
-    case Js::OpCode::LdInt8ArrViewElem:
-    case Js::OpCode::LdUInt8ArrViewElem:
-    case Js::OpCode::LdInt16ArrViewElem:
-    case Js::OpCode::LdUInt16ArrViewElem:
-    case Js::OpCode::LdInt32ArrViewElem:
-    case Js::OpCode::LdUInt32ArrViewElem:
-    case Js::OpCode::LdFloat32ArrViewElem:
-    case Js::OpCode::LdFloat64ArrViewElem:
+    case Js::OpCode::LdArrViewElem:
     case Js::OpCode::StElemI_A:
     case Js::OpCode::StElemI_A_Strict:
     {
@@ -384,14 +377,7 @@ GlobOpt::CSEOptimize(BasicBlock *block, IR::Instr * *const instrRef, Value **pSr
     // For arrays, hash the value # of the baseOpnd and indexOpnd
     switch(instr->m_opcode)
     {
-        case Js::OpCode::LdInt8ArrViewElem:
-        case Js::OpCode::LdUInt8ArrViewElem:
-        case Js::OpCode::LdInt16ArrViewElem:
-        case Js::OpCode::LdUInt16ArrViewElem:
-        case Js::OpCode::LdInt32ArrViewElem:
-        case Js::OpCode::LdUInt32ArrViewElem:
-        case Js::OpCode::LdFloat32ArrViewElem:
-        case Js::OpCode::LdFloat64ArrViewElem:
+        case Js::OpCode::LdArrViewElem:
         case Js::OpCode::LdElemI_A:
         {
             if(intMathExprOnly)
@@ -653,14 +639,14 @@ GlobOpt::CSEOptimize(BasicBlock *block, IR::Instr * *const instrRef, Value **pSr
 #if DBG_DUMP
     if (Js::Configuration::Global.flags.Trace.IsEnabled(Js::CSEPhase, this->func->GetSourceContextId(), this->func->GetLocalFunctionId()))
     {
-        Output::Print(_u(" --- CSE (%s): "), this->func->GetJnFunction()->GetDisplayName());
+        Output::Print(_u(" --- CSE (%s): "), this->func->GetJITFunctionBody()->GetDisplayName());
         instr->Dump();
     }
 #endif
 #if ENABLE_DEBUG_CONFIG_OPTIONS
     if (Js::Configuration::Global.flags.TestTrace.IsEnabled(Js::CSEPhase, this->func->GetSourceContextId(), this->func->GetLocalFunctionId()))
     {
-        Output::Print(_u(" --- CSE (%s): %s\n"), this->func->GetJnFunction()->GetDisplayName(), Js::OpCodeUtil::GetOpCodeName(instr->m_opcode));
+        Output::Print(_u(" --- CSE (%s): %s\n"), this->func->GetJITFunctionBody()->GetDisplayName(), Js::OpCodeUtil::GetOpCodeName(instr->m_opcode));
     }
 #endif
 
@@ -729,14 +715,7 @@ GlobOpt::ProcessArrayValueKills(IR::Instr *instr)
     case Js::OpCode::DeleteRootFld:
     case Js::OpCode::DeleteFldStrict:
     case Js::OpCode::DeleteRootFldStrict:
-    case Js::OpCode::StInt8ArrViewElem:
-    case Js::OpCode::StUInt8ArrViewElem:
-    case Js::OpCode::StInt16ArrViewElem:
-    case Js::OpCode::StUInt16ArrViewElem:
-    case Js::OpCode::StInt32ArrViewElem:
-    case Js::OpCode::StUInt32ArrViewElem:
-    case Js::OpCode::StFloat32ArrViewElem:
-    case Js::OpCode::StFloat64ArrViewElem:
+    case Js::OpCode::StArrViewElem:
     // These array helpers may change A.length (and A[i] could be A.length)...
     case Js::OpCode::InlineArrayPush:
     case Js::OpCode::InlineArrayPop:

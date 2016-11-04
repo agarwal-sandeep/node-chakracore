@@ -29,7 +29,7 @@ namespace Js
     {
         ByteCodeReader reader;
         reader.Create(dumpFunction);
-        StatementReader statementReader;
+        StatementReader<FunctionBody::StatementMapList> statementReader;
         statementReader.Create(dumpFunction);
         dumpFunction->DumpFullFunctionName();
         Output::Print(_u(" ("));
@@ -263,6 +263,10 @@ namespace Js
     {
         Output::Print(_u(" int:%d "), value);
     }
+    void ByteCodeDumper::DumpI8(int64 value)
+    {
+        Output::Print(_u(" int64:%lld "), value);
+    }
     void ByteCodeDumper::DumpU2(ushort value)
     {
         Output::Print(_u(" ushort:%d "), value);
@@ -306,6 +310,10 @@ namespace Js
         }
     }
 
+    void ByteCodeDumper::DumpR4(float value)
+    {
+        Output::Print(_u(" float:%g "), value);
+    }
     void ByteCodeDumper::DumpR8(double value)
     {
         Output::Print(_u(" double:%g "), value);
@@ -795,6 +803,12 @@ namespace Js
 #endif
                 break;
             }
+            case OpCode::InitForInEnumerator:
+            {
+                DumpReg(data->R0);
+                DumpU4(data->C1);
+                break;
+            }
             default:
                 DumpReg(data->R0);
                 Output::Print(_u("="));
@@ -935,7 +949,7 @@ namespace Js
                 Output::Print(_u(" R%d = %s #%d"), data->Value, pPropertyName->GetBuffer(), data->inlineCacheIndex);
                 DumpProfileId(data->inlineCacheIndex);
                 break;
-                
+
             case OpCode::StLocalFld:
             case OpCode::InitLocalFld:
             case OpCode::InitLocalLetFld:
@@ -1493,6 +1507,14 @@ namespace Js
     }
 
     template <class T>
+    void ByteCodeDumper::DumpBrReg1Unsigned1(OpCode op, const unaligned T * data, FunctionBody * dumpFunction, ByteCodeReader& reader)
+    {
+        DumpOffset(data->RelativeJumpOffset, reader);
+        DumpReg(data->R1);
+        DumpU4(data->C2);
+    }
+
+    template <class T>
     void ByteCodeDumper::DumpBrReg2(OpCode op, const unaligned T * data, FunctionBody * dumpFunction, ByteCodeReader& reader)
     {
         DumpOffset(data->RelativeJumpOffset, reader);
@@ -1526,6 +1548,5 @@ namespace Js
             dumpFunction->GetReferencedPropertyId(data->PropertyIdIndex));
         Output::Print(_u("[%d].%s"), data->SlotIndex, pPropertyName->GetBuffer());
     }
-
 } // namespace Js
 #endif

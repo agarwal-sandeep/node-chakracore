@@ -231,6 +231,18 @@ namespace TTD
         }
 
 #if ENABLE_SNAPSHOT_COMPARE
+        bool CheckSnapEquivTTDDouble(double d1, double d2)
+        {
+            if(Js::JavascriptNumber::IsNan(d1) || Js::JavascriptNumber::IsNan(d2))
+            {
+                return (Js::JavascriptNumber::IsNan(d1) && Js::JavascriptNumber::IsNan(d2));
+            }
+            else
+            {
+                return (d1 == d2);
+            }
+        }
+
         void AssertSnapEquivTTDVar_Helper(const TTDVar v1, const TTDVar v2, TTDCompareMap& compareMap, TTDComparePath::StepKind stepKind, const TTDComparePath::PathEntry& next)
         {
             if(v1 == nullptr || v2 == nullptr)
@@ -250,14 +262,7 @@ namespace TTD
                 }
                 else
                 {
-                    if(Js::JavascriptNumber::IsNan(Js::JavascriptNumber::GetValue(v1)) || Js::JavascriptNumber::IsNan(Js::JavascriptNumber::GetValue(v2)))
-                    {
-                        compareMap.DiagnosticAssert(Js::JavascriptNumber::IsNan(Js::JavascriptNumber::GetValue(v1)) && Js::JavascriptNumber::IsNan(Js::JavascriptNumber::GetValue(v2)));
-                    }
-                    else
-                    {
-                        compareMap.DiagnosticAssert(Js::JavascriptNumber::GetValue(v1) == Js::JavascriptNumber::GetValue(v2));
-                    }
+                    compareMap.DiagnosticAssert(CheckSnapEquivTTDDouble(Js::JavascriptNumber::GetValue(v1), Js::JavascriptNumber::GetValue(v2)));
                 }
 #endif
             }
@@ -509,7 +514,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const SnapPrimitiveValue* v1, const SnapPrimitiveValue* v2, TTDCompareMap& compareMap)
         {
             compareMap.DiagnosticAssert(v1->SnapType->JsTypeId == v2->SnapType->JsTypeId);
@@ -730,7 +735,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const SlotArrayInfo* sai1, const SlotArrayInfo* sai2, TTDCompareMap& compareMap)
         {
             compareMap.DiagnosticAssert(sai1->ScriptContextLogId == sai2->ScriptContextLogId);
@@ -842,7 +847,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const ScriptFunctionScopeInfo* funcScopeInfo1, const ScriptFunctionScopeInfo* funcScopeInfo2, TTDCompareMap& compareMap)
         {
             compareMap.DiagnosticAssert(funcScopeInfo1->ScriptContextLogId == funcScopeInfo2->ScriptContextLogId);
@@ -910,7 +915,7 @@ namespace TTD
         }
 
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const SnapPromiseCapabilityInfo* capabilityInfo1, const SnapPromiseCapabilityInfo* capabilityInfo2, TTDCompareMap& compareMap)
         {
             compareMap.CheckConsistentAndAddPtrIdMapping_NoEnqueue(capabilityInfo1->CapabilityId, capabilityInfo2->CapabilityId);
@@ -961,7 +966,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const SnapPromiseReactionInfo* reactionInfo1, const SnapPromiseReactionInfo* reactionInfo2, TTDCompareMap& compareMap)
         {
             compareMap.CheckConsistentAndAddPtrIdMapping_NoEnqueue(reactionInfo1->PromiseReactionId, reactionInfo2->PromiseReactionId);
@@ -1024,12 +1029,12 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const SnapFunctionBodyScopeChain& chain1, const SnapFunctionBodyScopeChain& chain2, TTDCompareMap& compareMap)
         {
             compareMap.DiagnosticAssert(chain1.ScopeCount == chain2.ScopeCount);
 
-            //Not sure if there is a way to compare the pointer ids in the two scopes 
+            //Not sure if there is a way to compare the pointer ids in the two scopes
         }
 #endif
 
@@ -1201,7 +1206,9 @@ namespace TTD
                 BEGIN_LEAVE_SCRIPT_WITH_EXCEPTION(ctx)
                 {
                     // TODO: We should use the utf8 source here if possible
-                    scriptFunction = ctx->LoadScript(script, scriptLength, &si, &se, &utf8SourceInfo, Js::Constants::GlobalCode, fbInfo->LoadFlag);
+                    scriptFunction = ctx->LoadScript(script, scriptLength, &si,
+                        &se, &utf8SourceInfo, Js::Constants::GlobalCode,
+                        fbInfo->LoadFlag, nullptr);
                 }
                 END_LEAVE_SCRIPT_WITH_EXCEPTION(ctx);
                 AssertMsg(scriptFunction != nullptr, "Something went wrong");
@@ -1248,7 +1255,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const TopLevelScriptLoadFunctionBodyResolveInfo* fbInfo1, const TopLevelScriptLoadFunctionBodyResolveInfo* fbInfo2, TTDCompareMap& compareMap)
         {
             compareMap.DiagnosticAssert(fbInfo1->LoadFlag == fbInfo2->LoadFlag);
@@ -1309,7 +1316,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const TopLevelNewFunctionBodyResolveInfo* fbInfo1, const TopLevelNewFunctionBodyResolveInfo* fbInfo2, TTDCompareMap& compareMap)
         {
             AssertSnapEquiv(&(fbInfo1->TopLevelBase), &(fbInfo2->TopLevelBase), compareMap);
@@ -1372,7 +1379,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const TopLevelEvalFunctionBodyResolveInfo* fbInfo1, const TopLevelEvalFunctionBodyResolveInfo* fbInfo2, TTDCompareMap& compareMap)
         {
             compareMap.DiagnosticAssert(fbInfo1->EvalFlags == fbInfo2->EvalFlags);
@@ -1443,42 +1450,23 @@ namespace TTD
 
                     Js::FunctionBody* parentBody = inflator->LookupFunctionBody(fbInfo->OptParentBodyId);
 
-                    int32 imin = 0;
-                    int32 imax = parentBody->GetNestedCount();
-                    while(imin < imax)
+                    //
+                    //TODO: this is a potentially expensive linear search (but needed since classes dump implicit functions out-of-text order).
+                    //      May want to add sort and save in inflator or our shaddow info in script context if this is looking expensive.
+                    //
+                    uint32 blength = parentBody->GetNestedCount();
+                    for(uint32 i = 0; i < blength; ++i)
                     {
-                        int imid = (imin + imax) / 2;
-                        Js::ParseableFunctionInfo* pfiMid = parentBody->GetNestedFunc(imid)->EnsureDeserialized();
-                        Js::FunctionBody* currfb = JsSupport::ForceAndGetFunctionBody(pfiMid);
+                        Js::ParseableFunctionInfo* pfi = parentBody->GetNestedFunc(i)->EnsureDeserialized();
+                        Js::FunctionBody* currfb = JsSupport::ForceAndGetFunctionBody(pfi);
 
-                        int32 cmpval = 0;
-                        if(fbInfo->OptLine != currfb->GetLineNumber())
-                        {
-                            cmpval = (fbInfo->OptLine < currfb->GetLineNumber()) ? -1 : 1;
-                        }
-                        else
-                        {
-                            if(fbInfo->OptColumn != currfb->GetColumnNumber())
-                            {
-                                cmpval = (fbInfo->OptColumn < currfb->GetColumnNumber()) ? -1 : 1;
-                            }
-                        }
-
-                        if(cmpval == 0)
+                        if(fbInfo->OptLine == currfb->GetLineNumber() && fbInfo->OptColumn == currfb->GetColumnNumber())
                         {
                             resfb = currfb;
                             break;
                         }
-
-                        if(cmpval > 0)
-                        {
-                            imin = imid + 1;
-                        }
-                        else
-                        {
-                            imax = imid;
-                        }
                     }
+
                     AssertMsg(resfb != nullptr && fbInfo->OptLine == resfb->GetLineNumber() && fbInfo->OptColumn == resfb->GetColumnNumber(), "We are missing something");
                     AssertMsg(resfb != nullptr && (wcscmp(fbInfo->FunctionName.Contents, resfb->GetDisplayName()) == 0 || wcscmp(_u("get"), resfb->GetDisplayName()) == 0 || wcscmp(_u("set"), resfb->GetDisplayName()) == 0), "We are missing something");
                 }
@@ -1503,9 +1491,12 @@ namespace TTD
 
             if(updateName)
             {
-                AssertMsg(wcsstr(fbInfo->FunctionName.Contents, _u("get ")) == 0 || wcsstr(fbInfo->FunctionName.Contents, _u("set ")) == 0, "Does not start with get or set");
+                uint32 suffixWDotPos = (fbInfo->FunctionName.Length - 4);
+                uint32 suffixPos = (fbInfo->FunctionName.Length - 3);
 
-                resfb->SetDisplayName(fbInfo->FunctionName.Contents,fbInfo->FunctionName.Length, 3, Js::FunctionProxy::SetDisplayNameFlagsRecyclerAllocated);
+                AssertMsg(wcsstr(fbInfo->FunctionName.Contents, _u(".get")) == (fbInfo->FunctionName.Contents + suffixWDotPos) || wcsstr(fbInfo->FunctionName.Contents, _u(".set")) == (fbInfo->FunctionName.Contents + suffixWDotPos), "Does not start with get or set");
+
+                resfb->SetDisplayName(fbInfo->FunctionName.Contents, fbInfo->FunctionName.Length, suffixPos, Js::FunctionProxy::SetDisplayNameFlagsRecyclerAllocated);
             }
 
             inflator->AddInflationFunctionBody(fbInfo->FunctionBodyId, resfb);
@@ -1568,7 +1559,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const FunctionBodyResolveInfo* fbInfo1, const FunctionBodyResolveInfo* fbInfo2, TTDCompareMap& compareMap)
         {
             compareMap.DiagnosticAssert(fbInfo1->ScriptContextLogId == fbInfo2->ScriptContextLogId);
@@ -1689,9 +1680,9 @@ namespace TTD
             }
         }
 
-        void InflateScriptContext(const SnapContext* snpCtx, Js::ScriptContext* intoCtx, InflateMap* inflator, 
+        void InflateScriptContext(const SnapContext* snpCtx, Js::ScriptContext* intoCtx, InflateMap* inflator,
             const TTDIdentifierDictionary<uint64, TopLevelScriptLoadFunctionBodyResolveInfo*>& topLevelLoadScriptMap,
-            const TTDIdentifierDictionary<uint64, TopLevelNewFunctionBodyResolveInfo*>& topLevelNewScriptMap, 
+            const TTDIdentifierDictionary<uint64, TopLevelNewFunctionBodyResolveInfo*>& topLevelNewScriptMap,
             const TTDIdentifierDictionary<uint64, TopLevelEvalFunctionBodyResolveInfo*>& topLevelEvalScriptMap)
         {
             AssertMsg(wcscmp(snpCtx->m_contextSRC.Contents, intoCtx->GetUrl()) == 0, "Make sure the src uri values are the same.");
@@ -1987,7 +1978,7 @@ namespace TTD
             reader->ReadRecordEnd();
         }
 
-#if ENABLE_SNAPSHOT_COMPARE 
+#if ENABLE_SNAPSHOT_COMPARE
         void AssertSnapEquiv(const SnapContext* snapCtx1, const SnapContext* snapCtx2, TTDCompareMap& compareMap)
         {
             compareMap.DiagnosticAssert(snapCtx1->m_scriptContextLogId == snapCtx2->m_scriptContextLogId);
