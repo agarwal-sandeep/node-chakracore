@@ -204,11 +204,13 @@ public:
 #endif
 #endif
 
+#ifdef NTBUILD
 struct ThreadContextWatsonTelemetryBlock
 {
     FILETIME lastScriptStartTime;
     FILETIME lastScriptEndTime;
 };
+#endif
 
 class NativeLibraryEntryRecord
 {
@@ -480,7 +482,7 @@ public:
     typedef JsUtil::WeaklyReferencedKeyDictionary<const Js::PropertyRecord, PropertyGuardEntry*, Js::PropertyRecordPointerComparer> PropertyGuardDictionary;
 
 private:
-    intptr_t m_remoteThreadContextInfo;
+    PTHREADCONTEXT_HANDLE m_remoteThreadContextInfo;
     intptr_t m_prereservedRegionAddr;
 
 #if ENABLE_NATIVE_CODEGEN
@@ -501,7 +503,7 @@ public:
     static void SetJITConnectionInfo(HANDLE processHandle, void* serverSecurityDescriptor, UUID connectionId);
     void EnsureJITThreadContext(bool allowPrereserveAlloc);
 
-    intptr_t GetRemoteThreadContextAddr()
+    PTHREADCONTEXT_HANDLE GetRemoteThreadContextAddr()
     {
         Assert(m_remoteThreadContextInfo);
         return m_remoteThreadContextInfo;
@@ -783,8 +785,10 @@ private:
     typedef JsUtil::BaseDictionary<Js::DynamicType const *, void *, HeapAllocator, PowerOf2SizePolicy> DynamicObjectEnumeratorCacheMap;
     DynamicObjectEnumeratorCacheMap dynamicObjectEnumeratorCacheMap;
 
+#ifdef NTBUILD
     ThreadContextWatsonTelemetryBlock localTelemetryBlock;
     ThreadContextWatsonTelemetryBlock * telemetryBlock;
+#endif
 
     NativeLibraryEntryRecord nativeLibraryEntry;
 
@@ -930,28 +934,28 @@ public:
 #endif
 
 #if ENABLE_TTD
-    bool IsTTRecordRequested;
-    bool IsTTDebugRequested;
-    TTD::TTUriString TTDUri;
-    uint32 TTSnapInterval;
-    uint32 TTSnapHistoryLength;
+    //The class that holds info on the TTD state for the thread context
+    TTD::ThreadContextTTD* TTDContext;
 
     //The event log for time-travel (or null if TTD is not turned on)
     TTD::EventLog* TTDLog;
 
+    //Keep track of the number of re-entrant calls currently pending (i.e., if we make an external call it may call back into Chakra)
+    int32 TTDRootNestingCount;
+
+    bool IsRuntimeInTTDMode() const 
+    {
+        return this->TTDLog != nullptr;
+    }
+
     //Initialize the context for time-travel
-    void InitTimeTravel(bool doRecord, bool doReplay);
-    void BeginCtxTimeTravel(Js::ScriptContext* ctx, const HostScriptContextCallbackFunctor& callbackFunctor);
-    void EndCtxTimeTravel(Js::ScriptContext* ctx);
+    void InitTimeTravel(ThreadContext* threadContext, void* runtimeHandle, size_t uriByteLength, const byte* ttdUri, uint32 snapInterval, uint32 snapHistoryLength);
 
-    //Emit the TT Log
-    void EmitTTDLogIfNeeded();
-
-    //
-    //Callback functions provided by the host for writing info to some type of storage location
-    //
-    TTD::TTDInitializeForWriteLogStreamCallback TTDWriteInitializeFunction;
-    TTD::IOStreamFunctions TTDStreamFunctions;
+    void InitHostFunctionsAndTTData(bool record, bool replay, bool debug, TTD::TTDInitializeForWriteLogStreamCallback writeInitializefp,
+        TTD::TTDOpenResourceStreamCallback getResourceStreamfp, TTD::TTDReadBytesFromStreamCallback readBytesFromStreamfp,
+        TTD::TTDWriteBytesToStreamCallback writeBytesToStreamfp, TTD::TTDFlushAndCloseStreamCallback flushAndCloseStreamfp,
+        TTD::TTDCreateExternalObjectCallback createExternalObjectfp,
+        TTD::TTDCreateJsRTContextCallback createJsRTContextCallbackfp, TTD::TTDSetActiveJsRTContext fpSetActiveJsRTContext);
 #endif
 
     BOOL ReserveStaticTypeIds(__in int first, __in int last);
@@ -992,8 +996,11 @@ public:
 
         if (JITManager::GetJITManager()->IsOOPJITEnabled() && m_remoteThreadContextInfo)
         {
-            JITManager::GetJITManager()->CleanupThreadContext(m_remoteThreadContextInfo);
-            m_remoteThreadContextInfo = 0;
+            if (JITManager::GetJITManager()->CleanupThreadContext(&m_remoteThreadContextInfo) == S_OK)
+            {
+                Assert(m_remoteThreadContextInfo == nullptr);
+            }
+            m_remoteThreadContextInfo = nullptr;
         }
 #endif
 #if ENABLE_CONCURRENT_GC
@@ -1003,8 +1010,6 @@ public:
         }
 #endif
     }
-
-
 
     DateTime::HiResTimer * GetHiResTimer() { return &hTimer; }
     ArenaAllocator* GetThreadAlloc() { return &threadAlloc; }
@@ -1016,7 +1021,9 @@ public:
     ThreadConfiguration const * GetConfig() const { return &configuration; }
 
 public:
+#ifdef NTBUILD
     void SetTelemetryBlock(ThreadContextWatsonTelemetryBlock * telemetryBlock) { this->telemetryBlock = telemetryBlock; }
+#endif
 
     static ThreadContext* GetContextForCurrentThread();
 

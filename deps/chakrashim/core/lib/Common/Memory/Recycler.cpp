@@ -242,7 +242,9 @@ Recycler::Recycler(AllocationPolicyManager * policyManager, IdleDecommitPageAllo
 #ifdef HEAP_ENUMERATION_VALIDATION
     ,pfPostHeapEnumScanCallback(nullptr)
 #endif
+#ifdef NTBUILD
     , telemetryBlock(&localTelemetryBlock)
+#endif
 #ifdef ENABLE_JS_ETW
     ,bulkFreeMemoryWrittenCount(0)
 #endif
@@ -321,7 +323,9 @@ Recycler::Recycler(AllocationPolicyManager * policyManager, IdleDecommitPageAllo
     this->inDetachProcess = false;
 #endif
 
+#ifdef NTBUILD
     memset(&localTelemetryBlock, 0, sizeof(localTelemetryBlock));
+#endif
 
 #ifdef ENABLE_DEBUG_CONFIG_OPTIONS
     // recycler requires at least Recycler::PrimaryMarkStackReservedPageCount to function properly for the main mark context
@@ -3342,54 +3346,65 @@ Recycler::CollectWithHeuristic()
 {
     // CollectHeuristic_Never flag should only be used with exhaustive candidate
     Assert((flags & CollectHeuristic_Never) == 0);
-
+    
+    BOOL isScriptContextCloseGCPending = FALSE; 
     const BOOL allocSize = flags & CollectHeuristic_AllocSize;
     const BOOL timedIfScriptActive = flags & CollectHeuristic_TimeIfScriptActive;
     const BOOL timedIfInScript = flags & CollectHeuristic_TimeIfInScript;
     const BOOL timed = (timedIfScriptActive && isScriptActive) || (timedIfInScript && isInScript) || (flags & CollectHeuristic_Time);
 
+    if ((flags & CollectOverride_CheckScriptContextClose) != 0)
+    {
+        isScriptContextCloseGCPending = this->collectionWrapper->GetIsScriptContextCloseGCPending();
+    }
+
+    // If there is a script context close GC pending, we need to do a GC regardless
+    // Otherwise, we should check the heuristics to see if a GC is necessary
+    if (!isScriptContextCloseGCPending)
+    {
 #if ENABLE_PARTIAL_GC
-    if (GetPartialFlag<flags>())
-    {
-        Assert(enablePartialCollect);
-        Assert(allocSize);
-        Assert(this->uncollectedNewPageCountPartialCollect >= RecyclerSweep::MinPartialUncollectedNewPageCount
-            && this->uncollectedNewPageCountPartialCollect <= RecyclerHeuristic::Instance.MaxPartialUncollectedNewPageCount);
-
-        // PARTIAL-GC-REVIEW: For now, we have only alloc size heuristic
-        // Maybe improve this heuristic by looking at how many free pages are in the page allocator.
-        if (autoHeap.uncollectedNewPageCount > this->uncollectedNewPageCountPartialCollect)
+        if (GetPartialFlag<flags>())
         {
-            return Collect<flags>();
+            Assert(enablePartialCollect);
+            Assert(allocSize);
+            Assert(this->uncollectedNewPageCountPartialCollect >= RecyclerSweep::MinPartialUncollectedNewPageCount
+                && this->uncollectedNewPageCountPartialCollect <= RecyclerHeuristic::Instance.MaxPartialUncollectedNewPageCount);
+
+            // PARTIAL-GC-REVIEW: For now, we have only alloc size heuristic
+            // Maybe improve this heuristic by looking at how many free pages are in the page allocator.
+            if (autoHeap.uncollectedNewPageCount > this->uncollectedNewPageCountPartialCollect)
+            {
+                return Collect<flags>();
+            }
         }
-    }
 #endif
 
-    // allocation byte count heuristic, collect every 1 MB allocated
-    if (allocSize && (autoHeap.uncollectedAllocBytes < RecyclerHeuristic::UncollectedAllocBytesCollection()))
-    {
-        return FinishDisposeObjectsWrapped<flags>();
-    }
-
-    // time heuristic, allocate every 1000 clock tick, or 64 MB is allocated in a short time
-    if (timed && (autoHeap.uncollectedAllocBytes < RecyclerHeuristic::Instance.MaxUncollectedAllocBytes))
-    {
-        uint currentTickCount = GetTickCount();
-#ifdef RECYCLER_TRACE
-        collectionParam.timeDiff = currentTickCount - tickCountNextCollection;
-#endif
-        if ((int)(tickCountNextCollection - currentTickCount) >= 0)
+        // allocation byte count heuristic, collect every 1 MB allocated
+        if (allocSize && (autoHeap.uncollectedAllocBytes < RecyclerHeuristic::UncollectedAllocBytesCollection()))
         {
             return FinishDisposeObjectsWrapped<flags>();
         }
-    }
+
+        // time heuristic, allocate every 1000 clock tick, or 64 MB is allocated in a short time
+        if (timed && (autoHeap.uncollectedAllocBytes < RecyclerHeuristic::Instance.MaxUncollectedAllocBytes))
+        {
+            uint currentTickCount = GetTickCount();
 #ifdef RECYCLER_TRACE
-    else
-    {
-        uint currentTickCount = GetTickCount();
-        collectionParam.timeDiff = currentTickCount - tickCountNextCollection;
-    }
+            collectionParam.timeDiff = currentTickCount - tickCountNextCollection;
 #endif
+            if ((int)(tickCountNextCollection - currentTickCount) >= 0)
+            {
+                return FinishDisposeObjectsWrapped<flags>();
+            }
+        }
+#ifdef RECYCLER_TRACE
+        else
+        {
+            uint currentTickCount = GetTickCount();
+            collectionParam.timeDiff = currentTickCount - tickCountNextCollection;
+        }
+#endif
+    }
 
     // Passed all the heuristic, do some GC work, maybe
     return Collect<(CollectionFlags)(flags & ~CollectMode_Partial)>();
@@ -3410,6 +3425,11 @@ Recycler::Collect()
     }
 #endif
 
+    // We clear the flag indicating that there is a GC pending because
+    // of script context close, since we're about to do a GC anyway,
+    // since the current GC will suffice.
+    this->collectionWrapper->ClearIsScriptContextCloseGCPending();
+
     SetupPostCollectionFlags<flags>();
 
     const BOOL partial = GetPartialFlag<flags>();
@@ -3426,8 +3446,10 @@ Recycler::Collect()
 
     {
         RECORD_TIMESTAMP(initialCollectionStartTime);
+#ifdef NTBUILD
         this->telemetryBlock->initialCollectionStartProcessUsedBytes = PageAllocator::GetProcessUsedBytes();
         this->telemetryBlock->exhaustiveRepeatedCount = 0;
+#endif
 
         return DoCollectWrapped(finalFlags);
     }
@@ -3554,7 +3576,9 @@ Recycler::DoCollect(CollectionFlags flags)
     {
         INC_TIMESTAMP_FIELD(exhaustiveRepeatedCount);
         RECORD_TIMESTAMP(currentCollectionStartTime);
+#ifdef NTBUILD
         this->telemetryBlock->currentCollectionStartProcessUsedBytes = PageAllocator::GetProcessUsedBytes();
+#endif
 
 #if ENABLE_CONCURRENT_GC
         // DisposeObject may call script again and start another GC, so we may still be in concurrent GC state
@@ -6910,7 +6934,7 @@ Recycler::FillCheckPad(void * address, size_t size, size_t alignedAllocSize, boo
     }
 }
 
-void 
+void
 Recycler::FillPadNoCheck(void * address, size_t size, size_t alignedAllocSize, bool objectAlreadyInitialized)
 {
     // Ignore the first word
@@ -8187,4 +8211,3 @@ RecyclerHeapObjectInfo::GetSize() const
 }
 
 template char* Recycler::AllocWithAttributesInlined<(Memory::ObjectInfoBits)32, false>(size_t);
-

@@ -150,11 +150,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
 
     if(NOT CC_XCODE_PROJECT)
         set(CLR_CMAKE_PLATFORM_DARWIN 1)
+        add_compile_options(-mmacosx-version-min=10.7)
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} \
             -mmacosx-version-min=10.7")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
-            -mmacosx-version-min=10.7")
-        set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} \
             -mmacosx-version-min=10.7")
     endif()
 else()
@@ -294,8 +293,7 @@ if(CLR_CMAKE_PLATFORM_XPLAT)
    add_definitions(-DFEATURE_PAL)
 endif(CLR_CMAKE_PLATFORM_XPLAT)
 
-if(NO_JIT_SH
-   OR CLR_CMAKE_PLATFORM_DARWIN)  # TODO: JIT for OSX
+if(NO_JIT_SH)
     unset(NO_JIT_SH CACHE)      # don't cache
     unset(BuildJIT CACHE)       # also clear it just in case
     add_definitions(-DDISABLE_JIT=1)
