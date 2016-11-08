@@ -42,8 +42,8 @@ namespace TTD
 
     void FileWriter::WriteBlock(const byte* buff, size_t bufflen)
     {
-        AssertMsg(bufflen != 0, "Shouldn't be writing empty blocks");
-        AssertMsg(this->m_hfile != nullptr, "Trying to write to closed file.");
+        TTDAssert(bufflen != 0, "Shouldn't be writing empty blocks");
+        TTDAssert(this->m_hfile != nullptr, "Trying to write to closed file.");
 
         size_t bwp = 0;
         this->m_pfWrite(this->m_hfile, buff, bufflen, &bwp);
@@ -213,7 +213,7 @@ namespace TTD
     {
         this->WriteSeperator(separator);
 
-        AssertMsg(1 <= (uint32)key && (uint32)key < (uint32)NSTokens::Key::Count, "Key not in valid range!");
+        TTDAssert(1 <= (uint32)key && (uint32)key < (uint32)NSTokens::Key::Count, "Key not in valid range!");
         const char16* kname = this->m_keyNameArray[(uint32)key];
         size_t ksize = this->m_keyNameLengthArray[(uint32)key];
 
@@ -229,7 +229,7 @@ namespace TTD
 
     void TextFormatWriter::WriteSequenceEnd(NSTokens::Separator separator)
     {
-        AssertMsg(separator == NSTokens::Separator::NoSeparator || separator == NSTokens::Separator::BigSpaceSeparator, "Shouldn't be anything else!!!");
+        TTDAssert(separator == NSTokens::Separator::NoSeparator || separator == NSTokens::Separator::BigSpaceSeparator, "Shouldn't be anything else!!!");
 
         this->WriteSeperator(separator);
         this->WriteRawChar(_u(']'));
@@ -243,7 +243,7 @@ namespace TTD
 
     void TextFormatWriter::WriteRecordEnd(NSTokens::Separator separator)
     {
-        AssertMsg(separator == NSTokens::Separator::NoSeparator || separator == NSTokens::Separator::BigSpaceSeparator, "Shouldn't be anything else!!!");
+        TTDAssert(separator == NSTokens::Separator::NoSeparator || separator == NSTokens::Separator::BigSpaceSeparator, "Shouldn't be anything else!!!");
 
         this->WriteSeperator(separator);
         this->WriteRawChar(_u('}'));
@@ -574,7 +574,7 @@ namespace TTD
 
     void FileReader::ReadBlock(byte* buff, size_t* readSize)
     {
-        AssertMsg(this->m_hfile != nullptr, "Trying to read a invalid file.");
+        TTDAssert(this->m_hfile != nullptr, "Trying to read a invalid file.");
 
         size_t bwp = 0;
         this->m_pfRead(this->m_hfile, buff, TTD_SERIALIZATION_BUFFER_SIZE, &bwp);
@@ -587,7 +587,7 @@ namespace TTD
         //
         //TODO: we probably want to make this a special exception so we can abort cleanly when reading an invalid data
         //
-        AssertMsg(ok, "Unexpected event in file reading!");
+        TTDAssert(ok, "Unexpected event in file reading!");
         if(!ok)
         {
             //make sure we fail even in release mode
@@ -893,7 +893,7 @@ namespace TTD
         {
             return NSTokens::ParseTokenKind::Error;
         }
-        AssertMsg(!Js::JavascriptNumber::IsNan(val), "Bad result from string to double conversion");
+        TTDAssert(!Js::JavascriptNumber::IsNan(val), "Bad result from string to double conversion");
 
         return NSTokens::ParseTokenKind::Number;
     }
@@ -1156,7 +1156,7 @@ namespace TTD
     {
         byte byteOrderMarker[2] = { 0x0, 0x0 };
         this->ReadBytesInto(byteOrderMarker, 2);
-        AssertMsg(byteOrderMarker[0] == 0xFF && byteOrderMarker[1] == 0xFE, "Byte Order Marker is incorrect!");
+        TTDAssert(byteOrderMarker[0] == 0xFF && byteOrderMarker[1] == 0xFE, "Byte Order Marker is incorrect!");
 
         NSTokens::InitKeyNamesArray(&(this->m_keyNameArray), &(this->m_keyNameLengthArray));
     }
@@ -1697,7 +1697,7 @@ namespace TTD
     {
         uint32 wlen = 0;
         this->ReadBytesInto_Fixed<uint32>(wlen);
-        AssertMsg(wlen == length, "Not exepcted string length!!!");
+        TTDAssert(wlen == length, "Not exepcted string length!!!");
 
         this->ReadBytesInto((byte*)code, length * sizeof(char16));
     }

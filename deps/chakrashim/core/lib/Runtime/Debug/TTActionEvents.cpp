@@ -63,7 +63,7 @@ namespace TTD
             int64 res = -1;
             bool success = TryGetTimeFromRootCallOrSnapshot(evt, res);
 
-            AssertMsg(success, "Not a root or snapshot!!!");
+            TTDAssert(success, "Not a root or snapshot!!!");
             return res;
         }
 
@@ -73,7 +73,7 @@ namespace TTD
 
             Js::ScriptContext* resCtx = nullptr;
             executeContext->TTDExternalObjectFunctions.pfCreateJsRTContextCallback(executeContext->GetRuntimeHandle(), &resCtx);
-            AssertMsg(resCtx != nullptr, "Create failed");
+            TTDAssert(resCtx != nullptr, "Create failed");
 
             executeContext->AddTrackedRootSpecial(cAction->GlobalObject, resCtx->GetGlobalObject());
             resCtx->ScriptContextLogTag = cAction->GlobalObject;
@@ -122,7 +122,7 @@ namespace TTD
         {
             const JsRTVarsArgumentAction* action = GetInlineEventDataAs<JsRTVarsArgumentAction, EventKind::SetActiveScriptContextActionTag>(evt);
             Js::Var gvar = InflateVarInReplay(executeContext, action->Var1);
-            AssertMsg(gvar == nullptr || Js::GlobalObject::Is(gvar), "Something is not right here!");
+            TTDAssert(gvar == nullptr || Js::GlobalObject::Is(gvar), "Something is not right here!");
 
             Js::GlobalObject* gobj = static_cast<Js::GlobalObject*>(gvar);
             Js::ScriptContext* newCtx = (gobj != nullptr) ? gobj->GetScriptContext() : nullptr;
@@ -261,7 +261,7 @@ namespace TTD
                 *res = ctx->GetLibrary()->CreateURIError();
                 break;
             default:
-                AssertMsg(false, "Missing error kind!!!");
+                TTDAssert(false, "Missing error kind!!!");
             }
 
             Js::JavascriptOperators::OP_SetProperty(*res, Js::PropertyIds::message, message, ctx);
@@ -286,9 +286,9 @@ namespace TTD
             Js::Var var = InflateVarInReplay(executeContext, action->Var1);
             TTD_REPLAY_VALIDATE_INCOMING_REFERENCE(var, ctx);
 
-            Js::Var res = Js::JavascriptConversion::ToBool(var, ctx) ? ctx->GetLibrary()->GetTrue() : ctx->GetLibrary()->GetFalse();
+            Js::JavascriptConversion::ToBool(var, ctx) ? ctx->GetLibrary()->GetTrue() : ctx->GetLibrary()->GetFalse();
 
-            JsRTActionHandleResultForReplay<JsRTVarsArgumentAction, EventKind::VarConvertToBooleanActionTag>(executeContext, evt, res);
+            //It is either true or false which we always track so no need to do result mapping
         }
 
         void VarConvertToString_Execute(const EventLogEntry* evt, ThreadContextTTD* executeContext)
@@ -374,7 +374,7 @@ namespace TTD
             const JsRTVarsWithIntegralUnionArgumentAction* action = GetInlineEventDataAs<JsRTVarsWithIntegralUnionArgumentAction, EventKind::AllocateArrayBufferActionTag>(evt);
 
             Js::ArrayBuffer* abuff = ctx->GetLibrary()->CreateArrayBuffer((uint32)action->u_iVal);
-            AssertMsg(abuff->GetByteLength() == (uint32)action->u_iVal, "Something is wrong with our sizes.");
+            TTDAssert(abuff->GetByteLength() == (uint32)action->u_iVal, "Something is wrong with our sizes.");
 
             JsRTActionHandleResultForReplay<JsRTVarsWithIntegralUnionArgumentAction, EventKind::AllocateArrayBufferActionTag>(executeContext, evt, (Js::Var)abuff);
         }
@@ -385,7 +385,7 @@ namespace TTD
             const JsRTByteBufferAction* action = GetInlineEventDataAs<JsRTByteBufferAction, EventKind::AllocateExternalArrayBufferActionTag>(evt);
 
             Js::ArrayBuffer* abuff = ctx->GetLibrary()->CreateArrayBuffer(action->Length);
-            AssertMsg(abuff->GetByteLength() == action->Length, "Something is wrong with our sizes.");
+            TTDAssert(abuff->GetByteLength() == action->Length, "Something is wrong with our sizes.");
 
             js_memcpy_s(abuff->GetBuffer(), abuff->GetByteLength(), action->Buffer, action->Length);
 
@@ -733,9 +733,9 @@ namespace TTD
             Js::Var dst = InflateVarInReplay(executeContext, action->Dst); //never cross context
             Js::Var src = InflateVarInReplay(executeContext, action->Src); //never cross context
 
-            AssertMsg(Js::ArrayBuffer::Is(dst) && Js::ArrayBuffer::Is(src), "Not array buffer objects!!!");
-            AssertMsg(action->DstIndx + action->Count <= Js::ArrayBuffer::FromVar(dst)->GetByteLength(), "Copy off end of buffer!!!");
-            AssertMsg(action->SrcIndx + action->Count <= Js::ArrayBuffer::FromVar(src)->GetByteLength(), "Copy off end of buffer!!!");
+            TTDAssert(Js::ArrayBuffer::Is(dst) && Js::ArrayBuffer::Is(src), "Not array buffer objects!!!");
+            TTDAssert(action->DstIndx + action->Count <= Js::ArrayBuffer::FromVar(dst)->GetByteLength(), "Copy off end of buffer!!!");
+            TTDAssert(action->SrcIndx + action->Count <= Js::ArrayBuffer::FromVar(src)->GetByteLength(), "Copy off end of buffer!!!");
 
             byte* dstBuff = Js::ArrayBuffer::FromVar(dst)->GetBuffer() + action->DstIndx;
             byte* srcBuff = Js::ArrayBuffer::FromVar(src)->GetBuffer() + action->SrcIndx;
@@ -749,8 +749,8 @@ namespace TTD
             const JsRTRawBufferModifyAction* action = GetInlineEventDataAs<JsRTRawBufferModifyAction, EventKind::RawBufferModifySync>(evt);
             Js::Var trgt = InflateVarInReplay(executeContext, action->Trgt); //never cross context
 
-            AssertMsg(Js::ArrayBuffer::Is(trgt), "Not array buffer object!!!");
-            AssertMsg(action->Index + action->Length <= Js::ArrayBuffer::FromVar(trgt)->GetByteLength(), "Copy off end of buffer!!!");
+            TTDAssert(Js::ArrayBuffer::Is(trgt), "Not array buffer object!!!");
+            TTDAssert(action->Index + action->Length <= Js::ArrayBuffer::FromVar(trgt)->GetByteLength(), "Copy off end of buffer!!!");
 
             byte* trgtBuff = Js::ArrayBuffer::FromVar(trgt)->GetBuffer() + action->Index;
             js_memcpy_s(trgtBuff, action->Length, action->Data, action->Length);
@@ -777,7 +777,7 @@ namespace TTD
 
             TTDPendingAsyncBufferModification pendingAsyncInfo = { 0 };
             ctx->TTDContextInfo->GetFromAsyncPendingList(&pendingAsyncInfo, finalModPos);
-            AssertMsg(dstBuff == pendingAsyncInfo.ArrayBufferVar && action->Index == pendingAsyncInfo.Index, "Something is not right.");
+            TTDAssert(dstBuff == pendingAsyncInfo.ArrayBufferVar && action->Index == pendingAsyncInfo.Index, "Something is not right.");
 
             js_memcpy_s(copyBuff, action->Length, action->Data, action->Length);
         }
@@ -807,7 +807,7 @@ namespace TTD
 
             //
             //TODO: we will want to look at this at some point -- either treat as "top-level" call or maybe constructors are fast so we can just jump back to previous "real" code
-            //AssertMsg(!Js::ScriptFunction::Is(jsFunction) || execContext->GetThreadContext()->TTDRootNestingCount != 0, "This will cause user code to execute and we need to add support for that as a top-level call source!!!!");
+            //TTDAssert(!Js::ScriptFunction::Is(jsFunction) || execContext->GetThreadContext()->TTDRootNestingCount != 0, "This will cause user code to execute and we need to add support for that as a top-level call source!!!!");
             //
 
             Js::Var res = Js::JavascriptFunction::CallAsConstructor(jsFunction, /* overridingNewTarget = */nullptr, jsArgs, ctx);
@@ -959,7 +959,7 @@ namespace TTD
             uint32 scriptByteLength = cpInfo->SourceByteLength;
             DWORD_PTR sourceContext = cpInfo->DocumentID;
 
-            AssertMsg(cpAction->AdditionalInfo->IsUtf8 == ((cpAction->AdditionalInfo->LoadFlag & LoadScriptFlag_Utf8Source) == LoadScriptFlag_Utf8Source), "Utf8 status is inconsistent!!!");
+            TTDAssert(cpAction->AdditionalInfo->IsUtf8 == ((cpAction->AdditionalInfo->LoadFlag & LoadScriptFlag_Utf8Source) == LoadScriptFlag_Utf8Source), "Utf8 status is inconsistent!!!");
 
             SourceContextInfo * sourceContextInfo = ctx->GetSourceContextInfo(sourceContext, nullptr);
 
@@ -981,7 +981,7 @@ namespace TTD
                 sourceContextInfo = ctx->CreateSourceContextInfo(sourceContext, srcUri, srcUriLength, nullptr);
             }
 
-            AssertMsg(cpAction->AdditionalInfo->IsUtf8 || sizeof(wchar) == sizeof(char16), "Non-utf8 code only allowed on windows!!!");
+            TTDAssert(cpAction->AdditionalInfo->IsUtf8 || sizeof(wchar) == sizeof(char16), "Non-utf8 code only allowed on windows!!!");
             const int chsize = (cpAction->AdditionalInfo->LoadFlag & LoadScriptFlag_Utf8Source) ? sizeof(char) : sizeof(char16);
             SRCINFO si = {
                 /* sourceContextInfo   */ sourceContextInfo,
@@ -997,8 +997,10 @@ namespace TTD
 
             Js::Utf8SourceInfo* utf8SourceInfo = nullptr;
             CompileScriptException se;
-            function = ctx->LoadScript(script, scriptByteLength, &si, &se, &utf8SourceInfo, Js::Constants::GlobalCode, cpInfo->LoadFlag);
-            AssertMsg(function != nullptr, "Something went wrong");
+            function = ctx->LoadScript(script, scriptByteLength, &si, &se,
+                &utf8SourceInfo, Js::Constants::GlobalCode, cpInfo->LoadFlag, nullptr);
+
+            TTDAssert(function != nullptr, "Something went wrong");
 
             Js::FunctionBody* fb = TTD::JsSupport::ForceAndGetFunctionBody(function->GetParseableFunctionInfo());
 
@@ -1205,7 +1207,7 @@ namespace TTD
                 //since we tag in JsRT we need to tag here too
                 JsRTActionHandleResultForReplay<JsRTCallFunctionAction, EventKind::CallExistingFunctionActionTag>(executeContext, evt, result);
 
-                AssertMsg(NSLogEvents::EventCompletesNormally(evt), "Why did we get a different completion");
+                TTDAssert(NSLogEvents::EventCompletesNormally(evt), "Why did we get a different completion");
             }
             else
             {
@@ -1218,11 +1220,11 @@ namespace TTD
                     //since we tag in JsRT we need to tag here too
                     JsRTActionHandleResultForReplay<JsRTCallFunctionAction, EventKind::CallExistingFunctionActionTag>(executeContext, evt, result);
 
-                    AssertMsg(NSLogEvents::EventCompletesNormally(evt), "Why did we get a different completion");
+                    TTDAssert(NSLogEvents::EventCompletesNormally(evt), "Why did we get a different completion");
                 }
                 catch(const Js::JavascriptException& err)
                 {
-                    AssertMsg(NSLogEvents::EventCompletesWithException(evt), "Why did we get a different exception");
+                    TTDAssert(NSLogEvents::EventCompletesWithException(evt), "Why did we get a different exception");
 
                     if(executeContext->GetActiveScriptContext()->ShouldPerformDebuggerAction())
                     {
@@ -1246,7 +1248,7 @@ namespace TTD
                 }
                 catch(Js::ScriptAbortException)
                 {
-                    AssertMsg(NSLogEvents::EventCompletesWithException(evt), "Why did we get a different exception");
+                    TTDAssert(NSLogEvents::EventCompletesWithException(evt), "Why did we get a different exception");
 
                     if(executeContext->GetActiveScriptContext()->ShouldPerformDebuggerAction())
                     {

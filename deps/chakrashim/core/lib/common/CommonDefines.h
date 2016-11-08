@@ -324,6 +324,9 @@
 #define CONTROL_FLOW_GUARD_LOGGER
 #endif
 
+#ifndef ENABLE_TEST_HOOKS
+#define ENABLE_TEST_HOOKS
+#endif
 #endif // ENABLE_DEBUG_CONFIG_OPTIONS
 
 #if !defined(NTBUILD) || defined(ENABLE_DEBUG_CONFIG_OPTIONS)
@@ -339,15 +342,18 @@
 //A workaround for profile based creation of Native Arrays -- we may or may not want to allow since it differs in record/replay and (currently) asserts in our snap compare
 #define TTD_NATIVE_PROFILE_ARRAY_WORK_AROUND 1
 
+#define ENABLE_TTD_ASSERT 1
+
 //Force debug or notjit mode
 #define TTD_FORCE_DEBUG_MODE 0
 #define TTD_FORCE_NOJIT_MODE 0
 
-//A very temp workaround for the broken step back button
-#define TTD_STEP_BACK_WORK_AROUND 1
-
 //Enable various sanity checking features and asserts
+#if ENABLE_DEBUG_CONFIG_OPTIONS
 #define ENABLE_TTD_INTERNAL_DIAGNOSTICS 1
+#else
+#define ENABLE_TTD_INTERNAL_DIAGNOSTICS 0
+#endif
 
 #define TTD_COMPRESSED_OUTPUT 0
 #define TTD_LOG_READER TextFormatReader
@@ -362,7 +368,7 @@
 #endif
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-#define ENABLE_SNAPSHOT_COMPARE 0
+#define ENABLE_SNAPSHOT_COMPARE 1
 #define ENABLE_OBJECT_SOURCE_TRACKING 0
 #define ENABLE_VALUE_TRACE 0
 #define ENABLE_BASIC_TRACE 0

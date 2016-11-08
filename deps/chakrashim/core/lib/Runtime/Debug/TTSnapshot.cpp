@@ -191,13 +191,13 @@ namespace TTD
 
             //Well known objects may always be dirty (e.g. we are re-using a context) so we always want to clean them
             res = NSSnapObjects::ObjectPropertyReset(snpObject, Js::DynamicObject::FromVar(res), inflator, true);
-            AssertMsg(res != nullptr, "Should always produce a result!!!");
+            TTDAssert(res != nullptr, "Should always produce a result!!!");
         }
         else
         {
             //lookup the inflator function for this object and call it
             NSSnapObjects::fPtr_DoObjectInflation inflateFPtr = this->m_snapObjectVTableArray[(uint32)snpObject->SnapObjectTag].InflationFunc;
-            AssertMsg(inflateFPtr != nullptr, "We probably forgot to update the vtable with a tag we added.");
+            TTDAssert(inflateFPtr != nullptr, "We probably forgot to update the vtable with a tag we added.");
 
             res = inflateFPtr(snpObject, inflator);
         }
@@ -826,7 +826,7 @@ namespace TTD
             }
             else
             {
-                AssertMsg(false, "Missing tag in case list!!!");
+                TTDAssert(false, "Missing tag in case list!!!");
             }
 
             compareMap.GetNextCompareInfo(&ctag, &ptrId1, &ptrId2);

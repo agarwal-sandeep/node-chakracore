@@ -150,6 +150,7 @@ ThreadContext::ThreadContext(AllocationPolicyManager * allocationPolicyManager, 
     inlineCacheThreadInfoAllocator(_u("TC-InlineCacheInfo"), GetPageAllocator(), Js::Throw::OutOfMemory),
     isInstInlineCacheThreadInfoAllocator(_u("TC-IsInstInlineCacheInfo"), GetPageAllocator(), Js::Throw::OutOfMemory),
     equivalentTypeCacheInfoAllocator(_u("TC-EquivalentTypeCacheInfo"), GetPageAllocator(), Js::Throw::OutOfMemory),
+    preReservedVirtualAllocator(GetCurrentProcess()),
     protoInlineCacheByPropId(&inlineCacheThreadInfoAllocator, 512),
     storeFieldInlineCacheByPropId(&inlineCacheThreadInfoAllocator, 256),
     isInstInlineCacheByFunction(&isInstInlineCacheThreadInfoAllocator, 128),
@@ -178,7 +179,9 @@ ThreadContext::ThreadContext(AllocationPolicyManager * allocationPolicyManager, 
 #endif
     dynamicObjectEnumeratorCacheMap(&HeapAllocator::Instance, 16),
     //threadContextFlags(ThreadContextFlagNoFlag),
+#ifdef NTBUILD
     telemetryBlock(&localTelemetryBlock),
+#endif
     configuration(enableExperimentalFeatures),
     jsrtRuntime(nullptr),
     propertyMap(nullptr),
@@ -186,7 +189,7 @@ ThreadContext::ThreadContext(AllocationPolicyManager * allocationPolicyManager, 
     isProfilingUserCode(true),
     loopDepth(0),
     tridentLoadAddress(nullptr),
-    m_remoteThreadContextInfo(0),
+    m_remoteThreadContextInfo(nullptr),
     debugManager(nullptr)
 #if ENABLE_TTD
     , TTDContext(nullptr)
@@ -243,7 +246,9 @@ ThreadContext::ThreadContext(AllocationPolicyManager * allocationPolicyManager, 
     this->threadId = ::GetCurrentThreadId();
 #endif
 
+#ifdef NTBUILD
     memset(&localTelemetryBlock, 0, sizeof(localTelemetryBlock));
+#endif
 
     AutoCriticalSection autocs(ThreadContext::GetCriticalSection());
     ThreadContext::LinkToBeginning(this, &ThreadContext::globalListFirst, &ThreadContext::globalListLast);
@@ -1118,8 +1123,10 @@ ThreadContext::AddPropertyRecordInternal(const Js::PropertyRecord * propertyReco
         Assert(m_reclaimedJITProperties);
         if (propertyRecord->IsNumeric())
         {
-            m_pendingJITProperties->Prepend(propertyRecord->GetPropertyId());
-            m_reclaimedJITProperties->Remove(propertyRecord->GetPropertyId());
+            if (!m_reclaimedJITProperties->Remove(propertyRecord->GetPropertyId()))
+            {
+                m_pendingJITProperties->Prepend(propertyRecord->GetPropertyId());
+            }
         }
     }
 #endif
@@ -2009,7 +2016,7 @@ ThreadContext::EnsureJITThreadContext(bool allowPrereserveAlloc)
 #if ENABLE_TTD
 void ThreadContext::InitTimeTravel(ThreadContext* threadContext, void* runtimeHandle, size_t uriByteLength, const byte* ttdUri, uint32 snapInterval, uint32 snapHistoryLength)
 {
-    AssertMsg(!this->IsRuntimeInTTDMode(), "We should only init once.");
+    TTDAssert(!this->IsRuntimeInTTDMode(), "We should only init once.");
 
     this->TTDContext = HeapNew(TTD::ThreadContextTTD, this, runtimeHandle, uriByteLength, ttdUri, snapInterval, snapHistoryLength);
     this->TTDLog = HeapNew(TTD::EventLog, this);
@@ -2020,13 +2027,13 @@ void ThreadContext::InitHostFunctionsAndTTData(bool record, bool replay, bool de
     TTD::TTDOpenResourceStreamCallback getResourceStreamfp, TTD::TTDReadBytesFromStreamCallback readBytesFromStreamfp,
     TTD::TTDWriteBytesToStreamCallback writeBytesToStreamfp, TTD::TTDFlushAndCloseStreamCallback flushAndCloseStreamfp,
     TTD::TTDCreateExternalObjectCallback createExternalObjectfp,
-    TTD::TTDCreateJsRTContextCallback createJsRTContextCallbackfp, TTD::TTDSetActiveJsRTContext setActiveJsRTContextfp)
+    TTD::TTDCreateJsRTContextCallback createJsRTContextCallbackfp, TTD::TTDReleaseJsRTContextCallback releaseJsRTContextCallbackfp, TTD::TTDSetActiveJsRTContext setActiveJsRTContextfp)
 {
     AssertMsg(this->IsRuntimeInTTDMode(), "Need to call init first.");
 
     this->TTDContext->TTDWriteInitializeFunction = writeInitializefp;
     this->TTDContext->TTDStreamFunctions = { getResourceStreamfp, readBytesFromStreamfp, writeBytesToStreamfp, flushAndCloseStreamfp };
-    this->TTDContext->TTDExternalObjectFunctions = { createExternalObjectfp, createJsRTContextCallbackfp, setActiveJsRTContextfp };
+    this->TTDContext->TTDExternalObjectFunctions = { createExternalObjectfp, createJsRTContextCallbackfp, releaseJsRTContextCallbackfp, setActiveJsRTContextfp };
 
     if(record)
     {
@@ -2234,7 +2241,7 @@ void ThreadContext::SetWellKnownHostTypeId(WellKnownHostType wellKnownType, Js::
     {
         this->wellKnownHostTypeHTMLAllCollectionTypeId = typeId;
 #if ENABLE_NATIVE_CODEGEN
-        if (this->m_remoteThreadContextInfo != 0)
+        if (this->m_remoteThreadContextInfo)
         {
             HRESULT hr = JITManager::GetJITManager()->SetWellKnownHostTypeId(this->m_remoteThreadContextInfo, (int)typeId);
             JITManager::HandleServerCallResult(hr);

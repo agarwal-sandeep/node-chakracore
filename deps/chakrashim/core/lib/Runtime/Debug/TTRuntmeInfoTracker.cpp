@@ -32,7 +32,7 @@ namespace TTD
 
         ctx->InitializeCoreImage_TTD();
 
-        AssertMsg(!this->m_contextList.Contains(ctx), "We should only be adding at creation time!!!");
+        TTDAssert(!this->m_contextList.Contains(ctx), "We should only be adding at creation time!!!");
         this->m_contextList.Add(ctx);
     }
 
@@ -136,7 +136,7 @@ namespace TTD
 
     void ThreadContextTTD::SetActiveScriptContext(Js::ScriptContext* ctx)
     {
-        AssertMsg(ctx == nullptr || this->m_contextList.Contains(ctx), "Missing value!!!");
+        TTDAssert(ctx == nullptr || this->m_contextList.Contains(ctx), "Missing value!!!");
 
         this->m_activeContext = ctx;
     }
@@ -182,7 +182,7 @@ namespace TTD
                 break;
             }
         }
-        AssertMsg(ctx != nullptr, "We lost a context somewhere!");
+        TTDAssert(ctx != nullptr, "We lost a context somewhere!");
 
         this->RemoveTrackedRootSpecial(globalId);
         this->RemoveTrackedRootSpecial(undefId);
@@ -198,14 +198,14 @@ namespace TTD
         this->m_threadCtx->GetRecycler()->RootRelease(externalCtx);
     }
 
-    void ThreadContextTTD::ClearContextsForSnapRestore()
+    void ThreadContextTTD::ClearContextsForSnapRestore(JsUtil::List<FinalizableObject*, HeapAllocator>& deadCtxs)
     {
         for(int32 i = 0; i < this->m_contextList.Count(); ++i)
         {
             Js::ScriptContext* ctx = this->m_contextList.Item(i);
             FinalizableObject* externalCtx = this->m_ttdContextToExternalRefMap.Item(ctx);
 
-            this->m_threadCtx->GetRecycler()->RootRelease(externalCtx);
+            deadCtxs.Add(externalCtx);
         }
         this->m_ttdContextToExternalRefMap.Clear();
         this->m_contextList.Clear();
@@ -222,8 +222,8 @@ namespace TTD
     //Get all of the roots for a script context (roots are currently any recyclableObjects exposed to the host)
     void ThreadContextTTD::AddTrackedRootGeneral(TTD_LOG_PTR_ID origId, Js::RecyclableObject* newRoot)
     {
-        AssertMsg(!ThreadContextTTD::IsSpecialRootObject(newRoot), "Should add these with special path!!!");
-        AssertMsg(!this->m_ttdRootSet->ContainsKey(newRoot), "Should not have duplicate inserts.");
+        TTDAssert(!ThreadContextTTD::IsSpecialRootObject(newRoot), "Should add these with special path!!!");
+        TTDAssert(!this->m_ttdRootSet->ContainsKey(newRoot), "Should not have duplicate inserts.");
 
         this->m_ttdRootSet->AddNew(newRoot);
         this->m_ttdRootTagIdMap.Item(origId, newRoot);
@@ -231,8 +231,8 @@ namespace TTD
 
     void ThreadContextTTD::RemoveTrackedRootGeneral(TTD_LOG_PTR_ID origId, Js::RecyclableObject* deleteRoot)
     {
-        AssertMsg(!ThreadContextTTD::IsSpecialRootObject(deleteRoot), "Should add these with special path!!!");
-        AssertMsg(this->m_ttdRootSet->ContainsKey(deleteRoot), "Should not have delete elements that are not in the root set.");
+        TTDAssert(!ThreadContextTTD::IsSpecialRootObject(deleteRoot), "Should add these with special path!!!");
+        TTDAssert(this->m_ttdRootSet->ContainsKey(deleteRoot), "Should not have delete elements that are not in the root set.");
 
         this->m_ttdRootSet->Remove(deleteRoot);
         if(!this->m_ttdLocalRootSet->ContainsKey(deleteRoot))
@@ -243,8 +243,8 @@ namespace TTD
 
     void ThreadContextTTD::AddTrackedRootSpecial(TTD_LOG_PTR_ID origId, Js::RecyclableObject* newRoot)
     {
-        AssertMsg(ThreadContextTTD::IsSpecialRootObject(newRoot), "Should add these with special path!!!");
-        AssertMsg(!this->m_ttdRootSet->ContainsKey(newRoot), "Should not have duplicate inserts.");
+        TTDAssert(ThreadContextTTD::IsSpecialRootObject(newRoot), "Should add these with special path!!!");
+        TTDAssert(!this->m_ttdRootSet->ContainsKey(newRoot), "Should not have duplicate inserts.");
 
         this->m_ttdRootTagIdMap.Item(origId, newRoot);
     }
@@ -261,7 +261,7 @@ namespace TTD
 
     void ThreadContextTTD::AddLocalRoot(TTD_LOG_PTR_ID origId, Js::RecyclableObject* newRoot)
     {
-        AssertMsg(!ThreadContextTTD::IsSpecialRootObject(newRoot), "Should not be adding these as local roots!!!");
+        TTDAssert(!ThreadContextTTD::IsSpecialRootObject(newRoot), "Should not be adding these as local roots!!!");
 
         this->m_ttdLocalRootSet->AddNew(newRoot);
 
@@ -401,14 +401,14 @@ namespace TTD
             }
 
             //it is in the right range so now we assume non-overlapping so we see if this pbuffBegin is closer than the current best
-            AssertMsg(finalModPos != currentBegin, "We have something strange!!!");
+            TTDAssert(finalModPos != currentBegin, "We have something strange!!!");
             if(currentBegin == nullptr || finalModPos < currentBegin)
             {
                 currentBegin = pbuffBegin;
                 pos = (int32)i;
             }
         }
-        AssertMsg(pos != -1, "Missing matching register!!!");
+        TTDAssert(pos != -1, "Missing matching register!!!");
 
         *pendingInfo = this->m_ttdPendingAsyncModList.Item(pos);
         this->m_ttdPendingAsyncModList.RemoveAt(pos);
@@ -426,7 +426,7 @@ namespace TTD
 
     void ScriptContextTTD::GetLoadedSources(JsUtil::List<TTD::TopLevelFunctionInContextRelation, HeapAllocator>& topLevelScriptLoad, JsUtil::List<TTD::TopLevelFunctionInContextRelation, HeapAllocator>& topLevelNewFunction, JsUtil::List<TTD::TopLevelFunctionInContextRelation, HeapAllocator>& topLevelEval)
     {
-        AssertMsg(topLevelScriptLoad.Count() == 0 && topLevelNewFunction.Count() == 0 && topLevelEval.Count() == 0, "Should be empty when you call this.");
+        TTDAssert(topLevelScriptLoad.Count() == 0 && topLevelNewFunction.Count() == 0 && topLevelEval.Count() == 0, "Should be empty when you call this.");
 
         topLevelScriptLoad.AddRange(this->m_ttdTopLevelScriptLoad);
         topLevelNewFunction.AddRange(this->m_ttdTopLevelNewFunction);
@@ -443,7 +443,7 @@ namespace TTD
         //if this is a root (parent is null) then put this in the rootbody pin set so it isn't reclaimed on us
         if(parent == nullptr)
         {
-            AssertMsg(!this->m_ttdPinnedRootFunctionSet->Contains(body), "We already added this function!!!");
+            TTDAssert(!this->m_ttdPinnedRootFunctionSet->Contains(body), "We already added this function!!!");
             this->m_ttdPinnedRootFunctionSet->AddNew(body);
         }
 
@@ -493,7 +493,7 @@ namespace TTD
 
     Js::FunctionBody* ScriptContextTTD::FindFunctionBodyByFileName(const char16* filename) const
     {
-        AssertMsg(filename != nullptr, "We don't want to set breakpoints in non-user code!!!");
+        TTDAssert(filename != nullptr, "We don't want to set breakpoints in non-user code!!!");
 
         for(auto iter = this->m_ttdPinnedRootFunctionSet->GetIterator(); iter.IsValid(); iter.MoveNext())
         {
@@ -506,7 +506,7 @@ namespace TTD
             }
         }
 
-        AssertMsg(false, "We should never get here!!!");
+        TTDAssert(false, "We should never get here!!!");
         return nullptr;
     }
 
@@ -537,7 +537,7 @@ namespace TTD
 
     void RuntimeContextInfo::LoadAndOrderPropertyNames(Js::RecyclableObject* obj, JsUtil::List<const Js::PropertyRecord*, HeapAllocator>& propertyList)
     {
-        AssertMsg(propertyList.Count() == 0, "This should be empty.");
+        TTDAssert(propertyList.Count() == 0, "This should be empty.");
 
         Js::ScriptContext* ctx = obj->GetScriptContext();
         uint32 propcount = (uint32)obj->GetPropertyCount();
@@ -550,7 +550,7 @@ namespace TTD
 
             if((propertyId != Js::Constants::NoProperty) & (!Js::IsInternalPropertyId(propertyId)))
             {
-                AssertMsg(obj->HasOwnProperty(propertyId), "We are assuming this is own property count.");
+                TTDAssert(obj->HasOwnProperty(propertyId), "We are assuming this is own property count.");
 
                 propertyList.Add(ctx->GetPropertyName(propertyId));
             }
@@ -664,7 +664,7 @@ namespace TTD
     Js::RecyclableObject* RuntimeContextInfo::LookupKnownObjectFromPath(TTD_WELLKNOWN_TOKEN pathIdString) const
     {
         int32 pos = LookupPositionInDictNameList<Js::RecyclableObject*, true>(pathIdString, this->m_coreObjToPathMap, this->m_sortedObjectList, this->m_nullString);
-        AssertMsg(pos != -1, "This isn't a well known object!");
+        TTDAssert(pos != -1, "This isn't a well known object!");
 
         return this->m_sortedObjectList.Item(pos);
     }
@@ -672,7 +672,7 @@ namespace TTD
     Js::FunctionBody* RuntimeContextInfo::LookupKnownFunctionBodyFromPath(TTD_WELLKNOWN_TOKEN pathIdString) const
     {
         int32 pos = LookupPositionInDictNameList<Js::FunctionBody*, true>(pathIdString, this->m_coreBodyToPathMap, this->m_sortedFunctionBodyList, this->m_nullString);
-        AssertMsg(pos != -1, "Missing function.");
+        TTDAssert(pos != -1, "Missing function.");
 
         return (pos != -1) ? this->m_sortedFunctionBodyList.Item(pos) : nullptr;
     }
@@ -680,7 +680,7 @@ namespace TTD
     Js::DebuggerScope* RuntimeContextInfo::LookupKnownDebuggerScopeFromPath(TTD_WELLKNOWN_TOKEN pathIdString) const
     {
         int32 pos = LookupPositionInDictNameList<Js::DebuggerScope*, true>(pathIdString, this->m_coreDbgScopeToPathMap, this->m_sortedDbgScopeList, this->m_nullString);
-        AssertMsg(pos != -1, "Missing debug scope.");
+        TTDAssert(pos != -1, "Missing debug scope.");
 
         return (pos != -1) ? this->m_sortedDbgScopeList.Item(pos) : nullptr;
     }
@@ -722,13 +722,13 @@ namespace TTD
                 {
                     if(getter != nullptr && !Js::JavascriptOperators::IsUndefinedObject(getter))
                     {
-                        AssertMsg(Js::JavascriptFunction::Is(getter), "The getter is not a function?");
+                        TTDAssert(Js::JavascriptFunction::Is(getter), "The getter is not a function?");
                         this->EnqueueNewPathVarAsNeeded(curr, getter, precord, _u(">"));
                     }
 
                     if(setter != nullptr && !Js::JavascriptOperators::IsUndefinedObject(setter))
                     {
-                        AssertMsg(Js::JavascriptFunction::Is(setter), "The setter is not a function?");
+                        TTDAssert(Js::JavascriptFunction::Is(setter), "The setter is not a function?");
                         this->EnqueueNewPathVarAsNeeded(curr, Js::RecyclableObject::FromVar(setter), precord, _u("<"));
                     }
                 }
@@ -736,14 +736,14 @@ namespace TTD
                 {
                     Js::Var pitem = nullptr;
                     BOOL isproperty = Js::JavascriptOperators::GetOwnProperty(curr, precord->GetPropertyId(), &pitem, ctx);
-                    AssertMsg(isproperty, "Not sure what went wrong.");
+                    TTDAssert(isproperty, "Not sure what went wrong.");
 
                     this->EnqueueNewPathVarAsNeeded(curr, pitem, precord, nullptr);
                 }
             }
 
             //shouldn't have any dynamic array valued properties
-            AssertMsg(!Js::DynamicType::Is(curr->GetTypeId()) || (Js::DynamicObject::FromVar(curr))->GetObjectArray() == nullptr || (Js::DynamicObject::FromVar(curr))->GetObjectArray()->GetLength() == 0, "Shouldn't have any dynamic array valued properties at this point.");
+            TTDAssert(!Js::DynamicType::Is(curr->GetTypeId()) || (Js::DynamicObject::FromVar(curr))->GetObjectArray() == nullptr || (Js::DynamicObject::FromVar(curr))->GetObjectArray()->GetLength() == 0, "Shouldn't have any dynamic array valued properties at this point.");
 
             Js::RecyclableObject* proto = curr->GetPrototype();
             bool skipProto = (proto == nullptr) || Js::JavascriptOperators::IsUndefinedOrNullType(proto->GetTypeId());
@@ -768,7 +768,7 @@ namespace TTD
 
         UtilSupport::TTAutoString* rootStr = TT_HEAP_NEW(UtilSupport::TTAutoString, rootName);
 
-        AssertMsg(!this->m_coreObjToPathMap.ContainsKey(obj), "Already in map!!!");
+        TTDAssert(!this->m_coreObjToPathMap.ContainsKey(obj), "Already in map!!!");
         this->m_coreObjToPathMap.AddNew(obj, rootStr);
     }
 
@@ -805,7 +805,7 @@ namespace TTD
                 tpath->Append(optacessortag);
             }
 
-            AssertMsg(!this->m_coreObjToPathMap.ContainsKey(obj), "Already in map!!!");
+            TTDAssert(!this->m_coreObjToPathMap.ContainsKey(obj), "Already in map!!!");
             this->m_coreObjToPathMap.AddNew(obj, tpath);
         }
     }

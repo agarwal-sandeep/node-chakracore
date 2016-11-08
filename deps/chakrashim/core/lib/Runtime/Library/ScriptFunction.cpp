@@ -581,7 +581,7 @@ namespace Js
                 break;
             }
             default:
-                AssertMsg(false, "Unknown scope kind");
+                TTDAssert(false, "Unknown scope kind");
             }
         }
 
@@ -603,7 +603,7 @@ namespace Js
 
     void ScriptFunction::ExtractSnapObjectDataInto(TTD::NSSnapObjects::SnapObject* objData, TTD::SlabAllocator& alloc)
     {
-        AssertMsg(this->GetFunctionInfo() != nullptr, "We are only doing this for functions with ParseableFunctionInfo.");
+        TTDAssert(this->GetFunctionInfo() != nullptr, "We are only doing this for functions with ParseableFunctionInfo.");
 
         TTD::NSSnapObjects::SnapScriptFunctionInfo* ssfi = alloc.SlabAllocateStruct<TTD::NSSnapObjects::SnapScriptFunctionInfo>();
         Js::FunctionBody* fb = TTD::JsSupport::ForceAndGetFunctionBody(this->GetParseableFunctionInfo());
@@ -640,12 +640,28 @@ namespace Js
 #endif
 
     AsmJsScriptFunction::AsmJsScriptFunction(FunctionProxy * proxy, ScriptFunctionType* deferredPrototypeType) :
-        ScriptFunction(proxy, deferredPrototypeType), m_moduleMemory(nullptr), m_lazyError(nullptr)
+        ScriptFunction(proxy, deferredPrototypeType), m_moduleMemory(nullptr)
     {}
 
     AsmJsScriptFunction::AsmJsScriptFunction(DynamicType * type) :
-        ScriptFunction(type), m_moduleMemory(nullptr), m_lazyError(nullptr)
+        ScriptFunction(type), m_moduleMemory(nullptr)
     {}
+
+    bool AsmJsScriptFunction::Is(Var func)
+    {
+        return ScriptFunction::Is(func) && ScriptFunction::FromVar(func)->GetFunctionBody()->GetIsAsmJsFunction();
+    }
+
+    bool AsmJsScriptFunction::IsWasmScriptFunction(Var func)
+    {
+        return ScriptFunction::Is(func) && ScriptFunction::FromVar(func)->GetFunctionBody()->IsWasmFunction();
+    }
+
+    AsmJsScriptFunction* AsmJsScriptFunction::FromVar(Var func)
+    {
+        Assert(AsmJsScriptFunction::Is(func));
+        return reinterpret_cast<AsmJsScriptFunction *>(func);
+    }
 
     ScriptFunctionWithInlineCache::ScriptFunctionWithInlineCache(FunctionProxy * proxy, ScriptFunctionType* deferredPrototypeType) :
         ScriptFunction(proxy, deferredPrototypeType), hasOwnInlineCaches(false)

@@ -837,22 +837,7 @@ namespace Js
 
     double JavascriptDate::ParseHelper(ScriptContext *scriptContext, JavascriptString *str)
     {
-#ifdef ENABLE_BASIC_TELEMETRY
-        double milliseconds = -1;
-        try
-        {
-            milliseconds = DateImplementation::UtcTimeFromStr(scriptContext, str);
-            scriptContext->GetTelemetry().GetKnownMethodTelemetry().JavascriptDate_ParseHelper(scriptContext, str, milliseconds, false);
-        }
-        catch(...)
-        {
-            scriptContext->GetTelemetry().GetKnownMethodTelemetry().JavascriptDate_ParseHelper(scriptContext, str, milliseconds, true);
-            throw;
-        }
-        return milliseconds;
-#else
         return DateImplementation::UtcTimeFromStr(scriptContext, str);
-#endif
     }
 
     Var JavascriptDate::EntrySetDate(RecyclableObject* function, CallInfo callInfo, ...)
@@ -1621,7 +1606,7 @@ namespace Js
 
     void JavascriptDate::ExtractSnapObjectDataInto(TTD::NSSnapObjects::SnapObject* objData, TTD::SlabAllocator& alloc)
     {
-        AssertMsg(this->GetTypeId() == TypeIds_Date, "We don't handle WinRT or other types of dates yet!");
+        TTDAssert(this->GetTypeId() == TypeIds_Date, "We don't handle WinRT or other types of dates yet!");
 
         double* millis = alloc.SlabAllocateStruct<double>();
         *millis = m_date.GetMilliSeconds();

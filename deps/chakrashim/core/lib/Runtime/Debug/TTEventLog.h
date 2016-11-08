@@ -45,14 +45,14 @@ namespace TTD
 
         void InitializeWithEventAndEnter(NSLogEvents::EventLogEntry* actionEvent)
         {
-            AssertMsg(this->m_actionEvent == nullptr, "Don't double initialize");
+            TTDAssert(this->m_actionEvent == nullptr, "Don't double initialize");
 
             this->m_actionEvent = actionEvent;
         }
 
         void InitializeWithEventAndEnterWResult(NSLogEvents::EventLogEntry* actionEvent, TTDVar* resultPtr)
         {
-            AssertMsg(this->m_actionEvent == nullptr, "Don't double initialize");
+            TTDAssert(this->m_actionEvent == nullptr, "Don't double initialize");
 
             this->m_actionEvent = actionEvent;
 
@@ -62,7 +62,7 @@ namespace TTD
 
         void SetResult(Js::Var* result)
         {
-            AssertMsg(this->m_resultPtr != nullptr, "Why are we calling this then???");
+            TTDAssert(this->m_resultPtr != nullptr, "Why are we calling this then???");
             if(result != nullptr)
             {
                 *(this->m_resultPtr) = TTD_CONVERT_JSVAR_TO_TTDVAR(*(result));
@@ -73,7 +73,7 @@ namespace TTD
         {
             if(this->m_actionEvent != nullptr)
             {
-                AssertMsg(this->m_actionEvent->ResultStatus == -1, "Hmm this got changed somewhere???");
+                TTDAssert(this->m_actionEvent->ResultStatus == -1, "Hmm this got changed somewhere???");
 
                 this->m_actionEvent->ResultStatus = exitStatus;
             }
@@ -348,7 +348,7 @@ namespace TTD
             }
 
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
-            AssertMsg(this->m_currentReplayEventIterator.Current()->EventTimeStamp == this->m_eventTimeCtr, "Out of Sync!!!");
+            TTDAssert(this->m_currentReplayEventIterator.Current()->EventTimeStamp == this->m_eventTimeCtr, "Out of Sync!!!");
 #endif
 
             const NSLogEvents::EventLogEntry* evt = this->m_currentReplayEventIterator.Current();

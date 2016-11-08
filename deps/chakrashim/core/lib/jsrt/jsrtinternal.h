@@ -94,7 +94,7 @@ typedef struct {} TTDRecorder;
         }
 
 template <class Fn>
-JsErrorCode GlobalAPIWrapper_NoRecord(Fn fn)
+JsErrorCode GlobalAPIWrapper_Core(Fn fn)
 {
     JsErrorCode errCode = JsNoError;
     try
@@ -123,31 +123,13 @@ JsErrorCode GlobalAPIWrapper_NoRecord(Fn fn)
 }
 
 template <class Fn>
-JsErrorCode GlobalAPIWrapper_WithRecord(Fn fn)
+JsErrorCode GlobalAPIWrapper(Fn fn)
 {
-    JsErrorCode errCode = JsNoError;
     TTDRecorder _actionEntryPopper;
-    try
+    JsErrorCode errCode = GlobalAPIWrapper_Core([&fn, &_actionEntryPopper]() -> JsErrorCode
     {
-        // For now, treat this like an out of memory; consider if we should do something else here.
-
-        AUTO_NESTED_HANDLED_EXCEPTION_TYPE((ExceptionType)(ExceptionType_OutOfMemory | ExceptionType_StackOverflow));
-
-        errCode = fn(_actionEntryPopper);
-
-        // These are error codes that should only be produced by the wrappers and should never
-        // be produced by the internal calls.
-        Assert(errCode != JsErrorFatal &&
-            errCode != JsErrorNoCurrentContext &&
-            errCode != JsErrorInExceptionState &&
-            errCode != JsErrorInDisabledState &&
-            errCode != JsErrorOutOfMemory &&
-            errCode != JsErrorScriptException &&
-            errCode != JsErrorScriptTerminated);
-    }
-    CATCH_STATIC_JAVASCRIPT_EXCEPTION_OBJECT(errCode)
-
-    CATCH_OTHER_EXCEPTIONS(errCode)
+        return fn(_actionEntryPopper);
+    });
 
 #if ENABLE_TTD
     _actionEntryPopper.CompleteWithStatusCode(errCode);
@@ -156,15 +138,24 @@ JsErrorCode GlobalAPIWrapper_WithRecord(Fn fn)
     return errCode;
 }
 
+template <class Fn>
+JsErrorCode GlobalAPIWrapper_NoRecord(Fn fn)
+{
+    return GlobalAPIWrapper_Core([&fn]() -> JsErrorCode
+    {
+        return fn();
+    });
+}
+
 JsErrorCode CheckContext(JsrtContext *currentContext, bool verifyRuntimeState, bool allowInObjectBeforeCollectCallback = false);
 
 template <bool verifyRuntimeState, class Fn>
-JsErrorCode ContextAPIWrapper_NoRecord(Fn fn)
+JsErrorCode ContextAPIWrapper_Core(Fn fn)
 {
     JsrtContext *currentContext = JsrtContext::GetCurrent();
     JsErrorCode errCode = CheckContext(currentContext, verifyRuntimeState);
 
-    if (errCode != JsNoError)
+    if(errCode != JsNoError)
     {
         return errCode;
     }
@@ -178,65 +169,6 @@ JsErrorCode ContextAPIWrapper_NoRecord(Fn fn)
         BEGIN_ENTER_SCRIPT(scriptContext, true, true, true)
         {
             errCode = fn(scriptContext);
-        }
-        END_ENTER_SCRIPT
-
-            // These are error codes that should only be produced by the wrappers and should never
-            // be produced by the internal calls.
-            Assert(errCode != JsErrorFatal &&
-            errCode != JsErrorNoCurrentContext &&
-            errCode != JsErrorInExceptionState &&
-            errCode != JsErrorInDisabledState &&
-            errCode != JsErrorOutOfMemory &&
-            errCode != JsErrorScriptException &&
-            errCode != JsErrorScriptTerminated);
-    }
-    catch (Js::OutOfMemoryException)
-    {
-        errCode = JsErrorOutOfMemory;
-    }
-    catch (const Js::JavascriptException& err)
-    {
-        scriptContext->GetThreadContext()->SetRecordedException(err.GetAndClear());
-        errCode = JsErrorScriptException;
-    }
-    catch (Js::ScriptAbortException)
-    {
-        Assert(scriptContext->GetThreadContext()->GetRecordedException() == nullptr);
-        scriptContext->GetThreadContext()->SetRecordedException(scriptContext->GetThreadContext()->GetPendingTerminatedErrorObject());
-        errCode = JsErrorScriptTerminated;
-    }
-    catch (Js::EvalDisabledException)
-    {
-        errCode = JsErrorScriptEvalDisabled;
-    }
-
-    CATCH_OTHER_EXCEPTIONS(errCode)
-
-    return errCode;
-}
-
-template <bool verifyRuntimeState, class Fn>
-JsErrorCode ContextAPIWrapper_WithRecord(Fn fn)
-{
-    JsrtContext *currentContext = JsrtContext::GetCurrent();
-    JsErrorCode errCode = CheckContext(currentContext, verifyRuntimeState);
-
-    if(errCode != JsNoError)
-    {
-        return errCode;
-    }
-
-    Js::ScriptContext *scriptContext = currentContext->GetScriptContext();
-    TTDRecorder _actionEntryPopper;
-    try
-    {
-        AUTO_NESTED_HANDLED_EXCEPTION_TYPE((ExceptionType)(ExceptionType_OutOfMemory | ExceptionType_JavascriptException));
-
-        // Enter script
-        BEGIN_ENTER_SCRIPT(scriptContext, true, true, true)
-        {
-            errCode = fn(scriptContext, _actionEntryPopper);
         }
         END_ENTER_SCRIPT
 
@@ -272,6 +204,18 @@ JsErrorCode ContextAPIWrapper_WithRecord(Fn fn)
 
     CATCH_OTHER_EXCEPTIONS(errCode)
 
+    return errCode;
+}
+
+template <bool verifyRuntimeState, class Fn>
+JsErrorCode ContextAPIWrapper(Fn fn)
+{
+    TTDRecorder _actionEntryPopper;
+    JsErrorCode errCode = ContextAPIWrapper_Core<verifyRuntimeState>([&fn, &_actionEntryPopper](Js::ScriptContext* scriptContext) -> JsErrorCode
+    {
+        return fn(scriptContext, _actionEntryPopper);
+    });
+
 #if ENABLE_TTD
     _actionEntryPopper.CompleteWithStatusCode(errCode);
 #endif
@@ -279,14 +223,23 @@ JsErrorCode ContextAPIWrapper_WithRecord(Fn fn)
     return errCode;
 }
 
+template <bool verifyRuntimeState, class Fn>
+JsErrorCode ContextAPIWrapper_NoRecord(Fn fn)
+{
+    return ContextAPIWrapper_Core<verifyRuntimeState>([&fn](Js::ScriptContext* scriptContext) -> JsErrorCode
+    {
+        return fn(scriptContext);
+    });
+}
+
 // allowInObjectBeforeCollectCallback only when current API is guaranteed not to do recycler allocation.
 template <class Fn>
-JsErrorCode ContextAPINoScriptWrapper_NoRecord(Fn fn, bool allowInObjectBeforeCollectCallback = false, bool scriptExceptionAllowed = false)
+JsErrorCode ContextAPINoScriptWrapper_Core(Fn fn, bool allowInObjectBeforeCollectCallback = false, bool scriptExceptionAllowed = false)
 {
     JsrtContext *currentContext = JsrtContext::GetCurrent();
     JsErrorCode errCode = CheckContext(currentContext, /*verifyRuntimeState*/true, allowInObjectBeforeCollectCallback);
 
-    if (errCode != JsNoError)
+    if(errCode != JsNoError)
     {
         return errCode;
     }
@@ -299,58 +252,6 @@ JsErrorCode ContextAPINoScriptWrapper_NoRecord(Fn fn, bool allowInObjectBeforeCo
         AUTO_NESTED_HANDLED_EXCEPTION_TYPE((ExceptionType)(ExceptionType_OutOfMemory | ExceptionType_StackOverflow));
 
         errCode = fn(scriptContext);
-
-        // These are error codes that should only be produced by the wrappers and should never
-        // be produced by the internal calls.
-        Assert(errCode != JsErrorFatal &&
-            errCode != JsErrorNoCurrentContext &&
-            errCode != JsErrorInExceptionState &&
-            errCode != JsErrorInDisabledState &&
-            errCode != JsErrorOutOfMemory &&
-            (scriptExceptionAllowed || errCode != JsErrorScriptException) &&
-            errCode != JsErrorScriptTerminated);
-    }
-    CATCH_STATIC_JAVASCRIPT_EXCEPTION_OBJECT(errCode)
-
-    catch (const Js::JavascriptException& err)
-    {
-        AssertMsg(false, "Should never get JavascriptExceptionObject for ContextAPINoScriptWrapper.");
-        scriptContext->GetThreadContext()->SetRecordedException(err.GetAndClear());
-        errCode = JsErrorScriptException;
-    }
-
-    catch (Js::ScriptAbortException)
-    {
-        Assert(scriptContext->GetThreadContext()->GetRecordedException() == nullptr);
-        scriptContext->GetThreadContext()->SetRecordedException(scriptContext->GetThreadContext()->GetPendingTerminatedErrorObject());
-        errCode = JsErrorScriptTerminated;
-    }
-
-    CATCH_OTHER_EXCEPTIONS(errCode)
-
-    return errCode;
-}
-
-template <class Fn>
-JsErrorCode ContextAPINoScriptWrapper_WithRecord(Fn fn, bool allowInObjectBeforeCollectCallback = false, bool scriptExceptionAllowed = false)
-{
-    JsrtContext *currentContext = JsrtContext::GetCurrent();
-    JsErrorCode errCode = CheckContext(currentContext, /*verifyRuntimeState*/true, allowInObjectBeforeCollectCallback);
-
-    if(errCode != JsNoError)
-    {
-        return errCode;
-    }
-
-    Js::ScriptContext *scriptContext = currentContext->GetScriptContext();
-    TTDRecorder _actionEntryPopper;
-    try
-    {
-        // For now, treat this like an out of memory; consider if we should do something else here.
-
-        AUTO_NESTED_HANDLED_EXCEPTION_TYPE((ExceptionType)(ExceptionType_OutOfMemory | ExceptionType_StackOverflow));
-
-        errCode = fn(scriptContext, _actionEntryPopper);
 
         // These are error codes that should only be produced by the wrappers and should never
         // be produced by the internal calls.
@@ -380,11 +281,32 @@ JsErrorCode ContextAPINoScriptWrapper_WithRecord(Fn fn, bool allowInObjectBefore
 
     CATCH_OTHER_EXCEPTIONS(errCode)
 
+    return errCode;
+}
+
+template <class Fn>
+JsErrorCode ContextAPINoScriptWrapper(Fn fn, bool allowInObjectBeforeCollectCallback = false, bool scriptExceptionAllowed = false)
+{
+    TTDRecorder _actionEntryPopper;
+    JsErrorCode errCode = ContextAPINoScriptWrapper_Core([&fn, &_actionEntryPopper](Js::ScriptContext* scriptContext) -> JsErrorCode
+    {
+        return fn(scriptContext, _actionEntryPopper);
+    }, allowInObjectBeforeCollectCallback, scriptExceptionAllowed);
+
 #if ENABLE_TTD
-        _actionEntryPopper.CompleteWithStatusCode(errCode);
+    _actionEntryPopper.CompleteWithStatusCode(errCode);
 #endif
 
     return errCode;
+}
+
+template <class Fn>
+JsErrorCode ContextAPINoScriptWrapper_NoRecord(Fn fn, bool allowInObjectBeforeCollectCallback = false, bool scriptExceptionAllowed = false)
+{
+    return ContextAPINoScriptWrapper_Core([&fn](Js::ScriptContext* scriptContext) -> JsErrorCode
+    {
+        return fn(scriptContext);
+    }, allowInObjectBeforeCollectCallback, scriptExceptionAllowed);
 }
 
 template <class Fn>

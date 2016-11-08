@@ -267,7 +267,7 @@ namespace TTD
                 }
 
                 //if it starts on a larger line or if same line but larger column then we don't contain the target
-                AssertMsg(ifb->GetLineNumber() < this->m_functionLine || (ifb->GetLineNumber() == this->m_functionLine && ifb->GetColumnNumber() < this->m_functionColumn), "We went to far but didn't find our function??");
+                TTDAssert(ifb->GetLineNumber() < this->m_functionLine || (ifb->GetLineNumber() == this->m_functionLine && ifb->GetColumnNumber() < this->m_functionColumn), "We went to far but didn't find our function??");
 
                 uint32 endLine = UINT32_MAX;
                 uint32 endColumn = UINT32_MAX;
@@ -288,7 +288,7 @@ namespace TTD
             }
         }
 
-        AssertMsg(false, "We should never get here!!!");
+        TTDAssert(false, "We should never get here!!!");
         return nullptr;
     }
 
@@ -304,8 +304,8 @@ namespace TTD
 
     bool TTDebuggerSourceLocation::IsBefore(const TTDebuggerSourceLocation& other) const
     {
-        AssertMsg(this->m_ftime != -1 && other.m_ftime != -1, "These aren't orderable!!!");
-        AssertMsg(this->m_ltime != -1 && other.m_ltime != -1, "These aren't orderable!!!");
+        TTDAssert(this->m_ftime != -1 && other.m_ftime != -1, "These aren't orderable!!!");
+        TTDAssert(this->m_ltime != -1 && other.m_ltime != -1, "These aren't orderable!!!");
 
         //first check the order of the time parts
         if(this->m_etime != other.m_etime)
@@ -349,7 +349,7 @@ namespace TTD
 #if ENABLE_TTD_INTERNAL_DIAGNOSTICS
             if(replayVar == nullptr || TTD::JsSupport::IsVarTaggedInline(replayVar))
             {
-                AssertMsg(TTD::JsSupport::AreInlineVarsEquiv(origVar, replayVar), "Should be same bit pattern.");
+                TTDAssert(TTD::JsSupport::AreInlineVarsEquiv(origVar, replayVar), "Should be same bit pattern.");
             }
 #endif
 

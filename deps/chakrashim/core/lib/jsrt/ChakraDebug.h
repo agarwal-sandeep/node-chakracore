@@ -748,9 +748,8 @@ typedef __int64 int64_t;
     /// <param name="infoUri">The uri where the recorded Time-Travel data should be stored.</param>
     /// <param name="snapInterval">The interval to wait between snapshots (measured in millis).</param>
     /// <param name="snapHistoryLength">The amount of history to maintain before discarding -- measured in number of snapshots and controls how far back in time a trace can be reversed.</param>
-    /// <param name="ttdInitializeTTDUriFunction">The <c>JsTTDInitializeUriCallback</c> function for converting the user provided location into an absolute location for reading/writing time travel recording data.</param>
-    /// <param name="writeInitializeFunction">The <c>JsTTDInitializeForWriteLogStreamCallback</c> function for performing any initializtion needed prepare uri for storing time travel recording data.</param>
-    /// <param name="openResourceStream">The <c>TTDOpenResourceStreamCallback</c> function for generating a JsTTDStreamHandle to read/write serialzed data.</param>
+    /// <param name="writeInitializeFunction">The <c>JsTTDInitializeForWriteLogStreamCallback</c> function for performing any initialization needed prepare uri for storing time travel recording data.</param>
+    /// <param name="openResourceStream">The <c>TTDOpenResourceStreamCallback</c> function for generating a JsTTDStreamHandle to read/write serialized data.</param>
     /// <param name="readBytesFromStream">The <c>JsTTDReadBytesFromStreamCallback</c> function for reading bytes from a JsTTDStreamHandle.</param>
     /// <param name="writeBytesToStream">The <c>JsTTDWriteBytesToStreamCallback</c> function for writing bytes to a JsTTDStreamHandle.</param>
     /// <param name="flushAndCloseStream">The <c>JsTTDFlushAndCloseStreamCallback</c> function for flushing and closing a JsTTDStreamHandle as needed.</param>
@@ -784,9 +783,8 @@ typedef __int64 int64_t;
     /// <param name="attributes">The attributes of the runtime to be created.</param>
     /// <param name="infoUri">The uri where the recorded Time-Travel data should be loaded from.</param>
     /// <param name="enableDebugging">A flag to enable addtional debugging operation support during replay.</param>
-    /// <param name="ttdInitializeTTDUriFunction">The <c>JsTTDInitializeUriCallback</c> function for converting the user provided location into an absolute location for reading/writing time travel recording data.</param>
-    /// <param name="writeInitializeFunction">The <c>JsTTDInitializeForWriteLogStreamCallback</c> function for performing any initializtion needed prepare uri for storing time travel recording data.</param>
-    /// <param name="openResourceStream">The <c>TTDOpenResourceStreamCallback</c> function for generating a JsTTDStreamHandle to read/write serialzed data.</param>
+    /// <param name="writeInitializeFunction">The <c>JsTTDInitializeForWriteLogStreamCallback</c> function for performing any initialization needed prepare uri for storing time travel recording data.</param>
+    /// <param name="openResourceStream">The <c>TTDOpenResourceStreamCallback</c> function for generating a JsTTDStreamHandle to read/write serialized data.</param>
     /// <param name="readBytesFromStream">The <c>JsTTDReadBytesFromStreamCallback</c> function for reading bytes from a JsTTDStreamHandle.</param>
     /// <param name="writeBytesToStream">The <c>JsTTDWriteBytesToStreamCallback</c> function for writing bytes to a JsTTDStreamHandle.</param>
     /// <param name="flushAndCloseStream">The <c>JsTTDFlushAndCloseStreamCallback</c> function for flushing and closing a JsTTDStreamHandle as needed.</param>
@@ -829,7 +827,7 @@ typedef __int64 int64_t;
 
     /// <summary>
     ///     TTD API -- may change in future versions:
-    ///     Notify the time-travel system that a context has been identifyied as dead by the gc (and is being de-allocated).
+    ///     Notify the time-travel system that a context has been identified as dead by the gc (and is being de-allocated).
     /// </summary>
     /// <param name="context">The script context that is now dead.</param>
     /// <returns>
@@ -949,6 +947,16 @@ typedef __int64 int64_t;
     CHAKRA_API
         JsTTDRawBufferAsyncModifyComplete(
             _In_ byte* finalModPos);
+
+    /// <summary>
+    ///     TTD API -- may change in future versions:
+    ///     A check for unimplmented TTD actions in the host.
+    /// </summary>
+    /// <param name="msg">The message to print if we should be catching this as a TTD operation.</param>
+    /// <returns>The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.</returns>
+    CHAKRA_API
+        JsTTDCheckAndAssertIfTTDRunning(
+            _In_ const char* msg);
 
     /// <summary>
     ///     TTD API -- may change in future versions:

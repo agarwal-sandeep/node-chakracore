@@ -872,7 +872,8 @@ namespace Js
             // The function body is created in GenerateByteCode but the source info isn't passed in, only the index
             // So we need to pin it here (TODO: Change GenerateByteCode to take in the sourceInfo itself)
             ENTER_PINNED_SCOPE(Utf8SourceInfo, sourceInfo);
-            sourceInfo = Utf8SourceInfo::New(scriptContext, utf8Source, cchSource, cbSource, pSrcInfo, ((grfscr & fscrIsLibraryCode) != 0));
+            sourceInfo = Utf8SourceInfo::New(scriptContext, utf8Source, cchSource,
+              cbSource, pSrcInfo, ((grfscr & fscrIsLibraryCode) != 0), nullptr);
 
             Parser parser(scriptContext, strictMode);
             bool forceNoNative = false;
@@ -1629,7 +1630,7 @@ LHexError:
         PROBE_STACK(function->GetScriptContext(), Js::Constants::MinStackDefault);
         ARGUMENTS(args, callInfo);
 
-        AssertMsg(args.Info.Count >= 2 && Js::JavascriptString::Is(args[1]), "Bad arguments!!!");
+        TTDAssert(args.Info.Count >= 2 && Js::JavascriptString::Is(args[1]), "Bad arguments!!!");
 
         Js::JavascriptString* jsString = Js::JavascriptString::FromVar(args[1]);
         bool doPrint = (args.Info.Count == 3) && Js::JavascriptBoolean::Is(args[2]) && (Js::JavascriptBoolean::FromVar(args[2])->GetValue());

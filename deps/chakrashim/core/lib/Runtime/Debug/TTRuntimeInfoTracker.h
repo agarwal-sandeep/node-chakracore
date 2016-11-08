@@ -93,7 +93,7 @@ namespace TTD
 
         void NotifyCtxDestroyedInReplay(TTD_LOG_PTR_ID globalId, TTD_LOG_PTR_ID undefId, TTD_LOG_PTR_ID nullId, TTD_LOG_PTR_ID trueId, TTD_LOG_PTR_ID falseId);
 
-        void ClearContextsForSnapRestore();
+        void ClearContextsForSnapRestore(JsUtil::List<FinalizableObject*, HeapAllocator>& deadCtxs);
 
         //Get all of the roots for a script context (roots are currently any recyclableObjects exposed to the host)
         static bool IsSpecialRootObject(Js::RecyclableObject* obj);
@@ -267,7 +267,7 @@ namespace TTD
     template <typename T>
     void SortDictIntoListOnNames(const JsUtil::BaseDictionary<T, UtilSupport::TTAutoString*, HeapAllocator>& objToNameMap, JsUtil::List<T, HeapAllocator>& sortedObjList, const UtilSupport::TTAutoString& nullString)
     {
-        AssertMsg(sortedObjList.Count() == 0, "This should be empty.");
+        TTDAssert(sortedObjList.Count() == 0, "This should be empty.");
 
         objToNameMap.Map([&](T key, UtilSupport::TTAutoString* value)
         {
@@ -325,12 +325,12 @@ namespace TTD
             }
 
         }
-        AssertMsg(imin == imax, "Something went wrong!!!"); 
+        TTDAssert(imin == imax, "Something went wrong!!!");
         
         const UtilSupport::TTAutoString* resStr = objToNameMap.Item(sortedObjList.Item(imin));
         if(mustFind)
         {
-            AssertMsg(wcscmp(resStr->GetStrValue(), key) == 0, "We are missing something");
+            TTDAssert(wcscmp(resStr->GetStrValue(), key) == 0, "We are missing something");
             return imin;
         }
         else

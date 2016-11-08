@@ -81,7 +81,8 @@ enum LoadScriptFlag
     LoadScriptFlag_Module = 0x10,                       // input script is module code.
     LoadScriptFlag_isFunction = 0x20,                   // input script is in a function scope, not global code.
     LoadScriptFlag_Utf8Source = 0x40,                   // input buffer is utf8 encoded.
-    LoadScriptFlag_LibraryCode = 0x80                   // for debugger, indicating 'not my code'
+    LoadScriptFlag_LibraryCode = 0x80,                  // for debugger, indicating 'not my code'
+    LoadScriptFlag_ExternalArrayBuffer = 0x100          // for ExternalArrayBuffer
 };
 
 class HostScriptContext
@@ -135,8 +136,8 @@ private:
 class HostScriptContextCallbackFunctor
 {
 public:
-    void* HostData;
-    void(*pfOnScriptLoadCallback)(void* hostData, Js::JavascriptFunction* scriptFunction, Js::Utf8SourceInfo* utf8SourceInfo, CompileScriptException* compileException);
+    FinalizableObject* HostData;
+    void(*pfOnScriptLoadCallback)(FinalizableObject* hostData, Js::JavascriptFunction* scriptFunction, Js::Utf8SourceInfo* utf8SourceInfo, CompileScriptException* compileException);
 
     HostScriptContextCallbackFunctor()
         : HostData(nullptr), pfOnScriptLoadCallback(nullptr)
@@ -144,7 +145,7 @@ public:
         ;
     }
 
-    HostScriptContextCallbackFunctor(void* callbackData, void(*pfcallbackOnScriptLoad)(void* hostData, Js::JavascriptFunction* scriptFunction, Js::Utf8SourceInfo* utf8SourceInfo, CompileScriptException* compileException))
+    HostScriptContextCallbackFunctor(FinalizableObject* callbackData, void(*pfcallbackOnScriptLoad)(FinalizableObject* hostData, Js::JavascriptFunction* scriptFunction, Js::Utf8SourceInfo* utf8SourceInfo, CompileScriptException* compileException))
         : HostData(callbackData), pfOnScriptLoadCallback(pfcallbackOnScriptLoad)
     {
         ;
@@ -388,14 +389,16 @@ namespace Js
         static DWORD GetOptimizationOverridesOffset() { return offsetof(ScriptContext, optimizationOverrides); }
         static DWORD GetRecyclerOffset() { return offsetof(ScriptContext, recycler); }
         static DWORD GetNumberAllocatorOffset() { return offsetof(ScriptContext, numberAllocator); }
-        static DWORD GetAsmIntDbValOffset() { return offsetof(ScriptContext, retAsmIntDbVal); }
 
         ScriptContext *next;
         ScriptContext *prev;
-        double retAsmIntDbVal; // stores the double & float result for Asm interpreter
-
-        AsmJsSIMDValue retAsmSimdVal; // stores raw simd result for Asm interpreter
-        static DWORD GetAsmSimdValOffset() { return offsetof(ScriptContext, retAsmSimdVal); }
+        union
+        {
+            int64 int64Val; // stores the double & float result for Asm interpreter
+            double dbVal; // stores the double & float result for Asm interpreter
+            AsmJsSIMDValue simdVal; // stores raw simd result for Asm interpreter
+        } asmJsReturnValue;
+        static DWORD GetAsmJsReturnValueOffset() { return offsetof(ScriptContext, asmJsReturnValue); }
 
         ScriptContextOptimizationOverrideInfo optimizationOverrides;
 
@@ -522,7 +525,7 @@ namespace Js
 
         ArenaAllocator* diagnosticArena;
 
-        intptr_t m_remoteScriptContextAddr;
+        PSCRIPTCONTEXT_HANDLE m_remoteScriptContextAddr;
 
         bool startupComplete; // Indicates if the heuristic startup phase for this script context is complete
         bool isInvalidatedForHostObjects;  // Indicates that we've invalidate all objects in the host so stop calling them.
@@ -910,7 +913,7 @@ private:
         void SetDirectHostTypeId(TypeId typeId) {directHostTypeId = typeId; }
         TypeId GetDirectHostTypeId() const { return directHostTypeId; }
 
-        intptr_t GetRemoteScriptAddr(bool allowInitialize = true) 
+        PSCRIPTCONTEXT_HANDLE GetRemoteScriptAddr(bool allowInitialize = true)
         {
 #if ENABLE_OOP_NATIVE_CODEGEN
             if (!m_remoteScriptContextAddr && allowInitialize)
@@ -918,7 +921,7 @@ private:
                 InitializeRemoteScriptContext();
             }
 #endif
-            return m_remoteScriptContextAddr; 
+            return m_remoteScriptContextAddr;
         }
 
         char16 const * GetUrl() const { return url; }
@@ -1192,10 +1195,17 @@ private:
         WellKnownHostType GetWellKnownHostType(Js::TypeId typeId) { return threadContext->GetWellKnownHostType(typeId); }
         void SetWellKnownHostTypeId(WellKnownHostType wellKnownType, Js::TypeId typeId) { threadContext->SetWellKnownHostTypeId(wellKnownType, typeId); }
 
-        ParseNodePtr ParseScript(Parser* parser, const byte* script, size_t cb, SRCINFO const * pSrcInfo,
-            CompileScriptException * pse, Utf8SourceInfo** ppSourceInfo, const char16 *rootDisplayName, LoadScriptFlag loadScriptFlag, uint* sourceIndex);
-        JavascriptFunction* LoadScript(const byte* script, size_t cb, SRCINFO const * pSrcInfo,
-            CompileScriptException * pse, Utf8SourceInfo** ppSourceInfo, const char16 *rootDisplayName, LoadScriptFlag loadScriptFlag);
+        ParseNodePtr ParseScript(Parser* parser, const byte* script,
+            size_t cb, SRCINFO const * pSrcInfo,
+            CompileScriptException * pse, Utf8SourceInfo** ppSourceInfo,
+            const char16 *rootDisplayName, LoadScriptFlag loadScriptFlag,
+            uint* sourceIndex, Js::Var scriptSource = nullptr);
+
+        JavascriptFunction* LoadScript(const byte* script, size_t cb,
+            SRCINFO const * pSrcInfo,
+            CompileScriptException * pse, Utf8SourceInfo** ppSourceInfo,
+            const char16 *rootDisplayName, LoadScriptFlag loadScriptFlag,
+            Js::Var scriptSource = nullptr);
 
         ArenaAllocator* GeneralAllocator() { return &generalAllocator; }
 
@@ -1691,7 +1701,7 @@ private:
 
         virtual bool IsRecyclerVerifyEnabled() const override;
         virtual uint GetRecyclerVerifyPad() const override;
- 
+
         virtual Js::Var* GetModuleExportSlotArrayAddress(uint moduleIndex, uint slotIndex) override;
 
         Js::SourceTextModuleRecord* GetModuleRecord(uint moduleId) const
