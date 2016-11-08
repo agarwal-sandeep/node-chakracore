@@ -55,11 +55,12 @@
 #define USE_EDGEMODE_JSRT     // Only works with edge JSRT
 #endif
 
-#include "chakracore.h"
-
 #include <stdio.h>
 #include <stdint.h>
 #include <memory>
+
+#include "chakracore.h"
+
 #include "v8-version.h"
 #include "v8config.h"
 
