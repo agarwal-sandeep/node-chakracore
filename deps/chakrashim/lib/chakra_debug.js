@@ -689,6 +689,10 @@
           /* JsDiagStepTypeStepBack */
           jsDiagSetStepType = 3;
           clearMemoizedScriptInfo = true; //we may recreate the script context -- invalidating scriptIds so clear any memoized info
+      } else if (request.arguments.stepaction == 'reverse') {
+        /* JsDiagStepTypeStepBack */
+        jsDiagSetStepType = 4;
+        clearMemoizedScriptInfo = true; //we may recreate the script context -- invalidating scriptIds so clear any memoized info
       } else {
         throw new Error('Unhandled stepaction: ' + request.arguments.stepaction);
       }
