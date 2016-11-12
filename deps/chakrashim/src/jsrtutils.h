@@ -50,12 +50,12 @@ using std::max;
 #endif
 
 #ifndef __APPLE__
-  #if defined(_MSC_VER) && _MSC_VER <= 1800 // VS2013?
+  #if defined(_MSC_VER) && _MSC_VER <= 1800  // VS2013?
     #define THREAD_LOCAL __declspec(thread)
-  #else // VS2015+, linux Clang etc.
+  #else  // VS2015+, linux Clang etc.
     #define THREAD_LOCAL thread_local
-  #endif // VS2013?
-#else // __APPLE__
+  #endif  // VS2013?
+#else  // __APPLE__
   #define THREAD_LOCAL _Thread_local
 #endif
 
@@ -99,7 +99,7 @@ namespace jsrt {
 
 // Similar to v8::String::Utf8Value but only operates on JS String.
 class StringUtf8 {
-public:
+ public:
   StringUtf8();
   ~StringUtf8();
   char *operator*() { return _str; }
@@ -107,7 +107,7 @@ public:
   int length() const { return static_cast<int>(_length); }
   JsErrorCode From(JsValueRef strRef);
 
-private:
+ private:
   // Disallow copying and assigning
   StringUtf8(const StringUtf8&);
   void operator=(const StringUtf8&);
@@ -338,9 +338,9 @@ JsErrorCode GetIndexedProperty(JsValueRef object,
 
 // CHAKRA-TODO : Currently Chakra's ParseScript doesn't support strictMode
 // flag. As a workaround, prepend the script text with 'use strict'.
-JsErrorCode ParseScript(const char *script,
+JsErrorCode ParseScript(StringUtf8 *script,
                         JsSourceContext sourceContext,
-                        const char *sourceUrl,
+                        JsValueRef sourceUrl,
                         bool isStrictMode,
                         JsValueRef *result);
 

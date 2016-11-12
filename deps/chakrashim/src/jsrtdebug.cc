@@ -22,7 +22,7 @@
 #include "jsrtutils.h"
 
 namespace v8 {
-  extern __declspec(thread) bool g_EnableDebug;
+  extern THREAD_LOCAL bool g_EnableDebug;
 }
 
 namespace jsrt {
@@ -40,15 +40,18 @@ namespace jsrt {
 
   v8::Local<v8::String> MessageImpl::JsValueRefToV8String(JsValueRef result) {
     JsValueRef scriptRef;
-    const wchar_t *script;
+    jsrt::StringUtf8 script;
 
     JsErrorCode errorCode = jsrt::ToString(result, &scriptRef, &script);
     CHAKRA_VERIFY_NOERROR(errorCode);
 
-    v8::Local<v8::String> v8Str = v8::String::NewFromTwoByte(
+    v8::MaybeLocal<v8::String> v8Str = v8::String::NewFromUtf8(
       jsrt::IsolateShim::GetCurrentAsIsolate(),
-      reinterpret_cast<uint16_t*>(const_cast<wchar_t*>(script)));
-    return v8Str;
+      *script,
+      v8::NewStringType::kNormal,
+      script.length());
+
+    return v8Str.ToLocalChecked();
   }
 
   v8::Local<v8::String> MessageImpl::GetJSON() const {
@@ -209,7 +212,7 @@ namespace jsrt {
     return shouldContinue;
   }
 
-  void CALLBACK JsDiagDebugEventHandler(
+  void CHAKRA_CALLBACK JsDiagDebugEventHandler(
     JsDiagDebugEvent debugEvent,
     JsValueRef eventData,
     void* callbackState) {
@@ -248,27 +251,27 @@ namespace jsrt {
     Debugger::messageQueue.debugEventProcessCount--;
   }
 
-  static JsValueRef CALLBACK Log(
+  static JsValueRef CHAKRA_CALLBACK Log(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
     unsigned short argumentCount,
     void *callbackState) {
     JsValueRef scriptRef;
-    const wchar_t *script;
+    jsrt::StringUtf8 script;
 
     if (argumentCount > 1 &&
       jsrt::ToString(arguments[1], &scriptRef, &script) == JsNoError) {
-      fwprintf(stdout, L"%s\n", script);
+      fprintf(stdout, "%s\n", *script);
 #ifdef DEBUG
-      flushall();
+      fflush(stdout);
 #endif
     }
 
     return JS_INVALID_REFERENCE;
   }
 
-  static JsValueRef CALLBACK SendDelayedRespose(
+  static JsValueRef CHAKRA_CALLBACK SendDelayedRespose(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -288,7 +291,7 @@ namespace jsrt {
     return JS_INVALID_REFERENCE;
   }
 
-  static JsValueRef CALLBACK JsGetScripts(
+  static JsValueRef CHAKRA_CALLBACK JsGetScripts(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -301,7 +304,7 @@ namespace jsrt {
     return sourcesList;
   }
 
-  static JsValueRef CALLBACK JsGetSource(
+  static JsValueRef CHAKRA_CALLBACK JsGetSource(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -318,7 +321,7 @@ namespace jsrt {
     return source;
   }
 
-  static JsValueRef CALLBACK JsSetStepType(
+  static JsValueRef CHAKRA_CALLBACK JsSetStepType(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -339,7 +342,7 @@ namespace jsrt {
     return returnRef;
   }
 
-  static JsValueRef CALLBACK JsSetBreakpoint(
+  static JsValueRef CHAKRA_CALLBACK JsSetBreakpoint(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -354,14 +357,13 @@ namespace jsrt {
       jsrt::ValueToInt(arguments[1], &scriptId) == JsNoError &&
       jsrt::ValueToInt(arguments[2], &line) == JsNoError &&
       jsrt::ValueToInt(arguments[3], &column) == JsNoError) {
-      JsErrorCode errorCode = JsDiagSetBreakpoint(
-        scriptId, line, column, &bpObject);
+      JsDiagSetBreakpoint(scriptId, line, column, &bpObject);
     }
 
     return bpObject;
   }
 
-  static JsValueRef CALLBACK JsGetFunctionPosition(
+  static JsValueRef CHAKRA_CALLBACK JsGetFunctionPosition(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -377,7 +379,7 @@ namespace jsrt {
     return funcInfo;
   }
 
-  static JsValueRef CALLBACK JsGetStackTrace(
+  static JsValueRef CHAKRA_CALLBACK JsGetStackTrace(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -390,7 +392,7 @@ namespace jsrt {
     return stackInfo;
   }
 
-  static JsValueRef CALLBACK JsGetStackProperties(
+  static JsValueRef CHAKRA_CALLBACK JsGetStackProperties(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -407,7 +409,7 @@ namespace jsrt {
     return properties;
   }
 
-  static JsValueRef CALLBACK JsGetObjectFromHandle(
+  static JsValueRef CHAKRA_CALLBACK JsGetObjectFromHandle(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -417,13 +419,13 @@ namespace jsrt {
     int handle;
     if (argumentCount > 1 &&
       jsrt::ValueToInt(arguments[1], &handle) == JsNoError) {
-      JsErrorCode errorCode = JsDiagGetObjectFromHandle(handle, &properties);
+      JsDiagGetObjectFromHandle(handle, &properties);
     }
 
     return properties;
   }
 
-  static JsValueRef CALLBACK JsGetBreakpoints(
+  static JsValueRef CHAKRA_CALLBACK JsGetBreakpoints(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -436,7 +438,7 @@ namespace jsrt {
     return properties;
   }
 
-  static JsValueRef CALLBACK JsRemoveBreakpoint(
+  static JsValueRef CHAKRA_CALLBACK JsRemoveBreakpoint(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -452,7 +454,7 @@ namespace jsrt {
     return JS_INVALID_REFERENCE;
   }
 
-  static JsValueRef CALLBACK JsGetProperties(
+  static JsValueRef CHAKRA_CALLBACK JsGetProperties(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -474,7 +476,7 @@ namespace jsrt {
     return properties;
   }
 
-  static JsValueRef CALLBACK JsEvaluate(
+  static JsValueRef CHAKRA_CALLBACK JsEvaluate(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -482,14 +484,14 @@ namespace jsrt {
     void *callbackState) {
     int frameIndex;
     JsValueRef scriptRef;
-    const wchar_t *script;
+    jsrt::StringUtf8 script;
     JsValueRef resultArray = JS_INVALID_REFERENCE;
     JsValueRef result = JS_INVALID_REFERENCE;
 
     if (argumentCount > 2 &&
       jsrt::ValueToInt(arguments[2], &frameIndex) == JsNoError &&
       jsrt::ToString(arguments[1], &scriptRef, &script) == JsNoError) {
-      JsErrorCode errorCode = JsDiagEvaluate(script, frameIndex, &result);
+      JsErrorCode errorCode = JsDiagEvaluateUtf8(script, frameIndex, &result);
       if (errorCode != JsNoError && errorCode != JsErrorScriptException) {
         jsrt::Fatal("internal error %s(%d): %d", __FILE__, __LINE__,
           errorCode);
@@ -511,20 +513,24 @@ namespace jsrt {
     return resultArray;
   }
 
-  static JsValueRef CALLBACK JsEvaluateScript(
+  static JsValueRef CHAKRA_CALLBACK JsEvaluateScript(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
     unsigned short argumentCount,
     void *callbackState) {
-    JsValueRef scriptRef;
-    const wchar_t *script;
+    jsrt::StringUtf8 script;
     JsValueRef result = JS_INVALID_REFERENCE;
 
-    if (argumentCount > 1 &&
-      jsrt::ToString(arguments[1], &scriptRef, &script) == JsNoError) {
-      JsErrorCode errorCode = JsRunScript(
-        script, JS_SOURCE_CONTEXT_NONE, L"", &result);
+    if (argumentCount > 1) {
+      JsValueRef url;
+      CHAKRA_VERIFY(JsCreateString("eval code", strlen("eval code"),
+                                   &url) == JsNoError);
+      JsErrorCode errorCode = JsRun(arguments[1],
+                                    JS_SOURCE_CONTEXT_NONE,
+                                    url,
+                                    JsParseScriptAttributeNone,
+                                    &result);
       if (errorCode != JsNoError) {
         JsValueRef excep;
         JsGetAndClearException(&excep);
@@ -534,7 +540,7 @@ namespace jsrt {
     return result;
   }
 
-  static JsValueRef CALLBACK JsSetBreakOnException(
+  static JsValueRef CHAKRA_CALLBACK JsSetBreakOnException(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -558,7 +564,7 @@ namespace jsrt {
     return returnRef;
   }
 
-  static JsValueRef CALLBACK JsGetBreakOnException(
+  static JsValueRef CHAKRA_CALLBACK JsGetBreakOnException(
     JsValueRef callee,
     bool isConstructCall,
     JsValueRef *arguments,
@@ -590,9 +596,9 @@ namespace jsrt {
   }
 
   void Debugger::InstallHostCallback(JsValueRef chakraDebugObject,
-    const wchar_t *name, JsNativeFunction nativeFunction) {
+    const char *name, JsNativeFunction nativeFunction) {
     JsValueRef nameVar;
-    JsErrorCode errorCode = JsPointerToString(name, wcslen(name), &nameVar);
+    JsErrorCode errorCode = JsCreateString(name, strlen(name), &nameVar);
     CHAKRA_VERIFY_NOERROR(errorCode);
 
     JsValueRef funcRef;
@@ -601,7 +607,7 @@ namespace jsrt {
     CHAKRA_VERIFY_NOERROR(errorCode);
 
     JsPropertyIdRef propertyIdRef;
-    errorCode = JsGetPropertyIdFromName(name, &propertyIdRef);
+    errorCode = JsCreatePropertyIdUtf8(name, strlen(name), &propertyIdRef);
     CHAKRA_VERIFY_NOERROR(errorCode);
 
     errorCode = JsSetProperty(chakraDebugObject, propertyIdRef, funcRef, true);
@@ -611,8 +617,10 @@ namespace jsrt {
   void Debugger::SetChakraDebugObject(JsValueRef chakraDebugObject) {
     JsPropertyIdRef propertyIdRef;
 
-    JsErrorCode errorCode = JsGetPropertyIdFromName(
-      L"ProcessDebuggerMessage", &propertyIdRef);
+    JsErrorCode errorCode = JsCreatePropertyIdUtf8(
+      "ProcessDebuggerMessage",
+      strlen("ProcessDebuggerMessage"),
+      &propertyIdRef);
     CHAKRA_VERIFY_NOERROR(errorCode);
 
     JsValueRef processDebuggerMessageFn;
@@ -620,7 +628,8 @@ namespace jsrt {
       propertyIdRef, &processDebuggerMessageFn);
     CHAKRA_VERIFY_NOERROR(errorCode);
 
-    errorCode = JsGetPropertyIdFromName(L"ProcessDebugEvent",
+    errorCode = JsCreatePropertyIdUtf8("ProcessDebugEvent",
+      strlen("ProcessDebugEvent"),
       &propertyIdRef);
     CHAKRA_VERIFY_NOERROR(errorCode);
 
@@ -629,7 +638,8 @@ namespace jsrt {
       propertyIdRef, &processDebugEventFn);
     CHAKRA_VERIFY_NOERROR(errorCode);
 
-    errorCode = JsGetPropertyIdFromName(L"ProcessShouldContinue",
+    errorCode = JsCreatePropertyIdUtf8("ProcessShouldContinue",
+      strlen("ProcessShouldContinue"),
       &propertyIdRef);
     CHAKRA_VERIFY_NOERROR(errorCode);
 
@@ -642,39 +652,39 @@ namespace jsrt {
       processDebuggerMessageFn, processDebugEventFn, processShouldContinueFn);
 
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"log", Log);
+      "log", Log);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetScripts", JsGetScripts);
+      "JsDiagGetScripts", JsGetScripts);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetSource", JsGetSource);
+      "JsDiagGetSource", JsGetSource);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagSetStepType", JsSetStepType);
+      "JsDiagSetStepType", JsSetStepType);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagSetBreakpoint", JsSetBreakpoint);
+      "JsDiagSetBreakpoint", JsSetBreakpoint);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetFunctionPosition", JsGetFunctionPosition);
+      "JsDiagGetFunctionPosition", JsGetFunctionPosition);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetStackTrace", JsGetStackTrace);
+      "JsDiagGetStackTrace", JsGetStackTrace);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetStackProperties", JsGetStackProperties);
+      "JsDiagGetStackProperties", JsGetStackProperties);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetObjectFromHandle", JsGetObjectFromHandle);
+      "JsDiagGetObjectFromHandle", JsGetObjectFromHandle);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagEvaluateScript", JsEvaluateScript);
+      "JsDiagEvaluateScript", JsEvaluateScript);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagEvaluate", JsEvaluate);
+      "JsDiagEvaluate", JsEvaluate);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetBreakpoints", JsGetBreakpoints);
+      "JsDiagGetBreakpoints", JsGetBreakpoints);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetProperties", JsGetProperties);
+      "JsDiagGetProperties", JsGetProperties);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagRemoveBreakpoint", JsRemoveBreakpoint);
+      "JsDiagRemoveBreakpoint", JsRemoveBreakpoint);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagSetBreakOnException", JsSetBreakOnException);
+      "JsDiagSetBreakOnException", JsSetBreakOnException);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"JsDiagGetBreakOnException", JsGetBreakOnException);
+      "JsDiagGetBreakOnException", JsGetBreakOnException);
     Debugger::InstallHostCallback(chakraDebugObject,
-      L"SendDelayedRespose", SendDelayedRespose);
+      "SendDelayedRespose", SendDelayedRespose);
   }
 
 }  // namespace jsrt
