@@ -686,9 +686,9 @@
         /* JsDiagStepTypeStepOver */
         jsDiagSetStepType = 2;
       } else if (request.arguments.stepaction == 'back') {
-          /* JsDiagStepTypeStepBack */
-          jsDiagSetStepType = 3;
-          clearMemoizedScriptInfo = true; //we may recreate the script context -- invalidating scriptIds so clear any memoized info
+        /* JsDiagStepTypeStepBack */
+        jsDiagSetStepType = 3;
+        clearMemoizedScriptInfo = true; //we may recreate the script context -- invalidating scriptIds so clear any memoized info
       } else if (request.arguments.stepaction == 'reverse') {
         /* JsDiagStepTypeStepBack */
         jsDiagSetStepType = 4;
@@ -1124,6 +1124,7 @@
   ChakraDebugEventProcessor.prototype[ChakraDebugEvent.Breakpoint] = function () {
     // {"breakpointId":1,"scriptId":2,"line":2,"column":0,"sourceLength":9,"sourceText":"var y = 1"}
 
+    DebugManager.ScriptsManager.ClearMemoizedScriptInfo();
     globalExecutionState = new ExecutionState(ExecutionStateType.Break, this.eventData.scriptId);
 
     this.ProcessPendingMessages(false);
