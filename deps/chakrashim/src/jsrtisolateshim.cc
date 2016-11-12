@@ -20,6 +20,7 @@
 
 #include "v8.h"
 #include "jsrtutils.h"
+#include "chakra_natives.h"
 #include <assert.h>
 #include <vector>
 #include <algorithm>
@@ -39,7 +40,8 @@ IsolateShim::IsolateShim(JsRuntimeHandle runtime)
       isDisposing(false),
       contextScopeStack(nullptr),
       tryCatchStackTop(nullptr),
-      embeddedData() {
+      embeddedData(),
+      chakraShimArrayBuffer(nullptr) {
   // CHAKRA-TODO: multithread locking for s_isolateList?
   this->prevnext = &s_isolateList;
   this->next = s_isolateList;
@@ -304,8 +306,8 @@ JsPropertyIdRef IsolateShim::GetCachedPropertyIdRef(
     CachedPropertyIdRef cachedPropertyIdRef) {
   return GetCachedPropertyId(cachedPropertyIdRefs, cachedPropertyIdRef,
                     [](CachedPropertyIdRef index, JsPropertyIdRef* propIdRef) {
-    return JsGetPropertyIdFromNameUtf8(s_cachedPropertyIdRefNames[index],
-                                   propIdRef) == JsNoError;
+    return JsCreatePropertyIdUtf8(s_cachedPropertyIdRefNames[index],
+      strlen(s_cachedPropertyIdRefNames[index]), propIdRef) == JsNoError;
   });
 }
 
@@ -365,6 +367,17 @@ void IsolateShim::SetData(uint32_t slot, void* data) {
 
 void* IsolateShim::GetData(uint32_t slot) {
   return slot < _countof(this->embeddedData) ? embeddedData[slot] : nullptr;
+}
+
+JsValueRef IsolateShim::GetChakraShimJsArrayBuffer() {
+  if (this->chakraShimArrayBuffer == nullptr) {
+      CHAKRA_VERIFY(JsCreateExternalArrayBuffer(
+          (void*)jsrt::chakra_shim_native,
+          sizeof(jsrt::chakra_shim_native),
+          nullptr, nullptr,
+          &this->chakraShimArrayBuffer) == JsNoError);
+  }
+  return this->chakraShimArrayBuffer;
 }
 
 }  // namespace jsrt

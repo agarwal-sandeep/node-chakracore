@@ -420,17 +420,14 @@ bool ContextShim::ExposeGc() {
 }
 
 bool ContextShim::ExecuteChakraShimJS() {
-  // xplat-todo: Currently chakra_shim_native is not null-terminated, but JSRT
-  // API requires null-terminator. Make a copy and null-terminate it.
-  // Remove this when new API signature available.
-  char buffer[_countof(jsrt::chakra_shim_native) + 1];
-  memmove(buffer, chakra_shim_native, _countof(chakra_shim_native));
-  buffer[_countof(chakra_shim_native)] = '\0';
-
   JsValueRef getInitFunction;
-  if (JsParseScriptUtf8(buffer,
+  JsValueRef url;
+  CHAKRA_VERIFY(JsCreateString("chakra_shim.js", strlen("chakra_shim.js"),
+                               &url) == JsNoError);
+  if (JsParse(GetIsolateShim()->GetChakraShimJsArrayBuffer(),
                     JS_SOURCE_CONTEXT_NONE,
-                    "chakra_shim.js",
+                    url,
+                    JsParseScriptAttributeNone,
                     &getInitFunction) != JsNoError) {
     return false;
   }
