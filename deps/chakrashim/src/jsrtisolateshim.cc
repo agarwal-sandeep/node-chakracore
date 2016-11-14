@@ -33,20 +33,21 @@ extern bool g_disableIdleGc;
 namespace jsrt {
 
 /* static */ THREAD_LOCAL IsolateShim * IsolateShim::s_currentIsolate;
-/* static */ __declspec(thread) IsolateShim * IsolateShim::s_previousIsolate;
+/* static */ THREAD_LOCAL IsolateShim * IsolateShim::s_previousIsolate;
 /* static */ IsolateShim * IsolateShim::s_isolateList = nullptr;
 
 IsolateShim::IsolateShim(JsRuntimeHandle runtime)
-    : runtime(runtime),
+    : arrayBufferAllocator(nullptr),
+      debugContext(nullptr),
+      runtime(runtime),
       symbolPropertyIdRefs(),
       cachedPropertyIdRefs(),
       isDisposing(false),
       contextScopeStack(nullptr),
       tryCatchStackTop(nullptr),
-      arrayBufferAllocator(nullptr),
-      debugContext(nullptr),
-      embeddedData() {
-      chakraShimArrayBuffer(nullptr) {
+      embeddedData(),
+      chakraShimArrayBuffer(nullptr),
+      chakraDebugShimArrayBuffer(nullptr) {
   // CHAKRA-TODO: multithread locking for s_isolateList?
   this->prevnext = &s_isolateList;
   this->next = s_isolateList;
@@ -381,13 +382,24 @@ void* IsolateShim::GetData(uint32_t slot) {
 
 JsValueRef IsolateShim::GetChakraShimJsArrayBuffer() {
   if (this->chakraShimArrayBuffer == nullptr) {
-      CHAKRA_VERIFY(JsCreateExternalArrayBuffer(
-          (void*)jsrt::chakra_shim_native,
-          sizeof(jsrt::chakra_shim_native),
-          nullptr, nullptr,
-          &this->chakraShimArrayBuffer) == JsNoError);
+    CHAKRA_VERIFY(JsCreateExternalArrayBuffer(
+                  (void*)jsrt::chakra_shim_native,
+                  sizeof(jsrt::chakra_shim_native),
+                  nullptr, nullptr,
+                  &this->chakraShimArrayBuffer) == JsNoError);
   }
   return this->chakraShimArrayBuffer;
+}
+
+JsValueRef IsolateShim::GetChakraDebugShimJsArrayBuffer() {
+  if (this->chakraDebugShimArrayBuffer == nullptr) {
+    CHAKRA_VERIFY(JsCreateExternalArrayBuffer(
+      (void*)jsrt::chakra_debug_native,
+      sizeof(jsrt::chakra_debug_native),
+      nullptr, nullptr,
+      &this->chakraDebugShimArrayBuffer) == JsNoError);
+  }
+  return this->chakraDebugShimArrayBuffer;
 }
 
 }  // namespace jsrt

@@ -25,7 +25,7 @@
 
 namespace v8 {
   extern bool g_trace_debug_json;
-  extern __declspec(thread) JsSourceContext currentContext;
+  extern THREAD_LOCAL JsSourceContext currentContext;
 }
 
 namespace jsrt {
@@ -447,22 +447,13 @@ bool ContextShim::ExecuteChakraShimJS() {
 }
 
 bool ContextShim::ExecuteChakraDebugShimJS(JsValueRef * chakraDebugObject) {
-  wchar_t buffer[_countof(chakra_debug_native) + 1];
-
-  if (StringConvert::CopyRaw<unsigned char, wchar_t>(chakra_debug_native,
-    _countof(chakra_debug_native),
-    buffer,
-    _countof(chakra_debug_native)) != JsNoError) {
-    return false;
-  }
-
-  // Ensure the buffer is null terminated
-  buffer[_countof(chakra_debug_native)] = L'\0';
-
   JsValueRef getInitFunction;
-  if (JsParseScriptWithAttributes(buffer,
+  JsValueRef url;
+  CHAKRA_VERIFY(JsCreateString("chakra_debug.js", strlen("chakra_debug.js"),
+                               &url) == JsNoError);
+  if (JsParse(GetIsolateShim()->GetChakraDebugShimJsArrayBuffer(),
     v8::currentContext++,
-    L"chakra_debug.js",
+    url,
     JsParseScriptAttributeNone,
     &getInitFunction) != JsNoError) {
     return false;

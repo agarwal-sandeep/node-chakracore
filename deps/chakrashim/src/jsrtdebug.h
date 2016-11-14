@@ -79,7 +79,7 @@ class Debugger {
   static void SetChakraDebugObject(JsValueRef chakraDebugObject);
  private:
   static void InstallHostCallback(JsValueRef chakraDebugObject,
-    const wchar_t *name,
+    const char *name,
     JsNativeFunction nativeFunction);
 };
 }  // namespace jsrt

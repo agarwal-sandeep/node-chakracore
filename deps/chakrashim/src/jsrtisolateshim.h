@@ -57,6 +57,7 @@ enum CachedSymbolPropertyIdRef {
 
 class IsolateShim {
  public:
+  v8::ArrayBuffer::Allocator* arrayBufferAllocator;
   bool NewContext(JsContextRef * context, bool exposeGC,
                   JsValueRef globalObjectTemplateInstance);
   bool GetMemoryUsage(size_t * memoryUsage);
@@ -110,6 +111,7 @@ class IsolateShim {
   }
 
   JsValueRef GetChakraShimJsArrayBuffer();
+  JsValueRef GetChakraDebugShimJsArrayBuffer();
 
   void SetData(unsigned int slot, void* data);
   void* GetData(unsigned int slot);
@@ -176,7 +178,7 @@ class IsolateShim {
   static IsolateShim * s_isolateList;
 
   static THREAD_LOCAL IsolateShim * s_currentIsolate;
-  static __declspec(thread) IsolateShim * s_previousIsolate;
+  static THREAD_LOCAL IsolateShim * s_previousIsolate;
 
   uv_prepare_t idleGc_prepare_handle_;
   uv_timer_t idleGc_timer_handle_;
@@ -184,5 +186,6 @@ class IsolateShim {
   bool isIdleGcScheduled = false;
 
   JsValueRef chakraShimArrayBuffer;
+  JsValueRef chakraDebugShimArrayBuffer;
 };
 }  // namespace jsrt
