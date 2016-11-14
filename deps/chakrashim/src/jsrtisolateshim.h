@@ -58,7 +58,7 @@ enum CachedSymbolPropertyIdRef {
 class IsolateShim {
  public:
   bool NewContext(JsContextRef * context, bool exposeGC,
-                               JsValueRef globalObjectTemplateInstance);
+                  JsValueRef globalObjectTemplateInstance);
   bool GetMemoryUsage(size_t * memoryUsage);
   bool Dispose();
   bool IsDisposing();
@@ -113,6 +113,8 @@ class IsolateShim {
 
   void SetData(unsigned int slot, void* data);
   void* GetData(unsigned int slot);
+
+  ContextShim* debugContext;
 
   inline uv_prepare_t* idleGc_prepare_handle() {
     return &idleGc_prepare_handle_;
@@ -174,6 +176,7 @@ class IsolateShim {
   static IsolateShim * s_isolateList;
 
   static THREAD_LOCAL IsolateShim * s_currentIsolate;
+  static __declspec(thread) IsolateShim * s_previousIsolate;
 
   uv_prepare_t idleGc_prepare_handle_;
   uv_timer_t idleGc_timer_handle_;
