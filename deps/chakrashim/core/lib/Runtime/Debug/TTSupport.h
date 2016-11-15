@@ -54,11 +54,10 @@ namespace TTD
     class TTDebuggerSourceLocation;
 }
 
-void TTDHardAssert(bool condition, const char* msg);
-void TTDHardAssert(BOOL condition, const char* msg);
+void _NOINLINE __declspec(noreturn) TTDAbort_fatal_error(const char* msg);
 
 #if ENABLE_TTD_ASSERT
-#define TTDAssert(C, M) TTDHardAssert(C, M)
+#define TTDAssert(C, M) { if(!(C)) TTDAbort_fatal_error(M); }
 #else
 #define TTDAssert(C, M) 
 #endif
@@ -71,7 +70,6 @@ T* TTD_MEM_ALLOC_CHECK(T* alloc)
     if(alloc == nullptr)
     {
         TTDAssert(false, "OOM in TTD");
-        exit(1);
     }
 
     return alloc;
@@ -548,12 +546,12 @@ namespace TTD
                 }
             }
 
-            if(reserve & (!commit))
+            if(reserve && !commit)
             {
                 this->m_reserveActiveBytes = desiredsize;
             }
 
-            if((!reserve) & commit)
+            if(!reserve && commit)
             {
                 TTDAssert(desiredsize <= this->m_reserveActiveBytes, "We are commiting more that we reserved.");
 
@@ -698,6 +696,8 @@ namespace TTD
 
             into.Length = length;
             into.Contents = this->SlabAllocateArray<char16>(into.Length + 1);
+
+            //don't js_memcpy if the contents length is 0
             js_memcpy_s(into.Contents, into.Length * sizeof(char16), str, length * sizeof(char16));
             into.Contents[into.Length] = '\0';
         }

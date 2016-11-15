@@ -174,7 +174,11 @@ public:
             void            GenerateClz(IR::Instr * instr);
             void            GenerateCtz(IR::Instr * instr);
             void            GeneratePopCnt(IR::Instr * instr);
-            void            GenerateThrowUnreachable(IR::Instr * instr);
+            void            GenerateTruncWithCheck(IR::Instr * instr);
+            IR::Opnd*       GenerateTruncChecks(IR::Instr* instr);
+            IR::RegOpnd*    MaterializeDoubleConstFromInt(intptr_t constAddr, IR::Instr* instr);
+            IR::RegOpnd*    MaterializeConstFromBits(int intConst, IRType type, IR::Instr* instr);
+            IR::Opnd*       Subtract2To31(IR::Opnd* src1, IR::Opnd* intMinFP, IRType type, IR::Instr* instr);
             bool            TryGenerateFastMulAdd(IR::Instr * instrAdd, IR::Instr ** pInstrPrev);
             bool            GenerateLdThisCheck(IR::Instr * instr);
             bool            GenerateLdThisStrict(IR::Instr * instr);
@@ -211,7 +215,9 @@ public:
             void            EmitUIntToFloat(IR::Opnd *dst, IR::Opnd *src, IR::Instr *instrInsert);
             void            EmitIntToLong(IR::Opnd *dst, IR::Opnd *src, IR::Instr *instrInsert);
             void            EmitUIntToLong(IR::Opnd *dst, IR::Opnd *src, IR::Instr *instrInsert);
+            void            EmitLongToInt(IR::Opnd *dst, IR::Opnd *src, IR::Instr *instrInsert);
             void            EmitFloatToInt(IR::Opnd *dst, IR::Opnd *src, IR::Instr *instrInsert);
+            void            EmitInt64toFloat(IR::Opnd *dst, IR::Opnd *src, IR::Instr *instrInsert);
             void            EmitFloat32ToFloat64(IR::Opnd *dst, IR::Opnd *src, IR::Instr *instrInsert);
             static IR::Instr *InsertConvertFloat64ToInt32(const RoundMode roundMode, IR::Opnd *const dst, IR::Opnd *const src, IR::Instr *const insertBeforeInstr);
             void            ConvertFloatToInt32(IR::Opnd* intOpnd, IR::Opnd* floatOpnd, IR::LabelInstr * labelHelper, IR::LabelInstr * labelDone, IR::Instr * instInsert);
@@ -246,6 +252,7 @@ public:
 
             bool            GenerateFastIsInst(IR::Instr * instr);
             void            GenerateIsJsObjectTest(IR::RegOpnd* instanceReg, IR::Instr* insertInstr, IR::LabelInstr* labelHelper);
+            void            LowerTypeof(IR::Instr * typeOfInstr);
 
 public:
             //
@@ -317,9 +324,7 @@ public:
                 this->lowererMDArch.LowerInlineSpreadArgOutLoop(callInstr, indexOpnd, arrayElementsStartOpnd);
             }
 
-public:
-    static void InsertIncUInt8PreventOverflow(IR::Opnd *const dst, IR::Opnd *const src, IR::Instr *const insertBeforeInstr, IR::Instr * *const onOverflowInsertBeforeInstrRef = nullptr);
-    static void InsertDecUInt8PreventOverflow(IR::Opnd *const dst, IR::Opnd *const src, IR::Instr *const insertBeforeInstr, IR::Instr * *const onOverflowInsertBeforeInstrRef = nullptr);
+    static IR::Instr * InsertCmovCC(const Js::OpCode opCode, IR::Opnd * dst, IR::Opnd* src1, IR::Instr* insertBeforeInstr, bool postRegAlloc = false);
 
 #ifdef ENABLE_SIMDJS
     void                Simd128InitOpcodeMap();

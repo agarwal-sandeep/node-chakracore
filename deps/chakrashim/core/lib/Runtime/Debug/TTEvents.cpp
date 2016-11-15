@@ -85,6 +85,8 @@ namespace TTD
             size_t byteLength = char16Length * sizeof(char16);
 
             this->m_sourceFile = new char16[char16Length];
+            TTDAssert(this->m_sourceFile != nullptr, "Allocation failed!!!");
+
             js_memcpy_s(this->m_sourceFile, byteLength, other.m_sourceFile, byteLength);
         }
     }
@@ -190,6 +192,8 @@ namespace TTD
             size_t byteLength = char16Length * sizeof(char16);
 
             this->m_sourceFile = new char16[char16Length];
+            TTDAssert(this->m_sourceFile != nullptr, "Allocation failed!!!");
+
             js_memcpy_s(this->m_sourceFile, byteLength, other.m_sourceFile, byteLength);
         }
     }
@@ -231,6 +235,8 @@ namespace TTD
             size_t byteLength = char16Length * sizeof(char16);
 
             this->m_sourceFile = new char16[char16Length];
+            TTDAssert(this->m_sourceFile != nullptr, "Allocation failed!!!");
+
             js_memcpy_s(this->m_sourceFile, byteLength, sourceFile, byteLength);
         }
     }
@@ -258,7 +264,7 @@ namespace TTD
         {
             for(uint32 i = 0; i < resBody->GetNestedCount(); ++i)
             {
-                Js::ParseableFunctionInfo* ipfi = resBody->GetNestedFunc(i)->EnsureDeserialized();
+                Js::ParseableFunctionInfo* ipfi = resBody->GetNestedFunctionForExecution(i);
                 Js::FunctionBody* ifb = JsSupport::ForceAndGetFunctionBody(ipfi);
 
                 if(this->m_functionLine == ifb->GetLineNumber() && this->m_functionColumn == ifb->GetColumnNumber())
@@ -273,7 +279,7 @@ namespace TTD
                 uint32 endColumn = UINT32_MAX;
                 if(i + 1 < resBody->GetNestedCount())
                 {
-                    Js::ParseableFunctionInfo* ipfinext = resBody->GetNestedFunc(i + 1)->EnsureDeserialized();
+                    Js::ParseableFunctionInfo* ipfinext = resBody->GetNestedFunctionForExecution(i + 1);
                     Js::FunctionBody* ifbnext = JsSupport::ForceAndGetFunctionBody(ipfinext);
 
                     endLine = ifbnext->GetLineNumber();
@@ -439,7 +445,7 @@ namespace TTD
 
         bool EventCompletesNormally(const EventLogEntry* evt)
         {
-            return (evt->ResultStatus == 0) || (evt->ResultStatus == TTD_REPLAY_JsErrorArgumentNotObject) || (evt->ResultStatus == TTD_REPLAY_JsErrorArgumentNotObject);
+            return (evt->ResultStatus == 0) || (evt->ResultStatus == TTD_REPLAY_JsErrorInvalidArgument) || (evt->ResultStatus == TTD_REPLAY_JsErrorArgumentNotObject);
         }
 
         bool EventCompletesWithException(const EventLogEntry* evt)

@@ -1002,9 +1002,14 @@ namespace TTD
 
     void EventLog::ReplayExternalCallEvent(Js::JavascriptFunction* function, uint32 argc, Js::Var* argv, Js::Var* result)
     {
+        TTDAssert(result != nullptr, "Must be non-null!!!");
+        TTDAssert(*result == nullptr, "And initialized to a default value.");
+
         const NSLogEvents::ExternalCallEventLogEntry* ecEvent = this->ReplayGetReplayEvent_Helper<NSLogEvents::ExternalCallEventLogEntry, NSLogEvents::EventKind::ExternalCallTag>();
 
         Js::ScriptContext* ctx = function->GetScriptContext();
+        TTDAssert(ctx != nullptr, "Not sure how this would be possible but check just in case.");
+
         ThreadContextTTD* executeContext = ctx->GetThreadContext()->TTDContext;
 
 #if ENABLE_BASIC_TRACE || ENABLE_FULL_BC_TRACE
@@ -1063,7 +1068,7 @@ namespace TTD
             }
         }
 
-        if(result == nullptr)
+        if(*result == nullptr)
         {
             *result = ctx->GetLibrary()->GetUndefined();
         }

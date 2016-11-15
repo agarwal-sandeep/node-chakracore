@@ -73,7 +73,7 @@
 
 #define TTD_REPLAY_ACTIVE_CONTEXT(executeContext) \
         Js::ScriptContext* ctx = executeContext->GetActiveScriptContext(); \
-        TTDAssert(ctx != nullptr, "This should bu non-null!!!");
+        TTDAssert(ctx != nullptr, "This should be non-null!!!");
 
 namespace TTD
 {

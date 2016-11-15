@@ -113,6 +113,7 @@ namespace TTD
             else
             {
                 into.Contents = TT_HEAP_ALLOC_ARRAY(char16, into.Length + 1);
+
                 js_memcpy_s(into.Contents, into.Length * sizeof(char16), string, length * sizeof(char16));
                 into.Contents[into.Length] = _u('\0');
             }
@@ -1009,12 +1010,20 @@ namespace TTD
             {
                 Js::ScopeObjectChain* scChain = fb->GetScopeObjectChain();
                 scopeChain.ScopeCount = (uint32)scChain->pScopeChain->Count();
-                scopeChain.ScopeArray = (scopeChain.ScopeCount != 0) ? alloc.SlabAllocateArray<TTD_PTR_ID>(scopeChain.ScopeCount) : 0;
 
-                for(int32 i = 0; i < scChain->pScopeChain->Count(); ++i)
+                if(scopeChain.ScopeCount == 0)
                 {
-                    Js::DebuggerScope* dbgScope = scChain->pScopeChain->Item(i);
-                    scopeChain.ScopeArray[i] = TTD_CONVERT_DEBUGSCOPE_TO_PTR_ID(dbgScope);
+                    scopeChain.ScopeArray = nullptr;
+                }
+                else
+                {
+                    scopeChain.ScopeArray = alloc.SlabAllocateArray<TTD_PTR_ID>(scopeChain.ScopeCount);
+
+                    for(int32 i = 0; i < scChain->pScopeChain->Count(); ++i)
+                    {
+                        Js::DebuggerScope* dbgScope = scChain->pScopeChain->Item(i);
+                        scopeChain.ScopeArray[i] = TTD_CONVERT_DEBUGSCOPE_TO_PTR_ID(dbgScope);
+                    }
                 }
             }
         }
@@ -1343,7 +1352,7 @@ namespace TTD
             functionInfo->SetGrfscr(functionInfo->GetGrfscr() | fscrGlobalCode);
 
             Js::EvalMapString key(source, length, moduleID, strictMode, /* isLibraryCode = */ false);
-            ctx->AddToNewFunctionMap(key, functionInfo);
+            ctx->AddToNewFunctionMap(key, functionInfo->GetFunctionInfo());
 
             Js::FunctionBody* fb = JsSupport::ForceAndGetFunctionBody(pfuncScript->GetParseableFunctionInfo());
 
@@ -1509,7 +1518,7 @@ namespace TTD
                     uint32 blength = parentBody->GetNestedCount();
                     for(uint32 i = 0; i < blength; ++i)
                     {
-                        Js::ParseableFunctionInfo* pfi = parentBody->GetNestedFunc(i)->EnsureDeserialized();
+                        Js::ParseableFunctionInfo* pfi = parentBody->GetNestedFunctionForExecution(i);
                         Js::FunctionBody* currfb = JsSupport::ForceAndGetFunctionBody(pfi);
 
                         if(fbInfo->OptLine == currfb->GetLineNumber() && fbInfo->OptColumn == currfb->GetColumnNumber())
@@ -1648,36 +1657,64 @@ namespace TTD
             ctx->TTDContextInfo->GetLoadedSources(topLevelScriptLoad, topLevelNewFunction, topLevelEval);
 
             snapCtx->LoadedTopLevelScriptCount = topLevelScriptLoad.Count();
-            snapCtx->LoadedTopLevelScriptArray = (snapCtx->LoadedTopLevelScriptCount != 0) ? alloc.SlabAllocateArray<TopLevelFunctionInContextRelation>(snapCtx->LoadedTopLevelScriptCount) : nullptr;
-            for(int32 i = 0; i < topLevelScriptLoad.Count(); ++i)
+            if(snapCtx->LoadedTopLevelScriptCount == 0)
             {
-                snapCtx->LoadedTopLevelScriptArray[i] = topLevelScriptLoad.Item(i);
+                snapCtx->LoadedTopLevelScriptArray = nullptr;
+            }
+            else
+            {
+                snapCtx->LoadedTopLevelScriptArray = alloc.SlabAllocateArray<TopLevelFunctionInContextRelation>(snapCtx->LoadedTopLevelScriptCount);
+                for(int32 i = 0; i < topLevelScriptLoad.Count(); ++i)
+                {
+                    snapCtx->LoadedTopLevelScriptArray[i] = topLevelScriptLoad.Item(i);
+                }
             }
 
             snapCtx->NewFunctionTopLevelScriptCount = topLevelNewFunction.Count();
-            snapCtx->NewFunctionTopLevelScriptArray = (snapCtx->NewFunctionTopLevelScriptCount != 0) ? alloc.SlabAllocateArray<TopLevelFunctionInContextRelation>(snapCtx->NewFunctionTopLevelScriptCount) : nullptr;
-            for(int32 i = 0; i < topLevelNewFunction.Count(); ++i)
+            if(snapCtx->NewFunctionTopLevelScriptCount == 0)
             {
-                snapCtx->NewFunctionTopLevelScriptArray[i] = topLevelNewFunction.Item(i);
+                snapCtx->NewFunctionTopLevelScriptArray = nullptr;
+            }
+            else
+            {
+                snapCtx->NewFunctionTopLevelScriptArray = alloc.SlabAllocateArray<TopLevelFunctionInContextRelation>(snapCtx->NewFunctionTopLevelScriptCount);
+                for(int32 i = 0; i < topLevelNewFunction.Count(); ++i)
+                {
+                    snapCtx->NewFunctionTopLevelScriptArray[i] = topLevelNewFunction.Item(i);
+                }
             }
 
             snapCtx->EvalTopLevelScriptCount = topLevelEval.Count();
-            snapCtx->EvalTopLevelScriptArray = (snapCtx->EvalTopLevelScriptCount != 0) ? alloc.SlabAllocateArray<TopLevelFunctionInContextRelation>(snapCtx->EvalTopLevelScriptCount) : nullptr;
-            for(int32 i = 0; i < topLevelEval.Count(); ++i)
+            if(snapCtx->EvalTopLevelScriptCount == 0)
             {
-                snapCtx->EvalTopLevelScriptArray[i] = topLevelEval.Item(i);
+                snapCtx->EvalTopLevelScriptArray = nullptr;
+            }
+            else
+            {
+                snapCtx->EvalTopLevelScriptArray = alloc.SlabAllocateArray<TopLevelFunctionInContextRelation>(snapCtx->EvalTopLevelScriptCount);
+                for(int32 i = 0; i < topLevelEval.Count(); ++i)
+                {
+                    snapCtx->EvalTopLevelScriptArray[i] = topLevelEval.Item(i);
+                }
             }
 
             //Extract pending async modification info
             const JsUtil::List<TTDPendingAsyncBufferModification, HeapAllocator>& pendingAsyncList = ctx->TTDContextInfo->GetPendingAsyncModListForSnapshot();
             snapCtx->PendingAsyncModCount = pendingAsyncList.Count();
-            snapCtx->PendingAsyncModArray = (snapCtx->PendingAsyncModCount != 0) ? alloc.SlabAllocateArray<SnapPendingAsyncBufferModification>(snapCtx->PendingAsyncModCount) : nullptr;
-
-            for(int32 k = 0; k < pendingAsyncList.Count(); ++k)
+            if(snapCtx->PendingAsyncModCount == 0)
             {
-                const TTDPendingAsyncBufferModification& pk = pendingAsyncList.Item(k);
-                snapCtx->PendingAsyncModArray[k].LogId = objToLogIdMap.Item(Js::RecyclableObject::FromVar(pk.ArrayBufferVar));
-                snapCtx->PendingAsyncModArray[k].Index = pk.Index;
+                snapCtx->PendingAsyncModArray = nullptr;
+            }
+            else
+            {
+                snapCtx->PendingAsyncModArray = alloc.SlabAllocateArray<SnapPendingAsyncBufferModification>(snapCtx->PendingAsyncModCount);
+
+                for(int32 k = 0; k < pendingAsyncList.Count(); ++k)
+                {
+                    const TTDPendingAsyncBufferModification& pk = pendingAsyncList.Item(k);
+                    snapCtx->PendingAsyncModArray[k].LogId = objToLogIdMap.Item(Js::RecyclableObject::FromVar(pk.ArrayBufferVar));
+                    snapCtx->PendingAsyncModArray[k].Index = pk.Index;
+                }
             }
         }
 

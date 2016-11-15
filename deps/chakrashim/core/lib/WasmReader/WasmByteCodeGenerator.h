@@ -123,6 +123,7 @@ namespace Wasm
         EmitInfo EmitIfElseExpr();
         void EmitBrTable();
         EmitInfo EmitDrop();
+        EmitInfo EmitGrowMemory();
         EmitInfo EmitGetLocal();
         EmitInfo EmitGetGlobal();
         EmitInfo EmitSetGlobal();
@@ -161,6 +162,7 @@ namespace Wasm
 
         EmitInfo PopEvalStack();
         void PushEvalStack(EmitInfo);
+        EmitInfo EnsureYield(BlockInfo);
         void EnterEvalStackScope();
         // The caller needs to release the location of the returned EmitInfo
         void ExitEvalStackScope();

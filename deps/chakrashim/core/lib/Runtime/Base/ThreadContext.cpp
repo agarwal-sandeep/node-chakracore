@@ -188,6 +188,9 @@ ThreadContext::ThreadContext(AllocationPolicyManager * allocationPolicyManager, 
     rootPendingClose(nullptr),
     isProfilingUserCode(true),
     loopDepth(0),
+    redeferralState(InitialRedeferralState),
+    gcSinceLastRedeferral(0),
+    gcSinceCallCountsCollected(0),
     tridentLoadAddress(nullptr),
     m_remoteThreadContextInfo(nullptr),
     debugManager(nullptr)
@@ -1160,7 +1163,7 @@ ThreadContext::AddPropertyRecordInternal(const Js::PropertyRecord * propertyReco
     // We will still be able to lookup the symbol property by the property id, so go ahead and check that.
     Assert(GetPropertyName(propertyRecord->GetPropertyId()) == propertyRecord);
 #endif
-    JS_ETW(EventWriteJSCRIPT_HOSTING_PROPERTYID_LIST(propertyRecord, propertyRecord->GetBuffer()));
+    JS_ETW_INTERNAL(EventWriteJSCRIPT_HOSTING_PROPERTYID_LIST(propertyRecord, propertyRecord->GetBuffer()));
 }
 
 void
@@ -1443,7 +1446,7 @@ ThreadContext::EnterScriptStart(Js::ScriptEntryExitRecord * record, bool doClean
 {
     Recycler * recycler = this->GetRecycler();
     Assert(recycler->IsReentrantState());
-    JS_ETW(EventWriteJSCRIPT_RUN_START(this,0));
+    JS_ETW_INTERNAL(EventWriteJSCRIPT_RUN_START(this,0));
 
     // Increment the callRootLevel early so that Dispose ran during FinishConcurrent will not close the current scriptContext
     uint oldCallRootLevel = this->callRootLevel++;
@@ -1579,7 +1582,7 @@ ThreadContext::EnterScriptEnd(Js::ScriptEntryExitRecord * record, bool doCleanup
         }
     }
 
-    JS_ETW(EventWriteJSCRIPT_RUN_STOP(this,0));
+    JS_ETW_INTERNAL(EventWriteJSCRIPT_RUN_STOP(this,0));
 }
 
 void
@@ -1728,6 +1731,16 @@ ThreadContext::ProbeStackNoDispose(size_t size, Js::ScriptContext *scriptContext
             this->CheckInterruptPoll();
         }
     }
+
+#if DBG
+    if (PHASE_STRESS1(Js::RedeferralPhase))
+    {
+        if (JsUtil::ExternalApi::IsScriptActiveOnCurrentThreadContext())
+        {
+            this->TryRedeferral();
+        }
+    }
+#endif
 }
 
 void
@@ -1968,6 +1981,7 @@ ThreadContext::SetJITConnectionInfo(HANDLE processHandle, void* serverSecurityDe
 void
 ThreadContext::EnsureJITThreadContext(bool allowPrereserveAlloc)
 {
+#if ENABLE_OOP_NATIVE_CODEGEN
     Assert(JITManager::GetJITManager()->IsOOPJITEnabled());
     Assert(JITManager::GetJITManager()->IsConnected());
 
@@ -1979,12 +1993,7 @@ ThreadContext::EnsureJITThreadContext(bool allowPrereserveAlloc)
     ThreadContextDataIDL contextData;
     contextData.processHandle = (intptr_t)JITManager::GetJITManager()->GetJITTargetHandle();
 
-    // TODO: OOP JIT, use more generic method for getting name, e.g. in case of ChakraTest.dll
-#ifdef NTBUILD
-    contextData.chakraBaseAddress = (intptr_t)GetModuleHandle(_u("Chakra.dll"));
-#else
-    contextData.chakraBaseAddress = (intptr_t)GetModuleHandle(_u("ChakraCore.dll"));
-#endif
+    contextData.chakraBaseAddress = (intptr_t)AutoSystemInfo::Data.GetChakraBaseAddr();
     contextData.crtBaseAddress = (intptr_t)GetModuleHandle(UCrtC99MathApis::LibraryName);
     contextData.threadStackLimitAddr = reinterpret_cast<intptr_t>(GetAddressOfStackLimitForCurrentThread());
     contextData.bailOutRegisterSaveSpaceAddr = (intptr_t)bailOutRegisterSaveSpace;
@@ -2010,6 +2019,8 @@ ThreadContext::EnsureJITThreadContext(bool allowPrereserveAlloc)
 
     HRESULT hr = JITManager::GetJITManager()->InitializeThreadContext(&contextData, &m_remoteThreadContextInfo, &m_prereservedRegionAddr);
     JITManager::HandleServerCallResult(hr);
+
+#endif
 }
 #endif
 
@@ -2520,6 +2531,7 @@ ThreadContext::PreCollectionCallBack(CollectionFlags flags)
 #ifdef PERF_COUNTERS
     PHASE_PRINT_TESTTRACE1(Js::DeferParsePhase, _u("TestTrace: deferparse - # of func: %d # deferparsed: %d\n"), PerfCounter::CodeCounterSet::GetTotalFunctionCounter().GetValue(), PerfCounter::CodeCounterSet::GetDeferredFunctionCounter().GetValue());
 #endif
+
     // This needs to be done before ClearInlineCaches since that method can empty the list of
     // script contexts with inline caches
     this->ClearScriptContextCaches();
@@ -2604,13 +2616,235 @@ ThreadContext::PostCollectionCallBack()
 
     // Recycler is null in the case where the ThreadContext is in the process of creating the recycler and
     // we have a GC triggered (say because the -recyclerStress flag is passed in)
-    if (this->recycler != NULL && this->recycler->InCacheCleanupCollection())
+    if (this->recycler != NULL)
     {
-        this->recycler->ClearCacheCleanupCollection();
-        for (Js::ScriptContext *scriptContext = scriptContextList; scriptContext; scriptContext = scriptContext->next)
+        if (this->recycler->InCacheCleanupCollection())
         {
-            scriptContext->CleanupWeakReferenceDictionaries();
+            this->recycler->ClearCacheCleanupCollection();
+            for (Js::ScriptContext *scriptContext = scriptContextList; scriptContext; scriptContext = scriptContext->next)
+            {
+                scriptContext->CleanupWeakReferenceDictionaries();
+            }
         }
+
+        if (this->DoTryRedeferral())
+        {
+            HRESULT hr = S_OK;
+            BEGIN_TRANSLATE_OOM_TO_HRESULT
+            {
+                this->TryRedeferral();
+            }
+            END_TRANSLATE_OOM_TO_HRESULT(hr);
+        }
+
+        this->UpdateRedeferralState();
+    }
+}
+
+bool
+ThreadContext::DoTryRedeferral() const
+{
+    if (PHASE_FORCE1(Js::RedeferralPhase) || PHASE_STRESS1(Js::RedeferralPhase))
+    {
+        return true;
+    }
+
+    if (PHASE_OFF1(Js::RedeferralPhase))
+    {
+        return false;
+    }
+
+    switch (this->redeferralState)
+    {
+        case InitialRedeferralState:
+            return false;
+
+        case StartupRedeferralState:
+            return gcSinceCallCountsCollected >= StartupRedeferralInactiveThreshold;
+
+        case MainRedeferralState:
+            return gcSinceCallCountsCollected >= MainRedeferralInactiveThreshold;
+
+        default:
+            Assert(0);
+            return false;
+    };
+}
+
+bool
+ThreadContext::DoRedeferFunctionBodies() const
+{
+#if ENABLE_TTD
+    if (this->IsRuntimeInTTDMode())
+    {
+        return false;
+    }
+#endif
+
+    if (PHASE_FORCE1(Js::RedeferralPhase) || PHASE_STRESS1(Js::RedeferralPhase))
+    {
+        return true;
+    }
+
+    if (PHASE_OFF1(Js::RedeferralPhase))
+    {
+        return false;
+    }
+
+    switch (this->redeferralState)
+    {
+        case InitialRedeferralState:
+            return false;
+
+        case StartupRedeferralState:
+            return gcSinceLastRedeferral >= StartupRedeferralCheckInterval;
+
+        case MainRedeferralState:
+            return gcSinceLastRedeferral >= MainRedeferralCheckInterval;
+
+        default:
+            Assert(0);
+            return false;
+    };
+}
+
+uint
+ThreadContext::GetRedeferralCollectionInterval() const
+{
+    switch(this->redeferralState)
+    {
+        case InitialRedeferralState:
+            return InitialRedeferralDelay;
+
+        case StartupRedeferralState:
+            return StartupRedeferralCheckInterval;
+
+        case MainRedeferralState:
+            return MainRedeferralCheckInterval;
+
+        default:
+            Assert(0);
+            return (uint)-1;
+    }
+}
+
+uint
+ThreadContext::GetRedeferralInactiveThreshold() const
+{
+    switch(this->redeferralState)
+    {
+        case InitialRedeferralState:
+            return InitialRedeferralDelay;
+
+        case StartupRedeferralState:
+            return StartupRedeferralInactiveThreshold;
+
+        case MainRedeferralState:
+            return MainRedeferralInactiveThreshold;
+
+        default:
+            Assert(0);
+            return (uint)-1;
+    }
+}
+
+void
+ThreadContext::TryRedeferral()
+{
+    bool doRedefer = this->DoRedeferFunctionBodies();
+
+    // Collect the set of active functions.
+    ActiveFunctionSet *pActiveFuncs = nullptr;
+    if (doRedefer)
+    {
+        pActiveFuncs = Anew(this->GetThreadAlloc(), ActiveFunctionSet, this->GetThreadAlloc());
+        this->GetActiveFunctions(pActiveFuncs);
+#if DBG
+        this->redeferredFunctions = 0;
+        this->recoveredBytes = 0;
+#endif
+    }
+    
+    uint inactiveThreshold = this->GetRedeferralInactiveThreshold();
+    Js::ScriptContext *scriptContext;
+    for (scriptContext = GetScriptContextList(); scriptContext; scriptContext = scriptContext->next)
+    {
+        if (scriptContext->IsClosed())
+        {
+            continue;
+        }
+        scriptContext->RedeferFunctionBodies(pActiveFuncs, inactiveThreshold);
+    }
+
+    if (pActiveFuncs)
+    {
+        Adelete(this->GetThreadAlloc(), pActiveFuncs);
+#if DBG
+        if (PHASE_STATS1(Js::RedeferralPhase) && this->redeferredFunctions)
+        {
+            Output::Print(_u("Redeferred: %d, Bytes: 0x%x\n"), this->redeferredFunctions, this->recoveredBytes);
+        }
+#endif
+    }
+}
+
+void
+ThreadContext::GetActiveFunctions(ActiveFunctionSet * pActiveFuncs)
+{
+    if (!this->IsInScript() || this->entryExitRecord == nullptr)
+    {
+        return;
+    }
+
+    Js::JavascriptStackWalker walker(GetScriptContextList(), TRUE, NULL, true);
+    Js::JavascriptFunction *function = nullptr;
+    while (walker.GetCallerWithoutInlinedFrames(&function))
+    {
+        if (function->GetFunctionInfo()->HasBody())
+        {
+            Js::FunctionBody *body = function->GetFunctionInfo()->GetFunctionBody();
+            body->UpdateActiveFunctionSet(pActiveFuncs, nullptr);
+        }
+    }
+}
+
+void
+ThreadContext::UpdateRedeferralState()
+{
+    uint inactiveThreshold = this->GetRedeferralInactiveThreshold();
+    uint collectInterval = this->GetRedeferralCollectionInterval();
+
+    if (this->gcSinceCallCountsCollected >= inactiveThreshold)
+    {
+        this->gcSinceCallCountsCollected = 0;
+        if (this->gcSinceLastRedeferral >= collectInterval)
+        {
+            // Advance state
+            switch (this->redeferralState)
+            {
+                case InitialRedeferralState:
+                    this->redeferralState = StartupRedeferralState;
+                    break;
+
+                case StartupRedeferralState:
+                    this->redeferralState = MainRedeferralState;
+                    break;
+
+                case MainRedeferralState:
+                    break;
+
+                default:
+                    Assert(0);
+                    break;
+            }
+
+            this->gcSinceLastRedeferral = 0;
+        }
+    }
+    else
+    {
+        this->gcSinceCallCountsCollected++;
+        this->gcSinceLastRedeferral++;
     }
 }
 
@@ -3862,6 +4096,7 @@ void DumpRecyclerObjectGraph()
 BOOL ThreadContext::IsNativeAddress(void * pCodeAddr)
 {
     boolean result;
+#if ENABLE_OOP_NATIVE_CODEGEN
     if (JITManager::GetJITManager()->IsOOPJITEnabled())
     {
         if (PreReservedVirtualAllocWrapper::IsInRange((void*)m_prereservedRegionAddr, pCodeAddr))
@@ -3872,6 +4107,11 @@ BOOL ThreadContext::IsNativeAddress(void * pCodeAddr)
         {
             return false;
         }
+        if (AutoSystemInfo::IsJscriptModulePointer(pCodeAddr))
+        {
+            return false;
+        }
+
         HRESULT hr = JITManager::GetJITManager()->IsNativeAddr(this->m_remoteThreadContextInfo, (intptr_t)pCodeAddr, &result);
 
         // TODO: OOP JIT, can we throw here?
@@ -3879,6 +4119,7 @@ BOOL ThreadContext::IsNativeAddress(void * pCodeAddr)
         return result;
     }
     else
+#endif
     {
         PreReservedVirtualAllocWrapper *preReservedVirtualAllocWrapper = this->GetPreReservedVirtualAllocator();
         if (preReservedVirtualAllocWrapper->IsInRange(pCodeAddr))
@@ -4102,7 +4343,7 @@ uint ThreadContext::GetRandomNumber()
 #endif
 }
 
-#ifdef ENABLE_JS_ETW
+#if defined(ENABLE_JS_ETW) && defined(NTBUILD)
 void ThreadContext::EtwLogPropertyIdList()
 {
     propertyMap->Map([&](const Js::PropertyRecord* propertyRecord){

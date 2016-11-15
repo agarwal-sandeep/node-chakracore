@@ -575,6 +575,7 @@ namespace TTD
                         curr = sai;
                     }
 
+                    TTDAssert(curr != nullptr, "Should get set with variable sai above when needed!");
                     if(idx >= curr->LastIndex)
                     {
                         uint32 endIdx = (idx <= (Js::JavascriptArray::MaxArrayLength - TTD_ARRAY_BLOCK_SIZE)) ? (idx + TTD_ARRAY_BLOCK_SIZE) : Js::JavascriptArray::MaxArrayLength;
@@ -759,6 +760,7 @@ namespace TTD
                     curr->Next = tmp;
                 }
                 curr = tmp;
+                TTDAssert(curr != nullptr, "Sanity assert failed.");
 
                 if(arrayInfo == nullptr)
                 {

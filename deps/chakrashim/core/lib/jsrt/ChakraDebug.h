@@ -951,6 +951,7 @@ typedef __int64 int64_t;
     /// <summary>
     ///     TTD API -- may change in future versions:
     ///     A check for unimplmented TTD actions in the host.
+    ///     This API is a TEMPORARY API while we complete the implementation of TTD support in the Node host and will be deleted once that is complete.
     /// </summary>
     /// <param name="msg">The message to print if we should be catching this as a TTD operation.</param>
     /// <returns>The code <c>JsNoError</c> if the operation succeeded, a failure code otherwise.</returns>

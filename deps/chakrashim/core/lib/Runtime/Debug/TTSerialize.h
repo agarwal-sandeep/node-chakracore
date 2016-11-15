@@ -496,9 +496,6 @@ namespace TTD
             }
         }
 
-        //The action we should take if we encounter an invalid token or unexpected state in the file
-        void FileReadAssert(bool ok);
-
     public:
         FileReader(JsTTDStreamHandle handle, bool doDecompress, TTDReadBytesFromStreamCallback pfRead, TTDFlushAndCloseStreamCallback pfClose);
         virtual ~FileReader();

@@ -273,8 +273,8 @@ HRESULT RunScript(const char* fileName, LPCSTR fileContents, BYTE *bcBuffer, cha
         try
         {
             JsTTDMoveMode moveMode = (JsTTDMoveMode)(JsTTDMoveMode::JsTTDMoveKthEvent | ((int64) startEventCount) << 32);
-            INT64 snapEventTime = -1;
-            INT64 nextEventTime = -2;
+            int64_t snapEventTime = -1;
+            int64_t nextEventTime = -2;
 
             while(true)
             {

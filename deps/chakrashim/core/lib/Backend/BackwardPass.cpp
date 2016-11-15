@@ -1859,7 +1859,7 @@ BackwardPass::ProcessBailOutInfo(IR::Instr * instr)
             //
             // Handle the source side.
             IR::ByteCodeUsesInstr *byteCodeUsesInstr = instr->AsByteCodeUsesInstr();
-            BVSparse<JitArenaAllocator> * byteCodeUpwardExposedUsed = byteCodeUsesInstr->byteCodeUpwardExposedUsed;
+            const BVSparse<JitArenaAllocator> * byteCodeUpwardExposedUsed = byteCodeUsesInstr->GetByteCodeUpwardExposedUsed();
             if (byteCodeUpwardExposedUsed != nullptr)
             {
                 this->currentBlock->upwardExposedUses->Or(byteCodeUpwardExposedUsed);
@@ -1926,12 +1926,11 @@ BackwardPass::ProcessBailOutInfo(IR::Instr * instr)
             }
 
             IR::ByteCodeUsesInstr *byteCodeUsesInstr = instr->AsByteCodeUsesInstr();
-            BVSparse<JitArenaAllocator> * byteCodeUpwardExposedUsed = byteCodeUsesInstr->byteCodeUpwardExposedUsed;
-            if (byteCodeUpwardExposedUsed != nullptr)
+            if (byteCodeUsesInstr->GetByteCodeUpwardExposedUsed() != nullptr)
             {
-                this->currentBlock->byteCodeUpwardExposedUsed->Or(byteCodeUpwardExposedUsed);
+                this->currentBlock->byteCodeUpwardExposedUsed->Or(byteCodeUsesInstr->GetByteCodeUpwardExposedUsed());
 #if DBG
-                FOREACH_BITSET_IN_SPARSEBV(symId, byteCodeUpwardExposedUsed)
+                FOREACH_BITSET_IN_SPARSEBV(symId, byteCodeUsesInstr->GetByteCodeUpwardExposedUsed())
                 {
                     StackSym * stackSym = this->func->m_symTable->FindStackSym(symId);
                     Assert(!stackSym->IsTypeSpec());
@@ -6894,7 +6893,8 @@ BackwardPass::ProcessInlineeStart(IR::Instr* inlineeStart)
         if (!opnd->GetIsJITOptimizedReg() && sym && sym->HasByteCodeRegSlot())
         {
             // Replace instrs with bytecodeUses
-            IR::ByteCodeUsesInstr *bytecodeUse = IR::ByteCodeUsesInstr::New(argInstr, sym->m_id);
+            IR::ByteCodeUsesInstr *bytecodeUse = IR::ByteCodeUsesInstr::New(argInstr);
+            bytecodeUse->Set(opnd);
             argInstr->InsertBefore(bytecodeUse);
         }
         startCallInstr = argInstr->GetSrc2()->GetStackSym()->m_instrDef;
@@ -6961,7 +6961,8 @@ BackwardPass::ProcessInlineeStart(IR::Instr* inlineeStart)
     if (!src1->GetIsJITOptimizedReg() && sym && sym->HasByteCodeRegSlot())
     {
         // Replace instrs with bytecodeUses
-        IR::ByteCodeUsesInstr *bytecodeUse = IR::ByteCodeUsesInstr::New(inlineeStart, sym->m_id);
+        IR::ByteCodeUsesInstr *bytecodeUse = IR::ByteCodeUsesInstr::New(inlineeStart);
+        bytecodeUse->Set(src1);
         inlineeStart->InsertBefore(bytecodeUse);
     }
 
@@ -7055,26 +7056,39 @@ BackwardPass::ProcessBailOnNoProfile(IR::Instr *instr, BasicBlock *block)
         curInstr = curInstr->m_prev;
     }
 
-    // Didn't get to the top of the block, delete this BailOnNoProfile...
+    // Didn't get to the top of the block, delete this BailOnNoProfile.
     if (!curInstr->IsLabelInstr())
     {
         block->RemoveInstr(instr);
         return true;
     }
 
+    // Save the head instruction for later use.
+    IR::LabelInstr *blockHeadInstr = curInstr->AsLabelInstr();
+
     // We can't bail in the middle of a "tmp = CmEq s1, s2; BrTrue tmp" turned into a "BrEq s1, s2",
     // because the bailout wouldn't be able to restore tmp.
     IR::Instr *curNext = curInstr->GetNextRealInstrOrLabel();
-    if (curNext->m_opcode == Js::OpCode::Ld_A && curNext->GetDst()->IsRegOpnd() && curNext->GetDst()->AsRegOpnd()->m_fgPeepTmp)
+    IR::Instr *instrNope = nullptr;
+    while (curNext->m_opcode == Js::OpCode::Ld_A && curNext->GetDst()->IsRegOpnd() && curNext->GetDst()->AsRegOpnd()->m_fgPeepTmp)
     {
-        block->RemoveInstr(instr);
-        return true;
+        // Instead of just giving up, we can be a little trickier. We can instead treat the tmp declaration(s) as a
+        // part of the block prefix, and put the bailonnoprofile immediately after them. This has the added benefit
+        // that we can still merge up blocks beginning with bailonnoprofile, even if they would otherwise not allow
+        // us to, due to the fact that these tmp declarations would be pre-empted by the higher-level bailout.
+        instrNope = curNext;
+        curNext = curNext->GetNextRealInstrOrLabel();
+    }
+
+    if (instrNope != nullptr)
+    {
+        instrNope = curNext;
     }
 
     curInstr = instr->m_prev;
 
-    // Move to top of block.
-    while(!curInstr->StartsBasicBlock())
+    // Move to top of block (but just below any fgpeeptemp lds).
+    while(!curInstr->StartsBasicBlock() && curInstr != instrNope)
     {
         // Delete redundant BailOnNoProfile
         if (curInstr->m_opcode == Js::OpCode::BailOnNoProfile)
@@ -7094,7 +7108,6 @@ BackwardPass::ProcessBailOnNoProfile(IR::Instr *instr, BasicBlock *block)
     instr->Unlink();
 
     // Now try to move this up the flowgraph to the predecessor blocks
-    bool curBlockNeedsBail = false;
     FOREACH_PREDECESSOR_BLOCK(pred, block)
     {
         bool hoistBailToPred = true;
@@ -7113,7 +7126,7 @@ BackwardPass::ProcessBailOnNoProfile(IR::Instr *instr, BasicBlock *block)
             {
                 continue;
             }
-            if (predSucc->GetFirstInstr()->m_next->m_opcode != Js::OpCode::BailOnNoProfile)
+            if (!predSucc->beginsBailOnNoProfile)
             {
                 hoistBailToPred = false;
                 break;
@@ -7132,15 +7145,11 @@ BackwardPass::ProcessBailOnNoProfile(IR::Instr *instr, BasicBlock *block)
                     // We already have one, we don't need a second.
                     instrCopy->Free();
                 }
-                else if (predInstr->AsBranchInstr()->m_isSwitchBr)
+                else if (!predInstr->AsBranchInstr()->m_isSwitchBr)
                 {
                     // Don't put a bailout in the middle of a switch dispatch sequence.
                     // The bytecode offsets are not in order, and it would lead to incorrect
                     // bailout info.
-                    curBlockNeedsBail = true;
-                }
-                else
-                {
                     instrCopy->m_func = predInstr->m_func;
                     predInstr->InsertBefore(instrCopy);
                 }
@@ -7160,18 +7169,18 @@ BackwardPass::ProcessBailOnNoProfile(IR::Instr *instr, BasicBlock *block)
                 }
             }
         }
-        else
-        {
-            curBlockNeedsBail = true;
-        }
     } NEXT_PREDECESSOR_BLOCK;
 
-    if (curBlockNeedsBail)
+    // If we have a BailOnNoProfile in the first block, there must have been at least one path out of this block that always throws.
+    // Don't bother keeping the bailout in the first block as there are some issues in restoring the ArgIn bytecode registers on bailout
+    // and throw case should be rare enough that it won't matter for perf.
+    if (block->GetBlockNum() != 0)
     {
-        curInstr->AsLabelInstr()->isOpHelper = true;
+        blockHeadInstr->isOpHelper = true;
 #if DBG
-        curInstr->AsLabelInstr()->m_noHelperAssert = true;
+        blockHeadInstr->m_noHelperAssert = true;
 #endif
+        block->beginsBailOnNoProfile = true;
 
         instr->m_func = curInstr->m_func;
         curInstr->InsertAfter(instr);
@@ -7265,8 +7274,8 @@ BackwardPass::ReverseCopyProp(IR::Instr *instr)
         if (instrPrev->m_opcode == Js::OpCode::ByteCodeUses)
         {
             byteCodeUseInstr = instrPrev->AsByteCodeUsesInstr();
-
-            if (byteCodeUseInstr->byteCodeUpwardExposedUsed && byteCodeUseInstr->byteCodeUpwardExposedUsed->Test(varSym->m_id) && byteCodeUseInstr->byteCodeUpwardExposedUsed->Count() == 1)
+            const BVSparse<JitArenaAllocator>* byteCodeUpwardExposedUsed = byteCodeUseInstr->GetByteCodeUpwardExposedUsed();
+            if (byteCodeUpwardExposedUsed && byteCodeUpwardExposedUsed->Test(varSym->m_id) && byteCodeUpwardExposedUsed->Count() == 1)
             {
                 instrPrev = byteCodeUseInstr->GetPrevRealInstrOrLabel();
 

@@ -155,15 +155,15 @@ WasmModuleGenerator::GenerateFunctionHeader(uint32 index)
     {
         for (uint32 iExport = 0; iExport < m_module->GetExportCount(); ++iExport)
         {
-            Wasm::WasmExport* funcExport = m_module->GetFunctionExport(iExport);
-            if (funcExport &&
-                funcExport->nameLength > 0 &&
-                m_module->GetFunctionIndexType(funcExport->funcIndex) == FunctionIndexTypes::Function &&
-                funcExport->funcIndex == wasmInfo->GetNumber())
+            Wasm::WasmExport* wasmExport = m_module->GetExport(iExport);
+            if (wasmExport  &&
+                wasmExport->nameLength > 0 &&
+                m_module->GetFunctionIndexType(wasmExport->funcIndex) == FunctionIndexTypes::Function &&
+                wasmExport->funcIndex == wasmInfo->GetNumber())
             {
-                nameLength = funcExport->nameLength + 16;
+                nameLength = wasmExport->nameLength + 16;
                 char16 * autoName = RecyclerNewArrayLeafZ(m_recycler, char16, nameLength);
-                nameLength = swprintf_s(autoName, nameLength, _u("%s[%u]"), funcExport->name, wasmInfo->GetNumber());
+                nameLength = swprintf_s(autoName, nameLength, _u("%s[%u]"), wasmExport->name, wasmInfo->GetNumber());
                 functionName = autoName;
                 break;
             }
@@ -208,6 +208,7 @@ WasmModuleGenerator::GenerateFunctionHeader(uint32 index)
 
     Js::AsmJsFunctionInfo* info = body->GetAsmJsFunctionInfo();
     info->SetWasmReaderInfo(readerInfo);
+    info->SetWebAssemblyModule(m_module);
 
     if (wasmInfo->GetParamCount() >= Js::Constants::InvalidArgSlot)
     {
@@ -215,7 +216,7 @@ WasmModuleGenerator::GenerateFunctionHeader(uint32 index)
     }
     Js::ArgSlot paramCount = (Js::ArgSlot)wasmInfo->GetParamCount();
     info->SetArgCount(paramCount);
-
+    info->SetWasmSignature(wasmInfo->GetSignature());
     Js::ArgSlot argSizeLength = max(paramCount, 3ui16);
     info->SetArgSizeArrayLength(argSizeLength);
     uint* argSizeArray = RecyclerNewArrayLeafZ(m_recycler, uint, argSizeLength);
@@ -519,6 +520,11 @@ WasmBytecodeGenerator::EmitExpr(WasmOp op)
         m_writer.AsmReg1(Js::OpCodeAsmJs::CurrentMemory_Int, tempReg);
         break;
     }
+    case wbGrowMemory:
+    {
+        info = EmitGrowMemory();
+        break;
+    }
     case wbUnreachable:
         m_writer.EmptyAsm(Js::OpCodeAsmJs::Unreachable_Void);
         SetUnreachableState(true);
@@ -804,7 +810,6 @@ WasmBytecodeGenerator::EmitCall()
     case wbCallIndirect:
         indirectIndexInfo = PopEvalStack();
         signatureId = GetReader()->m_currentNode.call.num;
-        signatureId = m_module->GetEquivalentSignatureId(signatureId);
         calleeSignature = m_module->GetSignature(signatureId);
         ReleaseLocation(&indirectIndexInfo);
         break;
@@ -905,9 +910,9 @@ WasmBytecodeGenerator::EmitCall()
         {
             throw WasmCompilationException(_u("Indirect call index must be int type"));
         }
-        // todo:: Add bounds check. Asm.js doesn't need it because there has to be an & operator
-        m_writer.AsmSlot(Js::OpCodeAsmJs::LdSlotArr, 0, 1, calleeSignature->GetSignatureId() + m_module->GetTableEnvironmentOffset());
-        m_writer.AsmSlot(Js::OpCodeAsmJs::LdArr_Func, 0, 0, indirectIndexInfo.location);
+        m_writer.AsmSlot(Js::OpCodeAsmJs::LdSlotArr, 0, 1, m_module->GetTableEnvironmentOffset());
+        m_writer.AsmSlot(Js::OpCodeAsmJs::LdArr_WasmFunc, 0, 0, indirectIndexInfo.location);
+        m_writer.AsmReg1IntConst1(Js::OpCodeAsmJs::CheckSignature, 0, calleeSignature->GetSignatureId());
         break;
     default:
         Assume(UNREACHED);
@@ -986,6 +991,7 @@ WasmBytecodeGenerator::EmitIfElseExpr()
     BlockInfo blockInfo = PushLabel(endLabel);
     bool endOnElse = false;
     EmitBlockCommon(&blockInfo, &endOnElse);
+    EnsureYield(blockInfo);
 
     m_writer.AsmBr(endLabel);
     m_writer.MarkAsmJsLabel(falseLabel);
@@ -996,7 +1002,12 @@ WasmBytecodeGenerator::EmitIfElseExpr()
     {
         // In case the true block sets the unreachable state, we still have to emit the else block
         SetUnreachableState(false);
+        if (blockInfo.yieldInfo)
+        {
+            blockInfo.yieldInfo->didYield = false;
+        }
         EmitBlockCommon(&blockInfo);
+        EnsureYield(blockInfo);
     }
     m_writer.MarkAsmJsLabel(endLabel);
 
@@ -1042,6 +1053,22 @@ WasmBytecodeGenerator::EmitBrTable()
     ReleaseLocation(&yieldInfo);
 
     SetUnreachableState(true);
+}
+
+
+EmitInfo
+WasmBytecodeGenerator::EmitGrowMemory()
+{
+    GetFunctionBody()->GetAsmJsFunctionInfo()->SetUsesHeapBuffer(true);
+
+    EmitInfo info = PopEvalStack();
+    if (info.type != WasmTypes::I32)
+    {
+        throw WasmCompilationException(_u("Invalid type for GrowMemory"));
+    }
+
+    m_writer.AsmReg2(Js::OpCodeAsmJs::GrowMemory, info.location, info.location);
+    return info;
 }
 
 EmitInfo
@@ -1331,13 +1358,8 @@ WasmBytecodeGenerator::ReleaseLocation(EmitInfo * info)
 }
 
 EmitInfo
-WasmBytecodeGenerator::PopLabel(Js::ByteCodeLabel labelValidation)
+WasmBytecodeGenerator::EnsureYield(BlockInfo info)
 {
-    Assert(m_blockInfos.Count() > 0);
-    BlockInfo info = m_blockInfos.Pop();
-    UNREFERENCED_PARAMETER(labelValidation);
-    Assert(info.label == labelValidation);
-
     EmitInfo yieldEmitInfo;
     if (info.HasYield())
     {
@@ -1348,10 +1370,21 @@ WasmBytecodeGenerator::PopLabel(Js::ByteCodeLabel labelValidation)
             // Most likely we can't reach this code so the value doesn't matter
             WasmConstLitNode cnst;
             cnst.i64 = 0;
+            info.yieldInfo->didYield = true;
             EmitLoadConst(yieldEmitInfo, cnst);
         }
     }
     return yieldEmitInfo;
+}
+
+EmitInfo
+WasmBytecodeGenerator::PopLabel(Js::ByteCodeLabel labelValidation)
+{
+    Assert(m_blockInfos.Count() > 0);
+    BlockInfo info = m_blockInfos.Pop();
+    UNREFERENCED_PARAMETER(labelValidation);
+    Assert(info.label == labelValidation);
+    return EnsureYield(info);
 }
 
 BlockInfo

@@ -582,19 +582,6 @@ namespace TTD
         *readSize = (size_t)bwp;
     }
 
-    void FileReader::FileReadAssert(bool ok)
-    {
-        //
-        //TODO: we probably want to make this a special exception so we can abort cleanly when reading an invalid data
-        //
-        TTDAssert(ok, "Unexpected event in file reading!");
-        if(!ok)
-        {
-            //make sure we fail even in release mode
-            exit(1);
-        }
-    }
-
     FileReader::FileReader(JsTTDStreamHandle handle, bool doDecompress, TTDReadBytesFromStreamCallback pfRead, TTDFlushAndCloseStreamCallback pfClose)
         : m_hfile(handle), m_pfRead(pfRead), m_pfClose(pfClose), m_peekChar(-1), m_doDecompress(doDecompress), m_cursor(0), m_buffCount(0), m_buffer(nullptr)
     {
@@ -1146,7 +1133,7 @@ namespace TTD
         bool likelytInt; //we don't care about this as we already know it is a double
         const char16* end;
         double val = Js::NumberUtilities::StrToDbl<char16>(buff, &end, likelytInt);
-        FileReader::FileReadAssert((buff != end) && !Js::JavascriptNumber::IsNan(val));
+        TTDAssert((buff != end) && !Js::JavascriptNumber::IsNan(val), "Error in parse.");
 
         return val;
     }
@@ -1171,7 +1158,7 @@ namespace TTD
         if(readSeparator)
         {
             NSTokens::ParseTokenKind tok = this->Scan(this->m_charListDiscard);
-            FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Comma);
+            TTDAssert(tok == NSTokens::ParseTokenKind::Comma, "Error in parse.");
         }
     }
 
@@ -1181,20 +1168,19 @@ namespace TTD
 
         //We do a special scan here for a key (instead of the more general scan we call elsewhere)
         NSTokens::ParseTokenKind tok = this->ScanKey(this->m_charListPrimary);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::String);
+        TTDAssert(tok == NSTokens::ParseTokenKind::String, "Error in parse.");
 
         this->m_charListPrimary.Add(_u('\0'));
         const char16* keystr = this->m_charListPrimary.GetBuffer();
 
         //check key strings are the same
-        FileReader::FileReadAssert(1 <= (uint32)keyCheck && (uint32)keyCheck < (uint32)NSTokens::Key::Count);
+        TTDAssert(1 <= (uint32)keyCheck && (uint32)keyCheck < (uint32)NSTokens::Key::Count, "Error in parse.");
         const char16* kname = this->m_keyNameArray[(uint32)keyCheck];
-        FileReader::FileReadAssert(kname != nullptr);
-
-        FileReader::FileReadAssert(wcscmp(keystr, kname) == 0);
+        TTDAssert(kname != nullptr, "Error in parse.");
+        TTDAssert(wcscmp(keystr, kname) == 0, "Error in parse.");
 
         NSTokens::ParseTokenKind toksep = this->Scan(this->m_charListDiscard);
-        FileReader::FileReadAssert(toksep == NSTokens::ParseTokenKind::Colon);
+        TTDAssert(toksep == NSTokens::ParseTokenKind::Colon, "Error in parse.");
     }
 
     void TextFormatReader::ReadSequenceStart(bool readSeparator)
@@ -1202,13 +1188,13 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListDiscard);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::LBrack);
+        TTDAssert(tok == NSTokens::ParseTokenKind::LBrack, "Error in parse.");
     }
 
     void TextFormatReader::ReadSequenceEnd()
     {
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListDiscard);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::RBrack);
+        TTDAssert(tok == NSTokens::ParseTokenKind::RBrack, "Error in parse.");
     }
 
     void TextFormatReader::ReadRecordStart(bool readSeparator)
@@ -1216,13 +1202,13 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListDiscard);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::LCurly);
+        TTDAssert(tok == NSTokens::ParseTokenKind::LCurly, "Error in parse.");
     }
 
     void TextFormatReader::ReadRecordEnd()
     {
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListDiscard);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::RCurly);
+        TTDAssert(tok == NSTokens::ParseTokenKind::RCurly, "Error in parse.");
     }
 
     void TextFormatReader::ReadNakedNull(bool readSeparator)
@@ -1230,7 +1216,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListDiscard);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Null);
+        TTDAssert(tok == NSTokens::ParseTokenKind::Null, "Error in parse.");
     }
 
     byte TextFormatReader::ReadNakedByte(bool readSeparator)
@@ -1238,11 +1224,12 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Number);
+        TTDAssert(tok == NSTokens::ParseTokenKind::Number, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0'));
         uint64 uval = this->ReadUIntFromCharArray(this->m_charListOpt.GetBuffer());
-        FileReader::FileReadAssert(uval <= BYTE_MAX);
+        TTDAssert(uval <= BYTE_MAX, "Error in parse.");
+
         return (byte)uval;
     }
 
@@ -1251,7 +1238,7 @@ namespace TTD
         this->ReadKey(keyCheck, readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::True || tok == NSTokens::ParseTokenKind::False);
+        TTDAssert(tok == NSTokens::ParseTokenKind::True || tok == NSTokens::ParseTokenKind::False, "Error in parse.");
 
         return (tok == NSTokens::ParseTokenKind::True);
     }
@@ -1261,11 +1248,11 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Number);
+        TTDAssert(tok == NSTokens::ParseTokenKind::Number, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0'));
         int64 ival = this->ReadIntFromCharArray(this->m_charListOpt.GetBuffer());
-        FileReader::FileReadAssert(INT32_MIN <= ival && ival <= INT32_MAX);
+        TTDAssert(INT32_MIN <= ival && ival <= INT32_MAX, "Error in parse.");
 
         return (int32)ival;
     }
@@ -1275,11 +1262,11 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Number);
+        TTDAssert(tok == NSTokens::ParseTokenKind::Number, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0'));
         uint64 uval = this->ReadUIntFromCharArray(this->m_charListOpt.GetBuffer());
-        FileReader::FileReadAssert(uval <= UINT32_MAX);
+        TTDAssert(uval <= UINT32_MAX, "Error in parse.");
 
         return (uint32)uval;
     }
@@ -1289,7 +1276,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Number);
+        TTDAssert(tok == NSTokens::ParseTokenKind::Number, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0'));
         return this->ReadIntFromCharArray(this->m_charListOpt.GetBuffer());
@@ -1300,7 +1287,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Number);
+        TTDAssert(tok == NSTokens::ParseTokenKind::Number, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0'));
         return this->ReadUIntFromCharArray(this->m_charListOpt.GetBuffer());
@@ -1335,7 +1322,7 @@ namespace TTD
             break;
         default:
         {
-            FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Number);
+            TTDAssert(tok == NSTokens::ParseTokenKind::Number, "Error in parse.");
 
             this->m_charListOpt.Add(_u('\0'));
             res = this->ReadDoubleFromCharArray(this->m_charListOpt.GetBuffer());
@@ -1352,7 +1339,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::Address);
+        TTDAssert(tok == NSTokens::ParseTokenKind::Address, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0')); //add terminator
         return (TTD_PTR_ID)this->ReadUIntFromCharArray(this->m_charListOpt.GetBuffer());
@@ -1363,7 +1350,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::LogTag);
+        TTDAssert(tok == NSTokens::ParseTokenKind::LogTag, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0')); //add terminator
         return (TTD_LOG_PTR_ID)this->ReadUIntFromCharArray(this->m_charListOpt.GetBuffer());
@@ -1374,11 +1361,11 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::EnumTag);
+        TTDAssert(tok == NSTokens::ParseTokenKind::EnumTag, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0')); //add terminator
         uint64 tval = this->ReadUIntFromCharArray(this->m_charListOpt.GetBuffer());
-        FileReader::FileReadAssert(tval <= UINT32_MAX);
+        TTDAssert(tval <= UINT32_MAX, "Error in parse.");
 
         return (uint32)tval;
     }
@@ -1390,7 +1377,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::String || tok == NSTokens::ParseTokenKind::Null);
+        TTDAssert(tok == NSTokens::ParseTokenKind::String || tok == NSTokens::ParseTokenKind::Null, "Error in parse.");
 
         if(tok == NSTokens::ParseTokenKind::Null)
         {
@@ -1407,7 +1394,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::String || tok == NSTokens::ParseTokenKind::Null);
+        TTDAssert(tok == NSTokens::ParseTokenKind::String || tok == NSTokens::ParseTokenKind::Null, "Error in parse.");
 
         if(tok == NSTokens::ParseTokenKind::Null)
         {
@@ -1424,7 +1411,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::WellKnownToken);
+        TTDAssert(tok == NSTokens::ParseTokenKind::WellKnownToken, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0')); //add null terminator
         return alloc.CopyRawNullTerminatedStringInto(this->m_charListOpt.GetBuffer());
@@ -1435,7 +1422,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::WellKnownToken);
+        TTDAssert(tok == NSTokens::ParseTokenKind::WellKnownToken, "Error in parse.");
 
         this->m_charListOpt.Add(_u('\0')); //add null terminator
         return alloc.CopyRawNullTerminatedStringInto(this->m_charListOpt.GetBuffer() + 1);
@@ -1446,7 +1433,7 @@ namespace TTD
         this->ReadSeperator(readSeparator);
 
         NSTokens::ParseTokenKind tok = this->Scan(this->m_charListOpt);
-        FileReader::FileReadAssert(tok == NSTokens::ParseTokenKind::String);
+        TTDAssert(tok == NSTokens::ParseTokenKind::String, "Error in parse.");
 
         js_memcpy_s(code, length * sizeof(char16), this->m_charListOpt.GetBuffer(), this->m_charListOpt.Count() * sizeof(char16));
     }
@@ -1469,7 +1456,7 @@ namespace TTD
             byte sep;
             this->ReadBytesInto_Fixed<byte>(sep);
 
-            FileReadAssert((NSTokens::Separator)sep == NSTokens::Separator::CommaSeparator);
+            TTDAssert((NSTokens::Separator)sep == NSTokens::Separator::CommaSeparator, "Error in parse.");
         }
     }
 
@@ -1480,7 +1467,7 @@ namespace TTD
         byte key;
         this->ReadBytesInto_Fixed<byte>(key);
 
-        FileReadAssert((NSTokens::Key)key == keyCheck);
+        TTDAssert((NSTokens::Key)key == keyCheck, "Error in parse.");
     }
 
     void BinaryFormatReader::ReadSequenceStart(bool readSeparator)
@@ -1490,7 +1477,7 @@ namespace TTD
         byte tok;
         this->ReadBytesInto_Fixed<byte>(tok);
 
-        FileReadAssert(tok == '[');
+        TTDAssert(tok == '[', "Error in parse.");
     }
 
     void BinaryFormatReader::ReadSequenceEnd()
@@ -1498,7 +1485,7 @@ namespace TTD
         byte tok;
         this->ReadBytesInto_Fixed<byte>(tok);
 
-        FileReadAssert(tok == ']');
+        TTDAssert(tok == ']', "Error in parse.");
     }
 
     void BinaryFormatReader::ReadRecordStart(bool readSeparator)
@@ -1508,7 +1495,7 @@ namespace TTD
         byte tok;
         this->ReadBytesInto_Fixed<byte>(tok);
 
-        FileReadAssert(tok == '{');
+        TTDAssert(tok == '{', "Error in parse.");
     }
 
     void BinaryFormatReader::ReadRecordEnd()
@@ -1516,7 +1503,7 @@ namespace TTD
         byte tok;
         this->ReadBytesInto_Fixed<byte>(tok);
 
-        FileReadAssert(tok == '}');
+        TTDAssert(tok == '}', "Error in parse.");
     }
 
     void BinaryFormatReader::ReadNakedNull(bool readSeparator)
@@ -1526,7 +1513,7 @@ namespace TTD
         byte tok;
         this->ReadBytesInto_Fixed<byte>(tok);
 
-        FileReadAssert(tok == 0);
+        TTDAssert(tok == 0, "Error in parse.");
     }
 
     byte BinaryFormatReader::ReadNakedByte(bool readSeparator)

@@ -13,6 +13,7 @@ namespace AsmJsRegSlots
         ReturnReg = 0,
         ModuleMemReg,
         ArrayReg,
+        WasmMemoryReg,
         BufferReg,
         LengthReg,
         RegCount
@@ -146,6 +147,9 @@ private:
     Js::PropertyId          CalculatePropertyOffset(SymID id, IRType type, bool isVar = true);
 
     IR::Instr*              GenerateStSlotForReturn(IR::RegOpnd* srcOpnd, IRType type);
+    IR::RegOpnd*            BuildTrapIfZero(IR::RegOpnd* srcOpnd, uint32 offset);
+    IR::RegOpnd*            BuildTrapIfMinIntOverNegOne(IR::RegOpnd* src1Opnd, IR::RegOpnd* src2Opnd, uint32 offset);
+    
     JitArenaAllocator *     m_tempAlloc;
     JitArenaAllocator *     m_funcAlloc;
     Func *                  m_func;
