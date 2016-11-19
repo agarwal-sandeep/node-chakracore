@@ -318,6 +318,10 @@
         });
         return _scripts;
       },
+      ClearMemoizedScriptInfo: function() { 
+        _scripts = []; 
+        _scriptHandles = []; 
+      }, 
       GetScript: function(scriptId) {
         if (!_scripts[scriptId]) {
           this.GetScripts();
@@ -687,6 +691,7 @@
 
   V8CommandProcessor.prototype.continue = function(request, response) {
     var success = true;
+    var clearMemoizedScriptInfo = false;
     if (request.arguments && request.arguments.stepaction) {
       var jsDiagSetStepType = 0;
       if (request.arguments.stepaction == 'in') {
@@ -698,6 +703,14 @@
       } else if (request.arguments.stepaction == 'next') {
         /* JsDiagStepTypeStepOver */
         jsDiagSetStepType = 2;
+      } else if (request.arguments.stepaction == 'back') {
+        /* JsDiagStepTypeStepBack */
+        jsDiagSetStepType = 3;
+        clearMemoizedScriptInfo = true; //we may recreate the script context -- invalidating scriptIds so clear any memoized info
+      } else if (request.arguments.stepaction == 'reverse') {
+        /* JsDiagStepTypeStepBack */
+        jsDiagSetStepType = 4;
+        clearMemoizedScriptInfo = true; //we may recreate the script context -- invalidating scriptIds so clear any memoized info
       } else {
         throw new Error('Unhandled stepaction: ' +
           request.arguments.stepaction);
@@ -710,6 +723,9 @@
     }
 
     response.success = success;
+    if (clearMemoizedScriptInfo){
+        DebugManager.ScriptsManager.ClearMemoizedScriptInfo();
+    }
 
     // We are continuing, delete the globalExecutionState
     globalExecutionState = undefined;
@@ -1147,6 +1163,7 @@
 
   ChakraDebugEventProcessor.prototype[ChakraDebugEvent.Breakpoint] =
     function() {
+      DebugManager.ScriptsManager.ClearMemoizedScriptInfo();
       globalExecutionState = new ExecutionState(ExecutionStateType.Break,
         this.eventData.scriptId);
 
