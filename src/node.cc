@@ -4674,12 +4674,12 @@ static void StartNodeInstance_TTDReplay(void* arg) {
     catch(...)
     {
         printf("Terminal exception in Replay -- exiting.");
-        ExitProcess(1);
+        exit(1);
     }
     ////
 
     //We are done just dump the process -- in the future we might want to clean up more
-    ExitProcess(0);
+    exit(0);
 }
 #endif
 

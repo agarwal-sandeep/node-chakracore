@@ -58,7 +58,7 @@ enum CachedSymbolPropertyIdRef {
 class IsolateShim {
  public:
   v8::ArrayBuffer::Allocator* arrayBufferAllocator;
-  bool IsolateShim::NewContext(JsContextRef * context, bool exposeGC, bool useGlobalTTState,
+  bool NewContext(JsContextRef * context, bool exposeGC, bool useGlobalTTState,
                                JsValueRef globalObjectTemplateInstance);
   bool GetMemoryUsage(size_t * memoryUsage);
   bool Dispose();

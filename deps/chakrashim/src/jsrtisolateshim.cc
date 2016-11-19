@@ -58,6 +58,11 @@ void TTDHostInitFromUriBytes(TTDHostCharType* dst, const byte* uriBytes, size_t 
     dst[uriBytesLength / sizeof(TTDHostCharType)] = L'\0';
 }
 
+void TTDConvertToHostString(TTDHostCharType* dst, size_t dstSize, const char* srcUri)
+{
+    mbstowcs(dst, srcUri, dstSize);
+}
+
 void TTDHostAppend(TTDHostCharType* dst, const TTDHostCharType* src)
 {
     size_t dpos = TTDHostStringLength(dst);
@@ -68,32 +73,20 @@ void TTDHostAppend(TTDHostCharType* dst, const TTDHostCharType* src)
     dst[dpos + srcLength] = L'\0';
 }
 
-void TTDHostAppendWChar(TTDHostCharType* dst, const wchar_t* src)
-{
-    size_t dpos = TTDHostStringLength(dst);
-    size_t srcLength = wcslen(src);
-
-    for(size_t i = 0; i < srcLength; ++i)
-    {
-        dst[dpos + i] = (wchar_t)src[i];
-    }
-    dst[dpos + srcLength] = L'\0';
-}
-
 void TTDHostAppendAscii(TTDHostCharType* dst, const char* src)
 {
     size_t dpos = TTDHostStringLength(dst);
     size_t srcLength = strlen(src);
     for(size_t i = 0; i < srcLength; ++i)
     {
-        dst[dpos + i] = (wchar_t)src[i];
+        dst[dpos + i] = (TTDHostCharType)src[i];
     }
     dst[dpos + srcLength] = L'\0';
 }
 
 void TTDHostBuildCurrentExeDirectory(TTDHostCharType* path, size_t pathBufferLength)
 {
-    wchar_t exePath[MAX_PATH];
+    TTDHostCharType exePath[MAX_PATH];
     GetModuleFileNameW(NULL, exePath, MAX_PATH);
 
     size_t i = wcslen(exePath) - 1;
@@ -103,7 +96,7 @@ void TTDHostBuildCurrentExeDirectory(TTDHostCharType* path, size_t pathBufferLen
     }
     exePath[i + 1] = L'\0';
 
-    TTDHostAppendWChar(path, exePath);
+    TTDHostAppend(path, exePath);
 }
 
 JsTTDStreamHandle TTDHostOpen(const TTDHostCharType* path, bool isWrite)
@@ -132,7 +125,6 @@ JsTTDStreamHandle TTDHostOpen(const TTDHostCharType* path, bool isWrite)
 #define TTDHostRead(buff, size, handle) fread_s(buff, size, 1, size, (FILE*)handle);
 #define TTDHostWrite(buff, size, handle) fwrite(buff, 1, size, (FILE*)handle)
 #else
-#include <io.h>
 #include <unistd.h>
 #include <cstring>
 #include <libgen.h>
@@ -142,7 +134,12 @@ JsTTDStreamHandle TTDHostOpen(const TTDHostCharType* path, bool isWrite)
 #include <mach-o/dyld.h>
 #endif
 
-typedef utf8char_t TTDHostCharType;
+#define MAX_PATH 256
+#define MAXDWORD 0xffffffff
+#define memcpy_s(DST, DSTLENGTH, SRC, COUNT) memcpy(DST, SRC, COUNT)
+#define CALLBACK 
+
+typedef char TTDHostCharType;
 typedef struct dirent* TTDHostFileInfo;
 typedef DIR* TTDHostFindHandle;
 typedef struct stat TTDHostStatType;
@@ -164,12 +161,17 @@ void TTDHostInitEmpty(TTDHostCharType* dst)
     dst[0] = '\0';
 }
 
+void TTDConvertToHostString(TTDHostCharType* dst, size_t dstSize, const char* srcUri)
+{
+    size_t srcUriLength = strlen(srcUri);
+    memcpy_s(dst, dstSize * sizeof(TTDHostCharType), srcUri, srcUriLength);
+    dst[srcUriLength / sizeof(TTDHostCharType)] = '\0';
+}
+
 void TTDHostInitFromUriBytes(TTDHostCharType* dst, const byte* uriBytes, size_t uriBytesLength)
 {
     memcpy_s(dst, MAX_PATH * sizeof(TTDHostCharType), uriBytes, uriBytesLength);
     dst[uriBytesLength / sizeof(TTDHostCharType)] = '\0';
-
-    AssertMsg(TTDHostStringLength(dst) == (uriBytesLength / sizeof(TTDHostCharType)), "We have an null in the uri or our math is wrong somewhere.");
 }
 
 void TTDHostAppend(TTDHostCharType* dst, const TTDHostCharType* src)
@@ -180,13 +182,6 @@ void TTDHostAppend(TTDHostCharType* dst, const TTDHostCharType* src)
 
     memcpy_s(dst + dpos, srcByteLength, src, srcByteLength);
     dst[dpos + srcLength] = '\0';
-}
-
-void TTDHostAppendWChar(TTDHostCharType* dst, const wchar* src)
-{
-    size_t dpos = TTDHostStringLength(dst);
-    size_t srcLength = wcslen(src);
-    utf8::EncodeIntoAndNullTerminate(dst + dpos, src, srcLength);
 }
 
 void TTDHostAppendAscii(TTDHostCharType* dst, const char* src)
@@ -235,7 +230,7 @@ JsTTDStreamHandle TTDHostOpen(const TTDHostCharType* path, bool isWrite)
 #define TTDHostCHMod(cpath, flags) chmod(TTDHostCharConvert(cpath), flags)
 #define TTDHostRMFile(cpath) remove(TTDHostCharConvert(cpath))
 
-#define TTDHostFindFirst(strPattern, FileInformation) opendir(TTDHostCharConvert(strPattern))
+#define TTDHostFindFirst(strPattern, FileInformation) opendir(TTDHostCharConvert(strPattern)) 
 #define TTDHostFindNext(hFile, FileInformation) (*FileInformation = readdir(hFile))
 #define TTDHostFindClose(hFile) closedir(hFile)
 
@@ -245,7 +240,7 @@ JsTTDStreamHandle TTDHostOpen(const TTDHostCharType* path, bool isWrite)
 #define TTDHostWrite(buff, size, handle) fwrite(buff, 1, size, (FILE*)handle)
 #endif
 
-void TTReportLastIOErrorAsNeeded(BOOL ok, const char* msg)
+void TTReportLastIOErrorAsNeeded(bool ok, const char* msg)
 {
     if(!ok)
     {
@@ -311,7 +306,7 @@ void CreateDirectoryIfNeeded(size_t uriByteLength, const byte* uriBytes)
 void CleanDirectory(size_t uriByteLength, const byte* uriBytes)
 {
     TTDHostFindHandle hFile;
-    TTDHostFileInfo FileInformation;
+    TTDHostFileInfo FileInformation = { 0 };
 
     TTDHostCharType strPattern[MAX_PATH];
     TTDHostInitFromUriBytes(strPattern, uriBytes, uriByteLength);
@@ -345,14 +340,14 @@ void GetTTDDirectory(const char* curi, size_t* uriByteLength, byte* uriBytes)
     TTDHostInitEmpty(turi);
 
     TTDHostCharType wcuri[MAX_PATH];
-    mbstowcs(wcuri, curi, MAX_PATH);
+    TTDConvertToHostString(wcuri, MAX_PATH, curi);
 
     if(curi[0] != '~')
     {
         TTDHostCWD(turi);
         TTDHostAppend(turi, TTDHostPathSeparator);
 
-        TTDHostAppendWChar(turi, wcuri);
+        TTDHostAppend(turi, wcuri);
     }
     else
     {
@@ -361,7 +356,7 @@ void GetTTDDirectory(const char* curi, size_t* uriByteLength, byte* uriBytes)
         TTDHostAppendAscii(turi, "_ttdlog");
         TTDHostAppend(turi, TTDHostPathSeparator);
 
-        TTDHostAppendWChar(turi, wcuri + 1);
+        TTDHostAppend(turi, wcuri + 1);
     }
 
     //add a path separator if one is not already present
@@ -396,6 +391,7 @@ JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const by
     TTDHostInitFromUriBytes(path, uriBytes, uriByteLength);
     TTDHostAppendAscii(path, asciiResourceName);
 
+#if _WIN32
     if(g_ttdUseRelocatedSources && relocatedUri != nullptr)
     {
         size_t bytelen = (TTDHostStringLength(path) + 1) * sizeof(TTDHostCharType);
@@ -405,6 +401,7 @@ JsTTDStreamHandle CALLBACK TTCreateStreamCallback(size_t uriByteLength, const by
         TTDHostInitEmpty((TTDHostCharType*)*relocatedUri);
         TTDHostAppend((TTDHostCharType*)*relocatedUri, path);
     }
+#endif
 
     res = TTDHostOpen(path, write);
     if(res == nullptr)
@@ -428,7 +425,7 @@ bool CALLBACK TTReadBytesFromStreamCallback(JsTTDStreamHandle handle, byte* buff
         return false;
     }
 
-    BOOL ok = FALSE;
+    bool ok = FALSE;
     *readCount = TTDHostRead(buff, size, (FILE*)handle);
     ok = (*readCount != 0);
 
@@ -445,7 +442,7 @@ bool CALLBACK TTWriteBytesToStreamCallback(JsTTDStreamHandle handle, const byte*
         return false;
     }
 
-    BOOL ok = FALSE;
+    bool ok = FALSE;
     *writtenCount = TTDHostWrite(buff, size, (FILE*)handle);
     ok = (*writtenCount == size);
 
@@ -516,7 +513,7 @@ IsolateShim::~IsolateShim() {
   {
       g_ttdUseRelocatedSources = useRelocatedSrc;
 
-      byte ttUri[MAX_PATH * sizeof(wchar_t)];
+      byte ttUri[MAX_PATH * sizeof(TTDHostCharType)];
       size_t ttUriByteLength = 0;
       GetTTDDirectory(uri, &ttUriByteLength, ttUri);
 
@@ -899,12 +896,12 @@ JsValueRef IsolateShim::GetChakraDebugShimJsArrayBuffer() {
         if(error == JsErrorCategoryUsage)
         {
             printf("Start time not in log range.");
-            ExitProcess(0);
+            exit(0);
         }
         else
         {
             printf("Fatal Error in Move!!!");
-            ExitProcess(1);
+            exit(1);
         }
     }
 
