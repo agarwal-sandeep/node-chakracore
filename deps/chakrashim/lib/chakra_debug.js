@@ -318,10 +318,10 @@
         });
         return _scripts;
       },
-      ClearMemoizedScriptInfo: function() { 
-        _scripts = []; 
-        _scriptHandles = []; 
-      }, 
+      ClearMemoizedScriptInfo: function() {
+        _scripts = [];
+        _scriptHandles = [];
+      },
       GetScript: function(scriptId) {
         if (!_scripts[scriptId]) {
           this.GetScripts();
@@ -617,6 +617,9 @@
     return this.v8breakpoint;
   };
 
+  V8Breakpoint.prototype.actual_locations = function() {
+    return this.v8breakpoint.actual_locations;
+  };
 
   function V8CommandProcessor() {}
   // Supported commands
@@ -706,11 +709,15 @@
       } else if (request.arguments.stepaction == 'back') {
         /* JsDiagStepTypeStepBack */
         jsDiagSetStepType = 3;
-        clearMemoizedScriptInfo = true; //we may recreate the script context -- invalidating scriptIds so clear any memoized info
+        // We may recreate the script context
+        // Invalidating scriptIds so clear any memoized info
+        clearMemoizedScriptInfo = true;
       } else if (request.arguments.stepaction == 'reverse') {
         /* JsDiagStepTypeStepBack */
         jsDiagSetStepType = 4;
-        clearMemoizedScriptInfo = true; //we may recreate the script context -- invalidating scriptIds so clear any memoized info
+        // We may recreate the script context
+        // Invalidating scriptIds so clear any memoized info
+        clearMemoizedScriptInfo = true;
       } else {
         throw new Error('Unhandled stepaction: ' +
           request.arguments.stepaction);
@@ -723,8 +730,8 @@
     }
 
     response.success = success;
-    if (clearMemoizedScriptInfo){
-        DebugManager.ScriptsManager.ClearMemoizedScriptInfo();
+    if (clearMemoizedScriptInfo) {
+      DebugManager.ScriptsManager.ClearMemoizedScriptInfo();
     }
 
     // We are continuing, delete the globalExecutionState
@@ -800,7 +807,7 @@
       }
       response.success = success;
       response.body = request.arguments;
-      response.body.actual_locations = [];
+      response.body.actual_locations = v8Breakpoint.actual_locations();
       if (success) {
         response.body.breakpoint = v8Breakpoint.Id();
       }
